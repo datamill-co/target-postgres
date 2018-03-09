@@ -135,7 +135,7 @@ def main():
             user=CONFIG.get('postgres_username'),
             password=CONFIG.get('postgres_password'))
 
-        postgres_target = PostgresTarget(connection)
+        postgres_target = PostgresTarget(connection, LOGGER)
 
         input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
 

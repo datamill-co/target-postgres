@@ -16,8 +16,9 @@ class TransformStream(object):
         return self.fun()
 
 class PostgresTarget(object):
-    def __init__(self, connection, *args, **kwargs):
+    def __init__(self, connection, logger, *args, **kwargs):
         self.conn = connection
+        self.logger = logger
 
     def write_records(self, stream_buffer):
         with self.conn.cursor() as cur:
@@ -33,16 +34,19 @@ class PostgresTarget(object):
                     stream_buffer)
 
                 cur.execute('COMMIT;')
-            except Exception as e:
-                ## TODO: log error
-                print(e)
+            except:
+                logger.exception('Exception writing records')
                 cur.execute('ROLLBACK;')
+                raise
 
         stream_buffer.flush_buffer()
 
     def upsert_table_schema(self, cur, stream_buffer):
         existing_table_schema, key_properties = self._get_schema(cur, 'public', stream_buffer.stream)
-        ## TODO: compare key_properties and stream_buffer.key_properties
+
+        if sorted(key_properties) != sorted(stream_buffer.key_properties):
+            raise Exception('Primary key cannot change')
+
         if existing_table_schema:
             schema = self._merge_put_schemas(cur,
                                              'public',
@@ -66,6 +70,7 @@ class PostgresTarget(object):
             try:
                 row = next(rows)
                 with io.StringIO() as out:
+                    ## TODO: format datetimes
                     writer = csv.DictWriter(out, headers)
                     writer.writerow(row)
                     return out.getvalue()
@@ -109,17 +114,16 @@ class PostgresTarget(object):
 
     def _sql_to_json_schema(self, sql_type, nullable):
         _format = None
-        ## TODO: only support ones that can be revered - json->sql?
-        if sql_type in ['timestamp without time zone', 'timestamp with time zone']:
+        if sql_type == 'timestamp with time zone':
             json_type = 'string'
             _format = 'date-time'
-        elif sql_type in ['integer', 'bigint', 'smallint']:
+        elif sql_type == 'bigint':
             json_type = 'integer'
-        elif sql_type in ['real', 'double precision']:
+        elif sql_type == 'double precision':
             json_type = 'number'
         elif sql_type == 'boolean':
             json_type = 'boolean'
-        elif sql_type in ['text', 'character varying']:
+        elif sql_type == 'text':
             json_type = 'string'
         else:
             raise Exception('Unsupported type `{}` in existing target table'.format(sql_type))
