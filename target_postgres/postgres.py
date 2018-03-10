@@ -5,7 +5,6 @@ import uuid
 import arrow
 from psycopg2 import sql
 
-## TODO: nested records
 ## TODO: nested arrays
 
 ## TODO: full table rep? - _sdc_table_version
@@ -28,6 +27,8 @@ class PostgresTarget(object):
             try:
                 cur.execute('BEGIN;')
 
+                self.denest_schema(stream_buffer.schema)
+
                 table_name, use_temp = self.upsert_table_schema(cur, stream_buffer)
                 self.persist_rows(
                     cur,
@@ -43,6 +44,45 @@ class PostgresTarget(object):
                 raise
 
         stream_buffer.flush_buffer()
+
+    def denest_schema_helper(self, json_schema, not_null, top_level_schema, current_path, sep):
+        for prop, json_schema in json_schema['properties'].items():
+            next_path = current_path + sep + prop
+            if json_schema['type'] == 'object':
+                self.denest_schema_helper(json_schema, not_null, top_level_schema, next_path, sep)
+            else:
+                if not_null and 'null' in json_schema['type']:
+                    json_schema['type'].remove('null')
+                elif 'null' not in json_schema['type']:
+                    json_schema['type'].append('null')
+                top_level_schema[next_path] = json_schema
+
+    def denest_schema(self, schema, sep='__'):
+        new_properties = {}
+        for prop, json_schema in schema['properties'].items():
+            if 'object' in json_schema['type']:
+                not_null = 'null' not in json_schema['type']
+                self.denest_schema_helper(json_schema, not_null, new_properties, prop, sep)
+            else:
+                new_properties[prop] = json_schema
+        schema['properties'] = new_properties
+
+    def denest_record_helper(self, value, top_level_value, current_path, sep):
+        for prop, value in value.items():
+            next_path = current_path + sep + prop
+            if isinstance(value, dict):
+                self.denest_record_helper(value, top_level_value, next_path, sep)
+            else:
+                top_level_value[next_path] = value
+
+    def denest_record(self, record, sep='__'):
+        denested_record = {}
+        for prop, value in record.items():
+            if isinstance(value, dict):
+                self.denest_record_helper(value, denested_record, prop, sep)
+            else:
+                denested_record[prop] = value
+        return denested_record
 
     def upsert_table_schema(self, cur, stream_buffer):
         existing_table_schema = self._get_schema(cur, self.postgres_schema, stream_buffer.stream)
@@ -123,7 +163,7 @@ class PostgresTarget(object):
                         distinct_order_by=distinct_order_by)
 
     def persist_rows(self, cur, use_temp, table_schema, table_name, stream_buffer):
-        rows = iter(stream_buffer.peek_buffer())
+        records = iter(stream_buffer.peek_buffer())
         headers = list(stream_buffer.schema['properties'].keys())
 
         datetime_fields = [k for k,v in stream_buffer.schema['properties'].items()
@@ -131,13 +171,15 @@ class PostgresTarget(object):
 
         def transform():
             try:
-                row = next(rows)
+                record = next(records)
                 with io.StringIO() as out:
+                    denested_record = self.denest_record(record)
                     for prop in datetime_fields:
-                        if prop in row:
-                            row[prop] = arrow.get(row[prop]).format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
+                        if prop in denested_record:
+                            denested_record[prop] = arrow.get(denested_record[prop]).format(
+                                                              'YYYY-MM-DD HH:mm:ss.SSSSZZ')
                     writer = csv.DictWriter(out, headers)
-                    writer.writerow(row)
+                    writer.writerow(denested_record)
                     return out.getvalue()
             except StopIteration:
                 return ''
@@ -232,9 +274,9 @@ class PostgresTarget(object):
 
     def _get_schema(self, cur, table_schema, table_name):
         cur.execute(
-            'SELECT column_name, data_type, is_nullable FROM information_schema.columns ' +
-            'WHERE table_schema = %s and table_name = %s;',
-            (table_schema, table_name))
+            sql.SQL('SELECT column_name, data_type, is_nullable FROM information_schema.columns ') +
+            sql.SQL('WHERE table_schema = {} and table_name = {};').format(
+                sql.Literal(table_schema), sql.Literal(table_name)))
         columns = cur.fetchall()
 
         if len(columns) == 0:
@@ -248,13 +290,40 @@ class PostgresTarget(object):
 
         return schema
 
-    def _add_column(self, cur, table_schema, table_name, column_name, data_type):
+    def _get_null_default(self, column, json_schema):
+        if 'default' in json_schema:
+            return json_schema['default']
+
+        json_type = json_schema['type']
+        if 'null' in json_type:
+            return None
+
+        if len(json_type) == 1 or json_type != 'null':
+            _type = json_type[0]
+        else:
+            _type = json_type[1]
+
+        if _type == 'string':
+            return ''
+        if _type == 'boolean':
+            return 'FALSE'
+
+        raise Exception('Non-trival default needed on new non-null column `{}`'.format(column))
+
+    def _add_column(self, cur, table_schema, table_name, column_name, data_type, default_value):
+        if default_value is not None:
+            default_value = " DEFAULT {}".format(default_value)
+        else:
+            default_value = ''
+
         cur.execute(
-            'ALTER TABLE "{table_schema}"."{table_name}" ADD COLUMN "{column_name}" {data_type};'.format(
-                table_schema=table_schema,
-                table_name=table_name,
-                column_name=column_name,
-                data_type=data_type))
+            sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
+                    'ADD COLUMN {column_name} {data_type}{default_value};').format(
+                    table_schema=sql.Identifier(table_schema),
+                    table_name=sql.Identifier(table_name),
+                    column_name=sql.Identifier(column_name),
+                    data_type=sql.SQL(data_type),
+                    default_value=sql.SQL(default_value)))
 
     def _merge_put_schemas(self, cur, table_schema, table_name, existing_schema, new_schema):
         new_properties = new_schema['properties']
@@ -263,11 +332,13 @@ class PostgresTarget(object):
             if prop not in existing_properties:
                 existing_properties[prop] = new_properties[prop]
                 data_type = self._json_schema_to_sql(new_properties[prop])
+                default_value = self._get_null_default(prop, new_properties[prop])
                 self._add_column(cur,
                                  table_schema,
                                  table_name,
                                  prop,
-                                 data_type)
+                                 data_type,
+                                 default_value)
             ## TODO: types do not match
 
         return existing_schema
