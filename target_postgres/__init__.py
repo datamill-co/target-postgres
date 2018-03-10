@@ -3,7 +3,9 @@
 import sys
 import io
 import json
+import uuid
 from datetime import datetime
+from copy import deepcopy
 
 import singer
 from singer import utils, metadata, metrics
@@ -32,9 +34,8 @@ class BufferedSingerStream(object):
                  max_buffer_size=104857600, # 100MB
                  buffer_timeout=600, # 10 minutes
                  **kwargs):
+        self.update_schema(schema, key_properties)
         self.stream = stream
-        self.schema = schema
-        self.key_properties = key_properties
         self.max_rows = max_rows
         self.max_buffer_size = max_buffer_size
         self.buffer_timeout = buffer_timeout
@@ -44,6 +45,29 @@ class BufferedSingerStream(object):
         self.__buffer = []
         self.__size = 0
         self.__last_flush = datetime.utcnow()
+
+    def update_schema(self, schema, key_properties):
+        original_schema = deepcopy(schema)
+
+        if len(key_properties) == 0:
+            self.use_uuid_pk = True
+            key_properties = ['_sdc_primary_key']
+            schema['properties']['_sdc_primary_key'] = {
+                'type': 'string'
+            }
+        else:
+            self.use_uuid_pk = False
+
+        if '_sdc_sequence' in schema['properties']:
+            self.sequence_field = '_sdc_sequence'
+        elif '_sdc_received_at' in schema['properties']:
+            self.sequence_field = '_sdc_received_at'
+        else:
+            self.sequence_field = None
+
+        self.schema = schema
+        self.original_schema = original_schema
+        self.key_properties = key_properties
 
     @property
     def buffer_full(self):
@@ -61,6 +85,8 @@ class BufferedSingerStream(object):
         return False
 
     def add_record(self, record):
+        if self.use_uuid_pk and record.get('_sdc_primary_key') is None:
+            record['_sdc_primary_key'] = uuid.uuid4()
         self.__buffer.append(record)
         self.__size += get_size(record)
 
@@ -108,7 +134,7 @@ def line_handler(line):
             buffered_stream = BufferedSingerStream(stream, schema, key_properties)
             STREAMS[stream] = buffered_stream
         else:
-            STREAMS[stream].schema = schema
+            STREAMS[stream].update_schema(schema, key_properties)
     elif line_data['type'] == 'RECORD':
         if 'stream' not in line_data:
             raise Exception('`stream` is a required key: {}'.format(line))
@@ -135,7 +161,10 @@ def main():
             user=CONFIG.get('postgres_username'),
             password=CONFIG.get('postgres_password'))
 
-        postgres_target = PostgresTarget(connection, LOGGER)
+        postgres_target = PostgresTarget(
+            connection,
+            LOGGER,
+            postgres_schema=CONFIG.get('postgres_schema', 'public'))
 
         input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
 
