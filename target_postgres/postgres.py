@@ -17,6 +17,11 @@ class TransformStream(object):
         return self.fun()
 
 class PostgresTarget(object):
+    SINGER_RECEIVED_AT = '_sdc_received_at'
+    SINGER_SEQUENCE = '_sdc_sequence'
+    SINGER_TABLE_VERSION = '_sdc_table_version'
+    SINGER_PK = '_sdc_primary_key'
+
     def __init__(self, connection, logger, *args, postgres_schema='public', **kwargs):
         self.conn = connection
         self.logger = logger
@@ -27,6 +32,7 @@ class PostgresTarget(object):
             try:
                 cur.execute('BEGIN;')
 
+                self.add_singer_columns(stream_buffer.schema, stream_buffer.key_properties)
                 self.denest_schema(stream_buffer.schema)
 
                 table_name, use_temp = self.upsert_table_schema(cur, stream_buffer)
@@ -44,6 +50,36 @@ class PostgresTarget(object):
                 raise
 
         stream_buffer.flush_buffer()
+
+    def add_singer_columns(self, schema, key_properties):
+        properties = schema['properties']
+
+        if self.SINGER_RECEIVED_AT not in properties:
+            properties[self.SINGER_RECEIVED_AT] = {
+                'type': ['null', 'string'],
+                'format': 'date-time'
+            }
+
+        if self.SINGER_SEQUENCE not in properties:
+            properties[self.SINGER_SEQUENCE] = {
+                'type': ['null', 'integer']
+            }
+
+        if self.SINGER_TABLE_VERSION not in properties:
+            properties[self.SINGER_TABLE_VERSION] = {
+                'type': ['null', 'integer']
+            }
+
+        if len(key_properties) == 0:
+            properties[self.SINGER_PK] = {
+                'type': ['string']
+            }
+
+    def populate_singer_columns(self, record, stream_buffer):
+        if self.SINGER_TABLE_VERSION not in record:
+            record[self.SINGER_TABLE_VERSION] = 0
+        if stream_buffer.use_uuid_pk and record.get(self.SINGER_PK) is None:
+            record[self.SINGER_PK] = uuid.uuid4()
 
     def denest_schema_helper(self, json_schema, not_null, top_level_schema, current_path, sep):
         for prop, json_schema in json_schema['properties'].items():
@@ -173,6 +209,7 @@ class PostgresTarget(object):
             try:
                 record = next(records)
                 with io.StringIO() as out:
+                    self.populate_singer_columns(record, stream_buffer)
                     denested_record = self.denest_record(record)
                     for prop in datetime_fields:
                         if prop in denested_record:
@@ -312,9 +349,9 @@ class PostgresTarget(object):
 
     def _add_column(self, cur, table_schema, table_name, column_name, data_type, default_value):
         if default_value is not None:
-            default_value = " DEFAULT {}".format(default_value)
+            default_value = sql.SQL(' DEFAULT {}').format(sql.Literal(default_value))
         else:
-            default_value = ''
+            default_value = sql.SQL('')
 
         cur.execute(
             sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
@@ -323,7 +360,7 @@ class PostgresTarget(object):
                     table_name=sql.Identifier(table_name),
                     column_name=sql.Identifier(column_name),
                     data_type=sql.SQL(data_type),
-                    default_value=sql.SQL(default_value)))
+                    default_value=default_value))
 
     def _merge_put_schemas(self, cur, table_schema, table_name, existing_schema, new_schema):
         new_properties = new_schema['properties']

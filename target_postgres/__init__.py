@@ -49,19 +49,21 @@ class BufferedSingerStream(object):
     def update_schema(self, schema, key_properties):
         original_schema = deepcopy(schema)
 
+        ## TODO: move to PostgresTarget?
         if len(key_properties) == 0:
             self.use_uuid_pk = True
-            key_properties = ['_sdc_primary_key']
-            schema['properties']['_sdc_primary_key'] = {
+            key_properties = [PostgresTarget.SINGER_PK]
+            schema['properties'][PostgresTarget.SINGER_PK] = {
                 'type': 'string'
             }
         else:
             self.use_uuid_pk = False
 
-        if '_sdc_sequence' in schema['properties']:
-            self.sequence_field = '_sdc_sequence'
-        elif '_sdc_received_at' in schema['properties']:
-            self.sequence_field = '_sdc_received_at'
+        ## TODO: move to PostgresTarget?
+        if PostgresTarget.SINGER_SEQUENCE in schema['properties']:
+            self.sequence_field = PostgresTarget.SINGER_SEQUENCE
+        elif PostgresTarget.SINGER_RECEIVED_AT in schema['properties']:
+            self.sequence_field = PostgresTarget.SINGER_RECEIVED_AT
         else:
             self.sequence_field = None
 
@@ -85,8 +87,6 @@ class BufferedSingerStream(object):
         return False
 
     def add_record(self, record):
-        if self.use_uuid_pk and record.get('_sdc_primary_key') is None:
-            record['_sdc_primary_key'] = uuid.uuid4()
         self.__buffer.append(record)
         self.__size += get_size(record)
 
