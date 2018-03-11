@@ -79,11 +79,6 @@ class PostgresTarget(object):
                     key_properties = []
                     for key in stream_buffer.key_properties:
                         key_properties.append(self.SINGER_SOURCE_PK_PREFIX + key)
-                    for prop in nested_upsert_table['json_schema']['properties'].keys():
-                        if prop.startswith(self.SINGER_LEVEL[:11]): ## TODO: get rid of hardcoded startswith
-                            key_properties.append(prop)
-                    ## TODO: should persist_rows delete all nested rows with
-                    ##       top level SINGER_SOURCE_PK_PREFIX columns?
                     self.persist_rows(cur,
                                       nested_upsert_table['table_name'],
                                       nested_upsert_table['temp_table_name'],
