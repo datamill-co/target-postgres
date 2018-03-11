@@ -40,14 +40,17 @@ class BufferedSingerStream(object):
         self.max_buffer_size = max_buffer_size
         self.buffer_timeout = buffer_timeout
 
-        ## TODO: create validator?
-
         self.__buffer = []
         self.__size = 0
         self.__last_flush = datetime.utcnow()
 
     def update_schema(self, schema, key_properties):
         original_schema = deepcopy(schema)
+
+        ## TODO: create validator?
+        ## TODO: validate against stricter contrainsts for this target?
+
+        ## TODO: mark schema dirty here for caching in PostgresTarget
 
         ## TODO: move to PostgresTarget?
         if len(key_properties) == 0:
