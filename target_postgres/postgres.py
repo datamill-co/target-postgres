@@ -1,6 +1,7 @@
 import io
 import csv
 import uuid
+from functools import partial
 
 import arrow
 from psycopg2 import sql
@@ -16,6 +17,7 @@ class TransformStream(object):
 
 class PostgresTarget(object):
     SINGER_RECEIVED_AT = '_sdc_received_at'
+    SINGER_BATCHED_AT = '_sdc_batched_at'
     SINGER_SEQUENCE = '_sdc_sequence'
     SINGER_TABLE_VERSION = '_sdc_table_version'
     SINGER_PK = '_sdc_primary_key'
@@ -58,10 +60,11 @@ class PostgresTarget(object):
                         'upsert': upsert
                     })
 
-                ## TODO: populate_singer_columns - top level singe columns
                 ## TODO: dedup records by sequence_field here, so that nested records are dedupped too
-                records = stream_buffer.peek_buffer()
-
+                records = map(partial(self.populate_singer_columns,
+                                      stream_buffer.use_uuid_pk,
+                                      self.get_postgres_datetime()),
+                              stream_buffer.peek_buffer())
 
                 records_map = {}
                 self.denest_records(stream_buffer.stream, records, records_map, stream_buffer.key_properties)
@@ -115,16 +118,24 @@ class PostgresTarget(object):
                 'type': ['null', 'integer']
             }
 
+        if self.SINGER_BATCHED_AT not in properties:
+            properties[self.SINGER_BATCHED_AT] = {
+                'type': ['null', 'string'],
+                'format': 'date-time'
+            }
+
         if len(key_properties) == 0:
             properties[self.SINGER_PK] = {
                 'type': ['string']
             }
 
-    def populate_singer_columns(self, record, stream_buffer):
-        if self.SINGER_TABLE_VERSION not in record:
+    def populate_singer_columns(self, use_uuid_pk, batched_at, record):
+        if record.get(self.SINGER_TABLE_VERSION) is None:
             record[self.SINGER_TABLE_VERSION] = 0
-        if stream_buffer.use_uuid_pk and record.get(self.SINGER_PK) is None:
+        if use_uuid_pk and record.get(self.SINGER_PK) is None:
             record[self.SINGER_PK] = uuid.uuid4()
+        record[self.SINGER_BATCHED_AT] = batched_at
+        return record
 
     def denest_schema_helper(self,
                              table_name,
@@ -374,11 +385,10 @@ class PostgresTarget(object):
             try:
                 row = next(rows)
                 with io.StringIO() as out:
-                    ## TODO: move to main record processing above?
+                    ## Serialize datetime to postgres compatible format
                     for prop in datetime_fields:
                         if prop in row:
-                            row[prop] = arrow.get(row[prop]).format(
-                                                              'YYYY-MM-DD HH:mm:ss.SSSSZZ')
+                            row[prop] = self.get_postgres_datetime(row[prop])
                     writer = csv.DictWriter(out, headers)
                     writer.writerow(row)
                     return out.getvalue()
@@ -396,6 +406,13 @@ class PostgresTarget(object):
         if upsert:
             update_sql = self.get_update_sql(target_table_name, temp_table_name, key_properties, sequence_field)
             cur.execute(update_sql)
+
+    def get_postgres_datetime(self, *args):
+        if len(args) > 0:
+            parsed_datetime = arrow.get(args[0])
+        else:
+            parsed_datetime = arrow.get() # defaults to UTC now
+        return parsed_datetime.format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
 
     def _create_table(self, cur, table_schema, table_name, schema):
         create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
@@ -543,4 +560,3 @@ class PostgresTarget(object):
             ## TODO: types do not match
 
         return existing_schema
-
