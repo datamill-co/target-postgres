@@ -174,7 +174,7 @@ def main():
         line_count = 0
         for line in input_stream:
             line_handler(line)
-            if line_count > 0 and line_count % 5000 == 0:
+            if line_count > 0 and line_count % 5000 == 0: ## TODO: line count or timeout?
                 flush_streams(postgres_target)
             line_count += 1
 

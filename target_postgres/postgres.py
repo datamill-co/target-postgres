@@ -266,6 +266,8 @@ class PostgresTarget(object):
                                     key_properties,
                                     pk_fks=pk_fks,
                                     level=level + 1)
+            elif value is None: ## nulls mess up nested objects
+                continue
             else:
                 denested_record[next_path] = value
 
