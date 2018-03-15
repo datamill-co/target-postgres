@@ -6,6 +6,16 @@ from functools import partial
 import arrow
 from psycopg2 import sql
 
+from target_postgres.singer_stream import (
+    SINGER_RECEIVED_AT,
+    SINGER_BATCHED_AT,
+    SINGER_SEQUENCE,
+    SINGER_TABLE_VERSION,
+    SINGER_PK,
+    SINGER_SOURCE_PK_PREFIX,
+    SINGER_LEVEL
+)
+
 ## TODO: full table rep? - _sdc_table_version
 
 class TransformStream(object):
@@ -16,14 +26,6 @@ class TransformStream(object):
         return self.fun()
 
 class PostgresTarget(object):
-    SINGER_RECEIVED_AT = '_sdc_received_at'
-    SINGER_BATCHED_AT = '_sdc_batched_at'
-    SINGER_SEQUENCE = '_sdc_sequence'
-    SINGER_TABLE_VERSION = '_sdc_table_version'
-    SINGER_PK = '_sdc_primary_key'
-    SINGER_SOURCE_PK_PREFIX = '_sdc_source_key_'
-    SINGER_LEVEL = '_sdc_level_{}_id'
-
     NESTED_SEPARATOR = '__'
 
     def __init__(self, connection, logger, *args, postgres_schema='public', **kwargs):
@@ -81,7 +83,7 @@ class PostgresTarget(object):
                 for nested_upsert_table in nested_upsert_tables:
                     key_properties = []
                     for key in stream_buffer.key_properties:
-                        key_properties.append(self.SINGER_SOURCE_PK_PREFIX + key)
+                        key_properties.append(SINGER_SOURCE_PK_PREFIX + key)
                     self.persist_rows(cur,
                                       nested_upsert_table['table_name'],
                                       nested_upsert_table['temp_table_name'],
@@ -102,39 +104,39 @@ class PostgresTarget(object):
     def add_singer_columns(self, schema, key_properties):
         properties = schema['properties']
 
-        if self.SINGER_RECEIVED_AT not in properties:
-            properties[self.SINGER_RECEIVED_AT] = {
+        if SINGER_RECEIVED_AT not in properties:
+            properties[SINGER_RECEIVED_AT] = {
                 'type': ['null', 'string'],
                 'format': 'date-time'
             }
 
-        if self.SINGER_SEQUENCE not in properties:
-            properties[self.SINGER_SEQUENCE] = {
+        if SINGER_SEQUENCE not in properties:
+            properties[SINGER_SEQUENCE] = {
                 'type': ['null', 'integer']
             }
 
-        if self.SINGER_TABLE_VERSION not in properties:
-            properties[self.SINGER_TABLE_VERSION] = {
+        if SINGER_TABLE_VERSION not in properties:
+            properties[SINGER_TABLE_VERSION] = {
                 'type': ['null', 'integer']
             }
 
-        if self.SINGER_BATCHED_AT not in properties:
-            properties[self.SINGER_BATCHED_AT] = {
+        if SINGER_BATCHED_AT not in properties:
+            properties[SINGER_BATCHED_AT] = {
                 'type': ['null', 'string'],
                 'format': 'date-time'
             }
 
         if len(key_properties) == 0:
-            properties[self.SINGER_PK] = {
+            properties[SINGER_PK] = {
                 'type': ['string']
             }
 
     def populate_singer_columns(self, use_uuid_pk, batched_at, record):
-        if record.get(self.SINGER_TABLE_VERSION) is None:
-            record[self.SINGER_TABLE_VERSION] = 0
-        if use_uuid_pk and record.get(self.SINGER_PK) is None:
-            record[self.SINGER_PK] = uuid.uuid4()
-        record[self.SINGER_BATCHED_AT] = batched_at
+        if record.get(SINGER_TABLE_VERSION) is None:
+            record[SINGER_TABLE_VERSION] = 0
+        if use_uuid_pk and record.get(SINGER_PK) is None:
+            record[SINGER_PK] = uuid.uuid4()
+        record[SINGER_BATCHED_AT] = batched_at
         return record
 
     def denest_schema_helper(self,
@@ -178,10 +180,10 @@ class PostgresTarget(object):
             new_properties = {'value': json_schema['items']}
 
         for pk, json_schema in key_prop_schemas.items():
-            new_properties[self.SINGER_SOURCE_PK_PREFIX + pk] = json_schema
+            new_properties[SINGER_SOURCE_PK_PREFIX + pk] = json_schema
 
         for i in range(0, level + 1):
-            new_properties[self.SINGER_LEVEL.format(i)] = {
+            new_properties[SINGER_LEVEL.format(i)] = {
                 'type': ['integer']
             }
 
@@ -280,14 +282,14 @@ class PostgresTarget(object):
         for record in records:
             if pk_fks:
                 record_pk_fks = pk_fks.copy()
-                record_pk_fks[self.SINGER_LEVEL.format(level)] = row_index
+                record_pk_fks[SINGER_LEVEL.format(level)] = row_index
                 for key, value in record_pk_fks.items():
                     record[key] = value
                 row_index += 1
             else: ## top level
                 record_pk_fks = {}
                 for key in key_properties:
-                    record_pk_fks[self.SINGER_SOURCE_PK_PREFIX + key] = record[key]
+                    record_pk_fks[SINGER_SOURCE_PK_PREFIX + key] = record[key]
             self.denest_record(table_name, None, record, records_map, key_properties, record_pk_fks, level)
 
     def upsert_table_schema(self, cur, table_name, schema):
@@ -348,6 +350,7 @@ class PostgresTarget(object):
         else:
             distinct_order_by = sql.SQL('')
 
+        ## TODO: should update check that temp table row's sequence number is greater than existing?
         return sql.SQL('''
             WITH "pks" AS (
                 SELECT DISTINCT ON ({pk_temp_select}) {pk_temp_select}
