@@ -64,6 +64,8 @@ def line_handler(line):
                 .format(line_data['stream']))
 
         STREAMS[line_data['stream']].add_record(line_data['record'])
+    elif line_data['type'] == 'STATE':
+        LOGGER.warn('`STATE` Singer message type not supported')
     else:
         raise Exception('Unknown message type {} in message {}'.format(
             line_data['type'],
@@ -73,7 +75,7 @@ def main(config, input_stream=None):
     try:
         connection = psycopg2.connect(
             host=config.get('postgres_host', 'localhost'),
-            port=int(config.get('postgres_host', '5432')),
+            port=config.get('postgres_port', 5432),
             dbname=config.get('postgres_database'),
             user=config.get('postgres_username'),
             password=config.get('postgres_password'))
