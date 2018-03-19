@@ -91,7 +91,7 @@ def main(config, input_stream=None):
         line_count = 0
         for line in input_stream:
             line_handler(line)
-            if line_count > 0 and line_count % 5000 == 0: ## TODO: line count or timeout?
+            if line_count > 0 and line_count % 5000 == 0:
                 flush_streams(postgres_target)
             line_count += 1
 

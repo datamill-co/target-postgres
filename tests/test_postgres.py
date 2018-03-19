@@ -6,9 +6,10 @@ from target_postgres import main
 from fixtures import CatStream, CONFIG, TEST_DB, db_cleanup
 
 ## TODO: create and test more fake streams
+## TODO: chanage actual data / make sure data updates, not just row count
 ## TODO: test invalid data against JSON Schema
-## TODO: test stream with duplicate records
-## TODO: test stream with duplicate records, that have nested arrays
+## TODO: test stream with duplicate records but different sequence numbers
+## TODO: test stream with duplicate records but different sequence numbers, that have nested arrays
 
 def get_columns_sql(table_name):
     return "SELECT column_name, data_type, is_nullable FROM information_schema.columns " + \
@@ -45,6 +46,7 @@ def test_loading_simple(db_cleanup):
 
             assert columns == [
                 ('_sdc_level_0_id', 'bigint', 'NO'),
+                ('_sdc_sequence', 'bigint', 'YES'),
                 ('_sdc_source_key_id', 'bigint', 'NO'),
                 ('date_administered', 'timestamp with time zone', 'YES'),
                 ('type', 'text', 'YES')

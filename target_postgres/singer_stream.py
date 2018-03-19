@@ -1,4 +1,3 @@
-from datetime import datetime
 from copy import deepcopy
 
 from jsonschema import Draft4Validator, FormatChecker
@@ -21,17 +20,14 @@ class BufferedSingerStream(object):
                  *args,
                  max_rows=200000,
                  max_buffer_size=104857600, # 100MB
-                 buffer_timeout=600, # 10 minutes
                  **kwargs):
         self.update_schema(schema, key_properties)
         self.stream = stream
         self.max_rows = max_rows
         self.max_buffer_size = max_buffer_size
-        self.buffer_timeout = buffer_timeout
 
         self.__buffer = []
         self.__size = 0
-        self.__last_flush = datetime.utcnow()
 
     def update_schema(self, schema, key_properties):
         original_schema = deepcopy(schema)
@@ -50,13 +46,6 @@ class BufferedSingerStream(object):
         else:
             self.use_uuid_pk = False
 
-        if SINGER_SEQUENCE in schema['properties']:
-            self.sequence_field = SINGER_SEQUENCE
-        elif SINGER_RECEIVED_AT in schema['properties']:
-            self.sequence_field = SINGER_RECEIVED_AT
-        else:
-            self.sequence_field = None
-
         self.schema = schema
         self.original_schema = original_schema
         self.key_properties = key_properties
@@ -71,9 +60,6 @@ class BufferedSingerStream(object):
             if self.__size >= self.max_buffer_size:
                 return True
 
-            elapsed_since_flush = (datetime.utcnow() - self.__last_flush).total_seconds()
-            if elapsed_since_flush >= self.buffer_timeout:
-                return True
         return False
 
     def add_record(self, record):

@@ -62,7 +62,6 @@ class PostgresTarget(object):
                         'upsert': upsert
                     })
 
-                ## TODO: dedup records by sequence_field here, so that nested records are dedupped too
                 records = map(partial(self.populate_singer_columns,
                                       stream_buffer.use_uuid_pk,
                                       self.get_postgres_datetime()),
@@ -77,7 +76,6 @@ class PostgresTarget(object):
                                   root_table_upsert,
                                   stream_buffer.schema,
                                   stream_buffer.key_properties,
-                                  stream_buffer.sequence_field,
                                   records_map[stream_buffer.stream])
 
                 for nested_upsert_table in nested_upsert_tables:
@@ -90,7 +88,6 @@ class PostgresTarget(object):
                                       nested_upsert_table['upsert'],
                                       nested_upsert_table['json_schema'],
                                       key_properties,
-                                      None,
                                       records_map[nested_upsert_table['table_name']])
 
                 cur.execute('COMMIT;')
@@ -137,6 +134,8 @@ class PostgresTarget(object):
         if use_uuid_pk and record.get(SINGER_PK) is None:
             record[SINGER_PK] = uuid.uuid4()
         record[SINGER_BATCHED_AT] = batched_at
+        if record.get(SINGER_SEQUENCE) is None:
+            record[SINGER_SEQUENCE] = arrow.get().timestamp
         return record
 
     def denest_schema_helper(self,
@@ -181,6 +180,10 @@ class PostgresTarget(object):
 
         for pk, json_schema in key_prop_schemas.items():
             new_properties[SINGER_SOURCE_PK_PREFIX + pk] = json_schema
+
+        new_properties[SINGER_SEQUENCE] = {
+            'type': ['null', 'integer']
+        }
 
         for i in range(0, level + 1):
             new_properties[SINGER_LEVEL.format(i)] = {
@@ -290,6 +293,8 @@ class PostgresTarget(object):
                 record_pk_fks = {}
                 for key in key_properties:
                     record_pk_fks[SINGER_SOURCE_PK_PREFIX + key] = record[key]
+                if SINGER_SEQUENCE in record:
+                    record_pk_fks[SINGER_SEQUENCE] = record[SINGER_SEQUENCE]
             self.denest_record(table_name, None, record, records_map, key_properties, record_pk_fks, level)
 
     def upsert_table_schema(self, cur, table_name, schema):
@@ -313,7 +318,7 @@ class PostgresTarget(object):
 
         return target_table_name, existing_table_schema is not None
 
-    def get_update_sql(self, target_table_name, temp_table_name, key_properties, sequence_field):
+    def get_update_sql(self, target_table_name, temp_table_name, key_properties):
         full_table_name = sql.SQL('{}.{}').format(
             sql.Identifier(self.postgres_schema),
             sql.Identifier(target_table_name))
@@ -323,44 +328,57 @@ class PostgresTarget(object):
 
         pk_temp_select_list = []
         pk_where_list = []
+        pk_null_list = []
         cxt_where_list = []
         for pk in key_properties:
+            pk_identifier = sql.Identifier(pk)
             pk_temp_select_list.append(sql.SQL('{}.{}').format(full_temp_table_name,
-                                                               sql.Identifier(pk)))
+                                                               pk_identifier))
 
             pk_where_list.append(
                 sql.SQL('{table}.{pk} = {temp_table}.{pk}').format(
                     table=full_table_name,
                     temp_table=full_temp_table_name,
-                    pk=sql.Identifier(pk)))
+                    pk=pk_identifier))
+
+            pk_null_list.append(
+                sql.SQL('{table}.{pk} IS NULL').format(
+                    table=full_table_name,
+                    pk=pk_identifier))
 
             cxt_where_list.append(
                 sql.SQL('{table}.{pk} = "pks".{pk}').format(
                     table=full_table_name,
-                    pk=sql.Identifier(pk)))
+                    pk=pk_identifier))
         pk_temp_select = sql.SQL(', ').join(pk_temp_select_list)
         pk_where = sql.SQL(' AND ').join(pk_where_list)
+        pk_null = sql.SQL(' AND ').join(pk_null_list)
         cxt_where = sql.SQL(' AND ').join(cxt_where_list)
 
-        if sequence_field:
-            distinct_order_by = sql.SQL(' ORDER BY {}, {}.{} DESC').format(
-                pk_temp_select,
-                full_temp_table_name,
-                sql.Identifier(sequence_field))
-        else:
-            distinct_order_by = sql.SQL('')
+        sequence_join = sql.SQL(' AND {}.{} >= {}.{}').format(
+            full_temp_table_name,
+            sql.Identifier(SINGER_SEQUENCE),
+            full_table_name,
+            sql.Identifier(SINGER_SEQUENCE))
 
-        ## TODO: should update check that temp table row's sequence number is greater than existing?
+        distinct_order_by = sql.SQL(' ORDER BY {}, {}.{} DESC').format(
+            pk_temp_select,
+            full_temp_table_name,
+            sql.Identifier(SINGER_SEQUENCE))
+
         return sql.SQL('''
             WITH "pks" AS (
                 SELECT DISTINCT ON ({pk_temp_select}) {pk_temp_select}
                 FROM {temp_table}
-                JOIN {table} ON {pk_where}{distinct_order_by}
+                JOIN {table} ON {pk_where}{sequence_join}{distinct_order_by}
             )
             DELETE FROM {table} USING "pks" WHERE {cxt_where};
             INSERT INTO {table} (
-                SELECT DISTINCT ON ({pk_temp_select}) *
-                FROM {temp_table}{distinct_order_by}
+                SELECT DISTINCT ON ({pk_temp_select}) {temp_table}.*
+                FROM {temp_table}
+                LEFT JOIN {table} ON {pk_where}
+                WHERE {pk_null}
+                {distinct_order_by}
             );
             DROP TABLE {temp_table};
             ''').format(table=full_table_name,
@@ -368,7 +386,9 @@ class PostgresTarget(object):
                         pk_temp_select=pk_temp_select,
                         pk_where=pk_where,
                         cxt_where=cxt_where,
-                        distinct_order_by=distinct_order_by)
+                        sequence_join=sequence_join,
+                        distinct_order_by=distinct_order_by,
+                        pk_null=pk_null)
 
     def persist_rows(self,
                      cur,
@@ -377,7 +397,6 @@ class PostgresTarget(object):
                      upsert,
                      json_schema,
                      key_properties,
-                     sequence_field,
                      records):
         headers = list(json_schema['properties'].keys())
 
@@ -409,7 +428,7 @@ class PostgresTarget(object):
         cur.copy_expert(copy, csv_rows)
 
         if upsert:
-            update_sql = self.get_update_sql(target_table_name, temp_table_name, key_properties, sequence_field)
+            update_sql = self.get_update_sql(target_table_name, temp_table_name, key_properties)
             cur.execute(update_sql)
 
     def get_postgres_datetime(self, *args):
