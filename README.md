@@ -8,6 +8,7 @@ A [Singer](https://singer.io/) postgres target, for use with Singer streams gene
 - Denests objects flattening them into the parent object's table
 - Denests rows into separate tables
 - Adds columns and sub-tables as new fields are added to the stream JSON Schema
+- Full stream replication via record `version` and `ACTIVATE_VERSION` messages.
 
 ## Usage
 

@@ -21,14 +21,14 @@ REQUIRED_CONFIG_KEYS = [
 STREAMS = {}
 
 def flush_stream(target, stream_buffer):
-    target.write_records(stream_buffer)
+    target.write_batch(stream_buffer)
 
 def flush_streams(target, force=False):
     for stream_buffer in STREAMS.values():
         if force or stream_buffer.buffer_full:
             flush_stream(target, stream_buffer)
 
-def line_handler(line):
+def line_handler(target, line):
     try:
         line_data = json.loads(line)
     except json.decoder.JSONDecodeError:
@@ -63,7 +63,19 @@ def line_handler(line):
             raise Exception('A record for stream {} was encountered before a corresponding schema'
                 .format(line_data['stream']))
 
-        STREAMS[line_data['stream']].add_record(line_data['record'])
+        STREAMS[line_data['stream']].add_record_message(line_data)
+    elif line_data['type'] == 'ACTIVATE_VERSION':
+        if 'stream' not in line_data:
+            raise Exception('`stream` is a required key: {}'.format(line))
+        if 'version' not in line_data:
+            raise Exception('`version` is a required key: {}'.format(line))
+        if line_data['stream'] not in STREAMS:
+            raise Exception('A ACTIVATE_VERSION for stream {} was encountered before a corresponding schema'
+                .format(line_data['stream']))
+
+        stream_buffer = STREAMS[line_data['stream']]
+        target.write_batch(stream_buffer)
+        target.activate_version(stream_buffer, line_data['version'])
     elif line_data['type'] == 'STATE':
         LOGGER.warn('`STATE` Singer message type not supported')
     else:
@@ -90,7 +102,7 @@ def main(config, input_stream=None):
 
         line_count = 0
         for line in input_stream:
-            line_handler(line)
+            line_handler(postgres_target, line)
             if line_count > 0 and line_count % 5000 == 0:
                 flush_streams(postgres_target)
             line_count += 1

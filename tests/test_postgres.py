@@ -98,3 +98,43 @@ def test_nested_delete_on_parent(db_cleanup):
             low_nested = cur.fetchone()[0]
 
     assert low_nested < high_nested
+
+def test_full_table_replication(db_cleanup):
+    stream = CatStream(110, version=0, nested_count=3)
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_count_sql('cats'))
+            version_0_count = cur.fetchone()[0]
+            cur.execute(get_count_sql('cats__adoption__immunizations'))
+            version_0_sub_count = cur.fetchone()[0]
+
+    assert version_0_count == 110
+    assert version_0_sub_count == 330
+
+    stream = CatStream(100, version=1, nested_count=3)
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_count_sql('cats'))
+            version_1_count = cur.fetchone()[0]
+            cur.execute(get_count_sql('cats__adoption__immunizations'))
+            version_1_sub_count = cur.fetchone()[0]
+
+    assert version_1_count == 100
+    assert version_1_sub_count == 300
+
+    stream = CatStream(120, version=2, nested_count=2)
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_count_sql('cats'))
+            version_2_count = cur.fetchone()[0]
+            cur.execute(get_count_sql('cats__adoption__immunizations'))
+            version_2_sub_count = cur.fetchone()[0]
+
+    assert version_2_count == 120
+    assert version_2_sub_count == 240

@@ -71,11 +71,13 @@ CATS_SCHEMA = {
 }
 
 class CatStream(object):
-    def __init__(self, n, *args, nested_count=0, **kwargs):
+    def __init__(self, n, *args, version=None, nested_count=0, **kwargs):
         self.n = n
         self.wrote_schema = False
         self.id = 1
         self.nested_count = nested_count
+        self.version = version
+        self.wrote_activate_version = False
 
     def generate_cat_record(self):
         adoption = None
@@ -92,20 +94,31 @@ class CatStream(object):
                 'immunizations': immunizations
             }
 
-        cat = {
-            'id': self.id,
-            'name': fake.first_name(),
-            'pattern': chance.pickone(['Tabby', 'Tuxedo', 'Calico', 'Tortoiseshell']),
-            'age': random.randint(1, 15),
-            'adoption': adoption
+        cat_message = {
+            'type': 'RECORD',
+            'stream': 'cats',
+            'record': {
+                'id': self.id,
+                'name': fake.first_name(),
+                'pattern': chance.pickone(['Tabby', 'Tuxedo', 'Calico', 'Tortoiseshell']),
+                'age': random.randint(1, 15),
+                'adoption': adoption
+            }
         }
 
         self.id += 1
 
+        if self.version is not None:
+            cat_message['version'] = self.version
+
+        return cat_message
+
+    def activate_version(self):
+        self.wrote_activate_version = True
         return {
-            'type': 'RECORD',
+            'type': 'ACTIVATE_VERSION',
             'stream': 'cats',
-            'record': cat
+            'version': self.version
         }
 
     def __iter__(self):
@@ -117,6 +130,8 @@ class CatStream(object):
             return json.dumps(CATS_SCHEMA)
         if self.id <= self.n:
             return json.dumps(self.generate_cat_record())
+        if self.version is not None and self.wrote_activate_version == False:
+            return json.dumps(self.activate_version())
         raise StopIteration
 
 def clear_db():

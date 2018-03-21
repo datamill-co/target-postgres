@@ -1,7 +1,9 @@
 import io
 import csv
 import uuid
+import json
 from functools import partial
+from itertools import groupby
 
 import arrow
 from psycopg2 import sql
@@ -15,8 +17,6 @@ from target_postgres.singer_stream import (
     SINGER_SOURCE_PK_PREFIX,
     SINGER_LEVEL
 )
-
-## TODO: full table rep? - _sdc_table_version
 
 class TransformStream(object):
     def __init__(self, fun):
@@ -33,28 +33,87 @@ class PostgresTarget(object):
         self.logger = logger
         self.postgres_schema = postgres_schema
 
-    def write_records(self, stream_buffer):
+    def write_batch(self, stream_buffer):
+        if stream_buffer.count == 0:
+            return
+
         with self.conn.cursor() as cur:
             try:
                 cur.execute('BEGIN;')
 
+                processed_records = map(partial(self.process_record_message,
+                                                stream_buffer.use_uuid_pk,
+                                                self.get_postgres_datetime()),
+                                        stream_buffer.peek_buffer())
+                versions = set()
+                max_version = None
+                records_all_versions = []
+                for record in processed_records:
+                    record_version = record.get(SINGER_TABLE_VERSION)
+                    if record_version is not None and \
+                       (max_version is None or record_version > max_version):
+                        max_version = record_version
+                    versions.add(record_version)
+                    records_all_versions.append(record)
+
+                table_metadata = self.get_table_metadata(cur,
+                                                         self.postgres_schema,
+                                                         stream_buffer.stream)
+
+                ## TODO: check if PK has changed. Fail on PK change? Just update and log on PK change?
+
+                if table_metadata:
+                    current_table_version = table_metadata.get('version', None)
+                else:
+                    current_table_version = None
+
+                if max_version is not None:
+                    target_table_version = max_version
+                else:
+                    target_table_version = None
+
+                if current_table_version is not None and \
+                   min(versions) < current_table_version:
+                    self.logger.warn('{} - Records from an earlier table vesion detected.'
+                                     .format(stream_buffer.stream))
+                if len(versions) > 1:
+                    self.logger.warn('{} - Multiple table versions in stream, only using the latest.'
+                                     .format(stream_buffer.stream))
+
+                if current_table_version is not None and \
+                   target_table_version > current_table_version:
+                    root_table_name = stream_buffer.stream + self.NESTED_SEPARATOR + str(target_table_version)
+                else:
+                    root_table_name = stream_buffer.stream
+
+                if target_table_version is not None:
+                    records = filter(lambda x: x.get(SINGER_TABLE_VERSION) == target_table_version,
+                                     records_all_versions)
+                else:
+                    records = records_all_versions
+
+                ## Add singer columns to root table
                 self.add_singer_columns(stream_buffer.schema, stream_buffer.key_properties)
 
                 subtables = {}
                 key_prop_schemas = {}
                 for key in stream_buffer.key_properties:
                     key_prop_schemas[key] = stream_buffer.schema['properties'][key]
-                self.denest_schema(stream_buffer.stream, stream_buffer.schema, key_prop_schemas, subtables)
+                self.denest_schema(root_table_name, stream_buffer.schema, key_prop_schemas, subtables)
 
                 root_temp_table_name, root_table_upsert = self.upsert_table_schema(cur,
-                                                                                   stream_buffer.stream,
-                                                                                   stream_buffer.schema)
+                                                                                   root_table_name,
+                                                                                   stream_buffer.schema,
+                                                                                   stream_buffer.key_properties,
+                                                                                   target_table_version)
 
                 nested_upsert_tables = []
                 for table_name, json_schema in subtables.items():
                     temp_table_name, upsert = self.upsert_table_schema(cur,
                                                                        table_name,
-                                                                       json_schema)
+                                                                       json_schema,
+                                                                       None,
+                                                                       None)
                     nested_upsert_tables.append({
                         'table_name': table_name,
                         'json_schema': json_schema,
@@ -62,21 +121,15 @@ class PostgresTarget(object):
                         'upsert': upsert
                     })
 
-                records = map(partial(self.populate_singer_columns,
-                                      stream_buffer.use_uuid_pk,
-                                      self.get_postgres_datetime()),
-                              stream_buffer.peek_buffer())
-
                 records_map = {}
-                self.denest_records(stream_buffer.stream, records, records_map, stream_buffer.key_properties)
-
+                self.denest_records(root_table_name, records, records_map, stream_buffer.key_properties)
                 self.persist_rows(cur,
-                                  stream_buffer.stream,
+                                  root_table_name,
                                   root_temp_table_name,
                                   root_table_upsert,
                                   stream_buffer.schema,
                                   stream_buffer.key_properties,
-                                  records_map[stream_buffer.stream])
+                                  records_map[root_table_name])
 
                 for nested_upsert_table in nested_upsert_tables:
                     key_properties = []
@@ -97,6 +150,54 @@ class PostgresTarget(object):
                 raise
 
         stream_buffer.flush_buffer()
+
+    def activate_version(self, stream_buffer, version):
+        with self.conn.cursor() as cur:
+            try:
+                cur.execute('BEGIN;')
+
+                table_metadata = self.get_table_metadata(cur,
+                                                         self.postgres_schema,
+                                                         stream_buffer.stream)
+
+                if not table_metadata:
+                    self.logger.error('{} - Table for stream does not exist'.format(
+                        stream_buffer.stream))
+                elif table_metadata.get('version') == version:
+                    self.logger.warn('{} - Table version {} already active'.format(
+                        stream_buffer.stream,
+                        version))
+                else:
+                    versioned_root_table = stream_buffer.stream + self.NESTED_SEPARATOR + str(version)
+
+                    cur.execute(
+                        sql.SQL('''
+                        SELECT tablename FROM pg_tables
+                        WHERE schemaname = {} AND tablename like {};
+                        ''').format(
+                            sql.Literal(self.postgres_schema),
+                            sql.Literal(versioned_root_table + '%')))
+
+                    for versioned_table_name in map(lambda x: x[0], cur.fetchall()):
+                        table_name = stream_buffer.stream + versioned_table_name[len(versioned_root_table):]
+                        cur.execute(
+                            sql.SQL('''
+                            ALTER TABLE {table_schema}.{stream_table} RENAME TO {stream_table_old};
+                            ALTER TABLE {table_schema}.{version_table} RENAME TO {stream_table};
+                            DROP TABLE {table_schema}.{stream_table_old};
+                            COMMIT;''').format(
+                                table_schema=sql.Identifier(self.postgres_schema),
+                                stream_table_old=sql.Identifier(table_name +
+                                                                self.NESTED_SEPARATOR +
+                                                                'old'),
+                                stream_table=sql.Identifier(table_name),
+                                version_table=sql.Identifier(versioned_table_name)))
+            except:
+                cur.execute('ROLLBACK;')
+                self.logger.exception('{} - Exception activating table version {}'.format(
+                    stream_buffer.stream,
+                    version))
+                raise
 
     def add_singer_columns(self, schema, key_properties):
         properties = schema['properties']
@@ -128,14 +229,23 @@ class PostgresTarget(object):
                 'type': ['string']
             }
 
-    def populate_singer_columns(self, use_uuid_pk, batched_at, record):
-        if record.get(SINGER_TABLE_VERSION) is None:
-            record[SINGER_TABLE_VERSION] = 0
+    def process_record_message(self, use_uuid_pk, batched_at, record_message):
+        record = record_message['record']
+
+        if 'version' in record_message:
+            record[SINGER_TABLE_VERSION] = record_message['version']
+
+        if 'time_extracted' in record_message and record.get(SINGER_RECEIVED_AT) is None:
+            record[SINGER_RECEIVED_AT] = record_message['time_extracted']
+
         if use_uuid_pk and record.get(SINGER_PK) is None:
             record[SINGER_PK] = uuid.uuid4()
+
         record[SINGER_BATCHED_AT] = batched_at
+
         if record.get(SINGER_SEQUENCE) is None:
             record[SINGER_SEQUENCE] = arrow.get().timestamp
+
         return record
 
     def denest_schema_helper(self,
@@ -297,7 +407,7 @@ class PostgresTarget(object):
                     record_pk_fks[SINGER_SEQUENCE] = record[SINGER_SEQUENCE]
             self.denest_record(table_name, None, record, records_map, key_properties, record_pk_fks, level)
 
-    def upsert_table_schema(self, cur, table_name, schema):
+    def upsert_table_schema(self, cur, table_name, schema, key_properties, table_version):
         existing_table_schema = self._get_schema(cur, self.postgres_schema, table_name)
 
         if existing_table_schema:
@@ -314,7 +424,9 @@ class PostgresTarget(object):
         self._create_table(cur,
                            self.postgres_schema,
                            target_table_name,
-                           schema)
+                           schema,
+                           key_properties,
+                           table_version)
 
         return target_table_name, existing_table_schema is not None
 
@@ -438,7 +550,7 @@ class PostgresTarget(object):
             parsed_datetime = arrow.get() # defaults to UTC now
         return parsed_datetime.format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
 
-    def _create_table(self, cur, table_schema, table_name, schema):
+    def _create_table(self, cur, table_schema, table_name, schema, key_properties, table_version):
         create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
                 sql.Identifier(table_schema),
                 sql.Identifier(table_name))
@@ -449,8 +561,17 @@ class PostgresTarget(object):
             columns_sql.append(sql.SQL('{} {}').format(sql.Identifier(prop),
                                                        sql.SQL(sql_type)))
 
-        cur.execute(sql.SQL('{} ({});').format(create_table_sql,
-                                               sql.SQL(', ').join(columns_sql)))
+        if key_properties:
+            comment_sql = sql.SQL('COMMENT ON TABLE {}.{} IS {};').format(
+                sql.Identifier(table_schema),
+                sql.Identifier(table_name),
+                sql.Literal(json.dumps({'key_properties': key_properties, 'version': table_version})))
+        else:
+            comment_sql = sql.SQL('')
+
+        cur.execute(sql.SQL('{} ({});{}').format(create_table_sql,
+                                                 sql.SQL(', ').join(columns_sql),
+                                                 comment_sql))
 
     def _get_temp_table_name(self, stream_name):
         return stream_name + '_' + str(uuid.uuid4()).replace('-', '')
@@ -513,6 +634,23 @@ class PostgresTarget(object):
             sql_type += ' NOT NULL'
 
         return sql_type
+
+    def get_table_metadata(self, cur, table_schema, table_name):
+        cur.execute(
+            sql.SQL('SELECT obj_description(to_regclass({}));').format(
+                sql.Literal('{}.{}'.format(table_schema, table_name))))
+        comment = cur.fetchone()[0]
+
+        if comment:
+            try:
+                comment_meta = json.loads(comment)
+            except:
+                self.logger.exception('Could not load table comment metadata')
+                raise
+        else:
+            comment_meta = None
+
+        return comment_meta
 
     def _get_schema(self, cur, table_schema, table_name):
         cur.execute(

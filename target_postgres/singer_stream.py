@@ -27,12 +27,11 @@ class BufferedSingerStream(object):
         self.max_buffer_size = max_buffer_size
 
         self.__buffer = []
+        self.__count = 0
         self.__size = 0
 
     def update_schema(self, schema, key_properties):
         original_schema = deepcopy(schema)
-
-        ## TODO: mark schema dirty here for caching in PostgresTarget?
 
         ## TODO: validate against stricter contraints for this target?
         self.validator = Draft4Validator(original_schema, format_checker=FormatChecker())
@@ -51,21 +50,25 @@ class BufferedSingerStream(object):
         self.key_properties = key_properties
 
     @property
+    def count(self):
+        return self.__count
+
+    @property
     def buffer_full(self):
-        ln = len(self.__buffer)
-        if ln >= self.max_rows:
+        if self.__count >= self.max_rows:
             return True
 
-        if ln > 0:
+        if self.__count > 0:
             if self.__size >= self.max_buffer_size:
                 return True
 
         return False
 
-    def add_record(self, record):
+    def add_record_message(self, record):
         self.validator.validate(record)
         self.__buffer.append(record)
         self.__size += get_size(record)
+        self.__count += 1
 
     def peek_buffer(self):
         return self.__buffer
@@ -74,4 +77,5 @@ class BufferedSingerStream(object):
         _buffer = self.__buffer
         self.__buffer = []
         self.__size = 0
+        self.__count = 0
         return _buffer
