@@ -70,7 +70,7 @@ CATS_SCHEMA = {
     'key_properties': ['id']
 }
 
-class CatStream(object):
+class FakeStream(object):
     def __init__(self, n, *args, version=None, nested_count=0, **kwargs):
         self.n = n
         self.wrote_schema = False
@@ -79,7 +79,46 @@ class CatStream(object):
         self.version = version
         self.wrote_activate_version = False
 
-    def generate_cat_record(self):
+    def generate_record_message(self):
+        message = {
+            'type': 'RECORD',
+            'stream': self.stream,
+            'record': self.generate_record()
+        }
+
+        self.id += 1
+
+        if self.version is not None:
+            message['version'] = self.version
+
+        return message
+
+    def activate_version(self):
+        self.wrote_activate_version = True
+        return {
+            'type': 'ACTIVATE_VERSION',
+            'stream': self.stream,
+            'version': self.version
+        }
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if not self.wrote_schema:
+            self.wrote_schema = True
+            return json.dumps(self.schema)
+        if self.id <= self.n:
+            return json.dumps(self.generate_record_message())
+        if self.version is not None and self.wrote_activate_version == False:
+            return json.dumps(self.activate_version())
+        raise StopIteration
+
+class CatStream(FakeStream):
+    stream = 'cats'
+    schema = CATS_SCHEMA
+
+    def generate_record(self):
         adoption = None
         if self.nested_count or chance.boolean(likelihood=70):
             immunizations = []
@@ -94,45 +133,13 @@ class CatStream(object):
                 'immunizations': immunizations
             }
 
-        cat_message = {
-            'type': 'RECORD',
-            'stream': 'cats',
-            'record': {
-                'id': self.id,
-                'name': fake.first_name(),
-                'pattern': chance.pickone(['Tabby', 'Tuxedo', 'Calico', 'Tortoiseshell']),
-                'age': random.randint(1, 15),
-                'adoption': adoption
-            }
-        }
-
-        self.id += 1
-
-        if self.version is not None:
-            cat_message['version'] = self.version
-
-        return cat_message
-
-    def activate_version(self):
-        self.wrote_activate_version = True
         return {
-            'type': 'ACTIVATE_VERSION',
-            'stream': 'cats',
-            'version': self.version
+            'id': self.id,
+            'name': fake.first_name(),
+            'pattern': chance.pickone(['Tabby', 'Tuxedo', 'Calico', 'Tortoiseshell']),
+            'age': random.randint(1, 15),
+            'adoption': adoption
         }
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        if not self.wrote_schema:
-            self.wrote_schema = True
-            return json.dumps(CATS_SCHEMA)
-        if self.id <= self.n:
-            return json.dumps(self.generate_cat_record())
-        if self.version is not None and self.wrote_activate_version == False:
-            return json.dumps(self.activate_version())
-        raise StopIteration
 
 def clear_db():
     with psycopg2.connect(**TEST_DB) as conn:
