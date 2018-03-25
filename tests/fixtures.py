@@ -78,12 +78,15 @@ class FakeStream(object):
         self.nested_count = nested_count
         self.version = version
         self.wrote_activate_version = False
+        self.records = []
 
     def generate_record_message(self):
+        record = self.generate_record()
+        self.records.append(record)
         message = {
             'type': 'RECORD',
             'stream': self.stream,
-            'record': self.generate_record()
+            'record': record
         }
 
         self.id += 1
@@ -155,4 +158,4 @@ def db_cleanup():
 
     yield
 
-    clear_db()
+    #clear_db()

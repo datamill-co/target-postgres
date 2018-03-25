@@ -1,4 +1,5 @@
 import io
+import re
 import csv
 import uuid
 import json
@@ -430,7 +431,7 @@ class PostgresTarget(object):
 
         return target_table_name, existing_table_schema is not None
 
-    def get_update_sql(self, target_table_name, temp_table_name, key_properties):
+    def get_update_sql(self, target_table_name, temp_table_name, key_properties, subkeys):
         full_table_name = sql.SQL('{}.{}').format(
             sql.Identifier(self.postgres_schema),
             sql.Identifier(target_table_name))
@@ -478,6 +479,21 @@ class PostgresTarget(object):
             full_temp_table_name,
             sql.Identifier(SINGER_SEQUENCE))
 
+        if len(subkeys) > 0:
+            pk_temp_subkey_select_list = []
+            for pk in (key_properties + subkeys):
+                pk_temp_subkey_select_list.append(sql.SQL('{}.{}').format(full_temp_table_name,
+                                                                          sql.Identifier(pk)))
+            insert_distinct_on = sql.SQL(', ').join(pk_temp_subkey_select_list)
+
+            insert_distinct_order_by = sql.SQL(' ORDER BY {}, {}.{} DESC').format(
+                insert_distinct_on,
+                full_temp_table_name,
+                sql.Identifier(SINGER_SEQUENCE))
+        else:
+            insert_distinct_on = pk_temp_select
+            insert_distinct_order_by = distinct_order_by
+
         return sql.SQL('''
             WITH "pks" AS (
                 SELECT DISTINCT ON ({pk_temp_select}) {pk_temp_select}
@@ -486,11 +502,11 @@ class PostgresTarget(object):
             )
             DELETE FROM {table} USING "pks" WHERE {cxt_where};
             INSERT INTO {table} (
-                SELECT DISTINCT ON ({pk_temp_select}) {temp_table}.*
+                SELECT DISTINCT ON ({insert_distinct_on}) {temp_table}.*
                 FROM {temp_table}
                 LEFT JOIN {table} ON {pk_where}
                 WHERE {pk_null}
-                {distinct_order_by}
+                {insert_distinct_order_by}
             );
             DROP TABLE {temp_table};
             ''').format(table=full_table_name,
@@ -500,7 +516,9 @@ class PostgresTarget(object):
                         cxt_where=cxt_where,
                         sequence_join=sequence_join,
                         distinct_order_by=distinct_order_by,
-                        pk_null=pk_null)
+                        pk_null=pk_null,
+                        insert_distinct_on=insert_distinct_on,
+                        insert_distinct_order_by=insert_distinct_order_by)
 
     def persist_rows(self,
                      cur,
@@ -540,7 +558,12 @@ class PostgresTarget(object):
         cur.copy_expert(copy, csv_rows)
 
         if upsert:
-            update_sql = self.get_update_sql(target_table_name, temp_table_name, key_properties)
+            pattern = re.compile(SINGER_LEVEL.format('[0-9]+'))
+            subkeys = list(filter(lambda header: re.match(pattern, header) is not None, headers))
+            update_sql = self.get_update_sql(target_table_name,
+                                             temp_table_name,
+                                             key_properties,
+                                             subkeys)
             cur.execute(update_sql)
 
     def get_postgres_datetime(self, *args):
