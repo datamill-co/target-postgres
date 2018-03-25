@@ -8,10 +8,9 @@ from target_postgres import main
 from target_postgres import singer_stream
 from fixtures import CatStream, CONFIG, TEST_DB, db_cleanup
 
+## TODO: test multiple batch upserts
 ## TODO: create and test more fake streams
 ## TODO: test invalid data against JSON Schema
-## TODO: test stream with duplicate records but different sequence numbers
-## TODO: test stream with duplicate records but different sequence numbers, that have nested arrays
 ## TODO: test compound pk
 
 def get_columns_sql(table_name):
@@ -257,3 +256,74 @@ def test_full_table_replication(db_cleanup):
 
     assert version_2_count == 120
     assert version_2_sub_count == 240
+
+def test_deduplication_newer_rows(db_cleanup):
+    stream = CatStream(100, nested_count=3, duplicates=2)
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_count_sql('cats'))
+            table_count = cur.fetchone()[0]
+            cur.execute(get_count_sql('cats__adoption__immunizations'))
+            nested_table_count = cur.fetchone()[0]
+
+            cur.execute('SELECT _sdc_sequence FROM cats WHERE id in ({})'.format(
+                ','.join(map(str, stream.duplicate_pks_used))))
+            dup_cat_records = cur.fetchall()
+
+    assert stream.record_message_count == 102
+    assert table_count == 100
+    assert nested_table_count == 300
+
+    for record in dup_cat_records:
+        assert record[0] == stream.sequence + 200
+
+def test_deduplication_older_rows(db_cleanup):
+    stream = CatStream(100, nested_count=2, duplicates=2, duplicate_sequence_delta=-100)
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_count_sql('cats'))
+            table_count = cur.fetchone()[0]
+            cur.execute(get_count_sql('cats__adoption__immunizations'))
+            nested_table_count = cur.fetchone()[0]
+
+            cur.execute('SELECT _sdc_sequence FROM cats WHERE id in ({})'.format(
+                ','.join(map(str, stream.duplicate_pks_used))))
+            dup_cat_records = cur.fetchall()
+
+    assert stream.record_message_count == 102
+    assert table_count == 100
+    assert nested_table_count == 200
+
+    for record in dup_cat_records:
+        assert record[0] == stream.sequence
+
+def test_deduplication_existing_new_rows(db_cleanup):
+    stream = CatStream(100, nested_count=2)
+    main(CONFIG, input_stream=stream)
+
+    original_sequence = stream.sequence
+
+    stream = CatStream(100,
+                       nested_count=2,
+                       sequence=original_sequence - 20)
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_count_sql('cats'))
+            table_count = cur.fetchone()[0]
+            cur.execute(get_count_sql('cats__adoption__immunizations'))
+            nested_table_count = cur.fetchone()[0]
+
+            cur.execute('SELECT DISTINCT _sdc_sequence FROM cats')
+            sequences = cur.fetchall()
+
+    assert table_count == 100
+    assert nested_table_count == 200
+
+    assert len(sequences) == 1
+    assert sequences[0][0] == original_sequence

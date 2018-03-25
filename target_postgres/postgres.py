@@ -102,24 +102,23 @@ class PostgresTarget(object):
                     key_prop_schemas[key] = stream_buffer.schema['properties'][key]
                 self.denest_schema(root_table_name, stream_buffer.schema, key_prop_schemas, subtables)
 
-                root_temp_table_name, root_table_upsert = self.upsert_table_schema(cur,
-                                                                                   root_table_name,
-                                                                                   stream_buffer.schema,
-                                                                                   stream_buffer.key_properties,
-                                                                                   target_table_version)
+                root_temp_table_name = self.upsert_table_schema(cur,
+                                                                root_table_name,
+                                                                stream_buffer.schema,
+                                                                stream_buffer.key_properties,
+                                                                target_table_version)
 
                 nested_upsert_tables = []
                 for table_name, json_schema in subtables.items():
-                    temp_table_name, upsert = self.upsert_table_schema(cur,
-                                                                       table_name,
-                                                                       json_schema,
-                                                                       None,
-                                                                       None)
+                    temp_table_name = self.upsert_table_schema(cur,
+                                                               table_name,
+                                                               json_schema,
+                                                               None,
+                                                               None)
                     nested_upsert_tables.append({
                         'table_name': table_name,
                         'json_schema': json_schema,
-                        'temp_table_name': temp_table_name,
-                        'upsert': upsert
+                        'temp_table_name': temp_table_name
                     })
 
                 records_map = {}
@@ -127,7 +126,6 @@ class PostgresTarget(object):
                 self.persist_rows(cur,
                                   root_table_name,
                                   root_temp_table_name,
-                                  root_table_upsert,
                                   stream_buffer.schema,
                                   stream_buffer.key_properties,
                                   records_map[root_table_name])
@@ -139,7 +137,6 @@ class PostgresTarget(object):
                     self.persist_rows(cur,
                                       nested_upsert_table['table_name'],
                                       nested_upsert_table['temp_table_name'],
-                                      nested_upsert_table['upsert'],
                                       nested_upsert_table['json_schema'],
                                       key_properties,
                                       records_map[nested_upsert_table['table_name']])
@@ -244,7 +241,9 @@ class PostgresTarget(object):
 
         record[SINGER_BATCHED_AT] = batched_at
 
-        if record.get(SINGER_SEQUENCE) is None:
+        if 'sequence' in record_message:
+            record[SINGER_SEQUENCE] = record_message['sequence']
+        else:
             record[SINGER_SEQUENCE] = arrow.get().timestamp
 
         return record
@@ -420,7 +419,13 @@ class PostgresTarget(object):
             target_table_name = self._get_temp_table_name(table_name)
         else:
             schema = schema
-            target_table_name = table_name
+            self._create_table(cur,
+                               self.postgres_schema,
+                               table_name,
+                               schema,
+                               key_properties,
+                               table_version)
+            target_table_name = self._get_temp_table_name(table_name)
 
         self._create_table(cur,
                            self.postgres_schema,
@@ -429,7 +434,7 @@ class PostgresTarget(object):
                            key_properties,
                            table_version)
 
-        return target_table_name, existing_table_schema is not None
+        return target_table_name
 
     def get_update_sql(self, target_table_name, temp_table_name, key_properties, subkeys):
         full_table_name = sql.SQL('{}.{}').format(
@@ -524,7 +529,6 @@ class PostgresTarget(object):
                      cur,
                      target_table_name,
                      temp_table_name,
-                     upsert,
                      json_schema,
                      key_properties,
                      records):
@@ -557,14 +561,14 @@ class PostgresTarget(object):
             sql.SQL(', ').join(map(sql.Identifier, headers)))
         cur.copy_expert(copy, csv_rows)
 
-        if upsert:
-            pattern = re.compile(SINGER_LEVEL.format('[0-9]+'))
-            subkeys = list(filter(lambda header: re.match(pattern, header) is not None, headers))
-            update_sql = self.get_update_sql(target_table_name,
-                                             temp_table_name,
-                                             key_properties,
-                                             subkeys)
-            cur.execute(update_sql)
+        pattern = re.compile(SINGER_LEVEL.format('[0-9]+'))
+        subkeys = list(filter(lambda header: re.match(pattern, header) is not None, headers))
+
+        update_sql = self.get_update_sql(target_table_name,
+                                         temp_table_name,
+                                         key_properties,
+                                         subkeys)
+        cur.execute(update_sql)
 
     def get_postgres_datetime(self, *args):
         if len(args) > 0:

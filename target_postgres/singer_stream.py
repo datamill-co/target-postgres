@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 from jsonschema import Draft4Validator, FormatChecker
+import arrow
 
 from target_postgres.pysize import get_size
 

@@ -4,8 +4,11 @@ import random
 
 import pytest
 import psycopg2
+import arrow
 from faker import Faker
 from chance import chance
+
+from target_postgres.singer_stream import SINGER_SEQUENCE
 
 CONFIG = {
     'postgres_database': 'target_postgres_test'
@@ -72,7 +75,15 @@ CATS_SCHEMA = {
 }
 
 class FakeStream(object):
-    def __init__(self, n, *args, version=None, nested_count=0, **kwargs):
+    def __init__(self,
+                 n,
+                 *args,
+                 version=None,
+                 nested_count=0,
+                 duplicates=0,
+                 duplicate_sequence_delta=200,
+                 sequence=None,
+                 **kwargs):
         self.n = n
         self.wrote_schema = False
         self.id = 1
@@ -80,20 +91,48 @@ class FakeStream(object):
         self.version = version
         self.wrote_activate_version = False
         self.records = []
+        self.duplicates = duplicates
+        self.duplicates_written = 0
+        self.duplicate_pks_used = []
+        self.record_message_count = 0
+        if sequence:
+            self.sequence = sequence
+        else:
+            self.sequence = arrow.get().timestamp
+        self.duplicate_sequence_delta = duplicate_sequence_delta
 
-    def generate_record_message(self):
-        record = self.generate_record()
+    def duplicate(self, force=False):
+        if self.duplicates > 0 and \
+           len(self.records) > 0 and \
+           self.duplicates_written < self.duplicates and \
+           (force or chance.boolean(likelihood=30)):
+            self.duplicates_written += 1
+            random_index = random.randint(0, len(self.records) - 1)
+            record = self.records[random_index]
+            self.duplicate_pks_used.append(record['id'])
+            record_message = self.generate_record_message(record=record)
+            record_message['sequence'] = self.sequence + self.duplicate_sequence_delta
+            return record_message
+        else:
+            return False
+
+    def generate_record_message(self, record=None):
+        if not record:
+            record = self.generate_record()
+            self.id += 1
+
         self.records.append(record)
         message = {
             'type': 'RECORD',
             'stream': self.stream,
-            'record': record
+            'record': record,
+            'sequence': self.sequence
         }
-
-        self.id += 1
 
         if self.version is not None:
             message['version'] = self.version
+
+        self.record_message_count += 1
 
         return message
 
@@ -113,7 +152,14 @@ class FakeStream(object):
             self.wrote_schema = True
             return json.dumps(self.schema)
         if self.id <= self.n:
+            dup = self.duplicate()
+            if dup != False:
+                return json.dumps(dup)
             return json.dumps(self.generate_record_message())
+        if self.id == self.n:
+            dup = self.duplicate(force=True)
+            if dup != False:
+                return json.dumps(dup)
         if self.version is not None and self.wrote_activate_version == False:
             return json.dumps(self.activate_version())
         raise StopIteration
@@ -159,4 +205,4 @@ def db_cleanup():
 
     yield
 
-    #clear_db()
+    clear_db()
