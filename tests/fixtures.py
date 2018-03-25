@@ -25,6 +25,7 @@ CATS_SCHEMA = {
     'type': 'SCHEMA',
     'stream': 'cats',
     'schema': {
+        'additionalProperties': False,
         'properties': {
             'id': {
                 'type': ['integer']

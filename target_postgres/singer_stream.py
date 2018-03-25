@@ -64,10 +64,10 @@ class BufferedSingerStream(object):
 
         return False
 
-    def add_record_message(self, record):
-        self.validator.validate(record)
-        self.__buffer.append(record)
-        self.__size += get_size(record)
+    def add_record_message(self, record_message):
+        self.validator.validate(record_message['record'])
+        self.__buffer.append(record_message)
+        self.__size += get_size(record_message)
         self.__count += 1
 
     def peek_buffer(self):
