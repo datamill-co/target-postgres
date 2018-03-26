@@ -18,17 +18,15 @@ REQUIRED_CONFIG_KEYS = [
     'postgres_database'
 ]
 
-STREAMS = {}
-
 def flush_stream(target, stream_buffer):
     target.write_batch(stream_buffer)
 
-def flush_streams(target, force=False):
-    for stream_buffer in STREAMS.values():
+def flush_streams(streams, target, force=False):
+    for stream_buffer in streams.values():
         if force or stream_buffer.buffer_full:
             flush_stream(target, stream_buffer)
 
-def line_handler(target, line):
+def line_handler(streams, target, max_batch_rows, max_batch_size, line):
     try:
         line_data = json.loads(line)
     except json.decoder.JSONDecodeError:
@@ -51,29 +49,35 @@ def line_handler(target, line):
         else:
             key_properties = None
 
-        if stream not in STREAMS:
-            buffered_stream = BufferedSingerStream(stream, schema, key_properties)
-            STREAMS[stream] = buffered_stream
+        if stream not in streams:
+            buffered_stream = BufferedSingerStream(stream,
+                                                   schema,
+                                                   key_properties)
+            if max_batch_rows:
+                buffered_stream.max_rows = max_batch_rows
+            if max_batch_size:
+                buffered_stream.max_buffer_size = max_batch_size
+            streams[stream] = buffered_stream
         else:
-            STREAMS[stream].update_schema(schema, key_properties)
+            streams[stream].update_schema(schema, key_properties)
     elif line_data['type'] == 'RECORD':
         if 'stream' not in line_data:
             raise Exception('`stream` is a required key: {}'.format(line))
-        if line_data['stream'] not in STREAMS:
+        if line_data['stream'] not in streams:
             raise Exception('A record for stream {} was encountered before a corresponding schema'
                 .format(line_data['stream']))
 
-        STREAMS[line_data['stream']].add_record_message(line_data)
+        streams[line_data['stream']].add_record_message(line_data)
     elif line_data['type'] == 'ACTIVATE_VERSION':
         if 'stream' not in line_data:
             raise Exception('`stream` is a required key: {}'.format(line))
         if 'version' not in line_data:
             raise Exception('`version` is a required key: {}'.format(line))
-        if line_data['stream'] not in STREAMS:
+        if line_data['stream'] not in streams:
             raise Exception('A ACTIVATE_VERSION for stream {} was encountered before a corresponding schema'
                 .format(line_data['stream']))
 
-        stream_buffer = STREAMS[line_data['stream']]
+        stream_buffer = streams[line_data['stream']]
         target.write_batch(stream_buffer)
         target.activate_version(stream_buffer, line_data['version'])
     elif line_data['type'] == 'STATE':
@@ -92,22 +96,27 @@ def main(config, input_stream=None):
             user=config.get('postgres_username'),
             password=config.get('postgres_password'))
 
+        streams = {}
         postgres_target = PostgresTarget(
             connection,
             LOGGER,
             postgres_schema=config.get('postgres_schema', 'public'))
+
+        max_batch_rows = config.get('max_batch_rows')
+        max_batch_size = config.get('max_batch_size')
+        batch_detection_threshold = config.get('batch_detection_threshold', 5000)
 
         if not input_stream:
             input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
 
         line_count = 0
         for line in input_stream:
-            line_handler(postgres_target, line)
-            if line_count > 0 and line_count % 5000 == 0:
-                flush_streams(postgres_target)
+            line_handler(streams, postgres_target, max_batch_rows, max_batch_size, line)
+            if line_count > 0 and line_count % batch_detection_threshold == 0:
+                flush_streams(streams, postgres_target)
             line_count += 1
 
-        flush_streams(postgres_target, force=True)
+        flush_streams(streams, postgres_target, force=True)
 
         connection.close()
     except Exception as e:

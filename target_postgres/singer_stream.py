@@ -1,5 +1,3 @@
-from copy import deepcopy
-
 from jsonschema import Draft4Validator, FormatChecker
 import arrow
 
@@ -32,10 +30,7 @@ class BufferedSingerStream(object):
         self.__size = 0
 
     def update_schema(self, schema, key_properties):
-        original_schema = deepcopy(schema)
-
-        ## TODO: validate against stricter contraints for this target?
-        self.validator = Draft4Validator(original_schema, format_checker=FormatChecker())
+        self.validator = Draft4Validator(schema, format_checker=FormatChecker())
 
         if len(key_properties) == 0:
             self.use_uuid_pk = True
@@ -47,7 +42,6 @@ class BufferedSingerStream(object):
             self.use_uuid_pk = False
 
         self.schema = schema
-        self.original_schema = original_schema
         self.key_properties = key_properties
 
     @property

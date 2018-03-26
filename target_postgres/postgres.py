@@ -5,6 +5,7 @@ import uuid
 import json
 from functools import partial
 from itertools import groupby
+from copy import deepcopy
 
 import arrow
 from psycopg2 import sql
@@ -93,18 +94,20 @@ class PostgresTarget(object):
                 else:
                     records = records_all_versions
 
+                root_table_schema = deepcopy(stream_buffer.schema)
+
                 ## Add singer columns to root table
-                self.add_singer_columns(stream_buffer.schema, stream_buffer.key_properties)
+                self.add_singer_columns(root_table_schema, stream_buffer.key_properties)
 
                 subtables = {}
                 key_prop_schemas = {}
                 for key in stream_buffer.key_properties:
-                    key_prop_schemas[key] = stream_buffer.schema['properties'][key]
-                self.denest_schema(root_table_name, stream_buffer.schema, key_prop_schemas, subtables)
+                    key_prop_schemas[key] = root_table_schema['properties'][key]
+                self.denest_schema(root_table_name, root_table_schema, key_prop_schemas, subtables)
 
                 root_temp_table_name = self.upsert_table_schema(cur,
                                                                 root_table_name,
-                                                                stream_buffer.schema,
+                                                                root_table_schema,
                                                                 stream_buffer.key_properties,
                                                                 target_table_version)
 
@@ -126,10 +129,9 @@ class PostgresTarget(object):
                 self.persist_rows(cur,
                                   root_table_name,
                                   root_temp_table_name,
-                                  stream_buffer.schema,
+                                  root_table_schema,
                                   stream_buffer.key_properties,
                                   records_map[root_table_name])
-
                 for nested_upsert_table in nested_upsert_tables:
                     key_properties = []
                     for key in stream_buffer.key_properties:
