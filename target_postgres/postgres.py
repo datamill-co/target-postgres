@@ -4,7 +4,6 @@ import csv
 import uuid
 import json
 from functools import partial
-from itertools import groupby
 from copy import deepcopy
 
 import arrow
@@ -410,26 +409,26 @@ class PostgresTarget(object):
             self.denest_record(table_name, None, record, records_map, key_properties, record_pk_fks, level)
 
     def upsert_table_schema(self, cur, table_name, schema, key_properties, table_version):
-        existing_table_schema = self._get_schema(cur, self.postgres_schema, table_name)
+        existing_table_schema = self.get_schema(cur, self.postgres_schema, table_name)
 
         if existing_table_schema:
-            schema = self._merge_put_schemas(cur,
+            schema = self.merge_put_schemas(cur,
                                              self.postgres_schema,
                                              table_name, 
                                              existing_table_schema,
                                              schema)
-            target_table_name = self._get_temp_table_name(table_name)
+            target_table_name = self.get_temp_table_name(table_name)
         else:
             schema = schema
-            self._create_table(cur,
+            self.create_table(cur,
                                self.postgres_schema,
                                table_name,
                                schema,
                                key_properties,
                                table_version)
-            target_table_name = self._get_temp_table_name(table_name)
+            target_table_name = self.get_temp_table_name(table_name)
 
-        self._create_table(cur,
+        self.create_table(cur,
                            self.postgres_schema,
                            target_table_name,
                            schema,
@@ -579,14 +578,14 @@ class PostgresTarget(object):
             parsed_datetime = arrow.get() # defaults to UTC now
         return parsed_datetime.format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
 
-    def _create_table(self, cur, table_schema, table_name, schema, key_properties, table_version):
+    def create_table(self, cur, table_schema, table_name, schema, key_properties, table_version):
         create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
                 sql.Identifier(table_schema),
                 sql.Identifier(table_name))
 
         columns_sql = []
         for prop, json_schema in schema['properties'].items():
-            sql_type = self._json_schema_to_sql(json_schema)
+            sql_type = self.json_schema_to_sql(json_schema)
             columns_sql.append(sql.SQL('{} {}').format(sql.Identifier(prop),
                                                        sql.SQL(sql_type)))
 
@@ -602,10 +601,10 @@ class PostgresTarget(object):
                                                  sql.SQL(', ').join(columns_sql),
                                                  comment_sql))
 
-    def _get_temp_table_name(self, stream_name):
-        return stream_name + '_' + str(uuid.uuid4()).replace('-', '')
+    def get_temp_table_name(self, stream_name):
+        return stream_name + self.NESTED_SEPARATOR + str(uuid.uuid4()).replace('-', '')
 
-    def _sql_to_json_schema(self, sql_type, nullable):
+    def sql_to_json_schema(self, sql_type, nullable):
         _format = None
         if sql_type == 'timestamp with time zone':
             json_type = 'string'
@@ -630,7 +629,7 @@ class PostgresTarget(object):
 
         return json_schema
 
-    def _json_schema_to_sql(self, json_schema):
+    def json_schema_to_sql(self, json_schema):
         _type = json_schema['type']
         not_null = True
         if isinstance(_type, list):
@@ -681,7 +680,7 @@ class PostgresTarget(object):
 
         return comment_meta
 
-    def _get_schema(self, cur, table_schema, table_name):
+    def get_schema(self, cur, table_schema, table_name):
         cur.execute(
             sql.SQL('SELECT column_name, data_type, is_nullable FROM information_schema.columns ') +
             sql.SQL('WHERE table_schema = {} and table_name = {};').format(
@@ -693,13 +692,13 @@ class PostgresTarget(object):
 
         properties = {}
         for column in columns:
-            properties[column[0]] = self._sql_to_json_schema(column[1], column[2] == 'YES')
+            properties[column[0]] = self.sql_to_json_schema(column[1], column[2] == 'YES')
 
         schema = {'properties': properties}
 
         return schema
 
-    def _get_null_default(self, column, json_schema):
+    def get_null_default(self, column, json_schema):
         if 'default' in json_schema:
             return json_schema['default']
 
@@ -719,7 +718,7 @@ class PostgresTarget(object):
 
         raise Exception('Non-trival default needed on new non-null column `{}`'.format(column))
 
-    def _add_column(self, cur, table_schema, table_name, column_name, data_type, default_value):
+    def add_column(self, cur, table_schema, table_name, column_name, data_type, default_value):
         if default_value is not None:
             default_value = sql.SQL(' DEFAULT {}').format(sql.Literal(default_value))
         else:
@@ -734,15 +733,15 @@ class PostgresTarget(object):
                     data_type=sql.SQL(data_type),
                     default_value=default_value))
 
-    def _merge_put_schemas(self, cur, table_schema, table_name, existing_schema, new_schema):
+    def merge_put_schemas(self, cur, table_schema, table_name, existing_schema, new_schema):
         new_properties = new_schema['properties']
         existing_properties = existing_schema['properties']
         for prop, json_schema in new_properties.items():
             if prop not in existing_properties:
                 existing_properties[prop] = new_properties[prop]
-                data_type = self._json_schema_to_sql(new_properties[prop])
-                default_value = self._get_null_default(prop, new_properties[prop])
-                self._add_column(cur,
+                data_type = self.json_schema_to_sql(new_properties[prop])
+                default_value = self.get_null_default(prop, new_properties[prop])
+                self.add_column(cur,
                                  table_schema,
                                  table_name,
                                  prop,
