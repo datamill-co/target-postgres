@@ -3,9 +3,9 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='target-postgres',
+    name='target-sql',
     version="0.0.1",
-    description='Singer.io target for loading data into postgres',
+    description='Singer.io targets for loading data into SQL databases',
     classifiers=['Programming Language :: Python :: 3 :: Only'],
     py_modules=['target_postgres'],
     install_requires=[
@@ -16,7 +16,8 @@ setup(
     ],
     entry_points='''
       [console_scripts]
-      target-postgres=target_postgres:main
+      target-postgres=target_sql:target_postgres_main
+      target-redshift=target_sql:target_redshift_main
     ''',
     packages=find_packages()
 )

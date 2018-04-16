@@ -5,9 +5,9 @@ from unittest.mock import patch
 import psycopg2
 import psycopg2.extras
 
-from target_postgres import main
-from target_postgres import singer_stream
-from target_postgres import postgres
+from target_sql import target_sql
+from target_sql import TargetPostgres
+from target_sql import singer_stream
 from fixtures import CatStream, CONFIG, TEST_DB, db_cleanup
 
 ## TODO: create and test more fake streams
@@ -130,7 +130,7 @@ def assert_records(conn, records, table_name, pks, match_pks=False):
 
 def test_loading_simple(db_cleanup):
     stream = CatStream(100)
-    main(CONFIG, input_stream=stream)
+    target_sql(TargetPostgres, CONFIG, input_stream=stream)
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
@@ -168,7 +168,7 @@ def test_loading_simple(db_cleanup):
 
 def test_upsert(db_cleanup):
     stream = CatStream(100)
-    main(CONFIG, input_stream=stream)
+    target_sql(TargetPostgres, CONFIG, input_stream=stream)
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
@@ -177,7 +177,7 @@ def test_upsert(db_cleanup):
         assert_records(conn, stream.records, 'cats', 'id')
 
     stream = CatStream(100)
-    main(CONFIG, input_stream=stream)
+    target_sql(TargetPostgres, CONFIG, input_stream=stream)
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
@@ -186,7 +186,7 @@ def test_upsert(db_cleanup):
         assert_records(conn, stream.records, 'cats', 'id')
 
     stream = CatStream(200)
-    main(CONFIG, input_stream=stream)
+    target_sql(TargetPostgres, CONFIG, input_stream=stream)
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
@@ -196,7 +196,7 @@ def test_upsert(db_cleanup):
 
 def test_nested_delete_on_parent(db_cleanup):
     stream = CatStream(100, nested_count=3)
-    main(CONFIG, input_stream=stream)
+    target_sql(TargetPostgres, CONFIG, input_stream=stream)
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
@@ -205,7 +205,7 @@ def test_nested_delete_on_parent(db_cleanup):
         assert_records(conn, stream.records, 'cats', 'id')
 
     stream = CatStream(100, nested_count=2)
-    main(CONFIG, input_stream=stream)
+    target_sql(TargetPostgres, CONFIG, input_stream=stream)
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
@@ -217,7 +217,7 @@ def test_nested_delete_on_parent(db_cleanup):
 
 def test_full_table_replication(db_cleanup):
     stream = CatStream(110, version=0, nested_count=3)
-    main(CONFIG, input_stream=stream)
+    target_sql(TargetPostgres, CONFIG, input_stream=stream)
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
@@ -231,7 +231,7 @@ def test_full_table_replication(db_cleanup):
     assert version_0_sub_count == 330
 
     stream = CatStream(100, version=1, nested_count=3)
-    main(CONFIG, input_stream=stream)
+    target_sql(TargetPostgres, CONFIG, input_stream=stream)
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
@@ -245,7 +245,7 @@ def test_full_table_replication(db_cleanup):
     assert version_1_sub_count == 300
 
     stream = CatStream(120, version=2, nested_count=2)
-    main(CONFIG, input_stream=stream)
+    target_sql(TargetPostgres, CONFIG, input_stream=stream)
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
@@ -260,7 +260,7 @@ def test_full_table_replication(db_cleanup):
 
 def test_deduplication_newer_rows(db_cleanup):
     stream = CatStream(100, nested_count=3, duplicates=2)
-    main(CONFIG, input_stream=stream)
+    target_sql(TargetPostgres, CONFIG, input_stream=stream)
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
@@ -282,7 +282,7 @@ def test_deduplication_newer_rows(db_cleanup):
 
 def test_deduplication_older_rows(db_cleanup):
     stream = CatStream(100, nested_count=2, duplicates=2, duplicate_sequence_delta=-100)
-    main(CONFIG, input_stream=stream)
+    target_sql(TargetPostgres, CONFIG, input_stream=stream)
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
@@ -304,14 +304,14 @@ def test_deduplication_older_rows(db_cleanup):
 
 def test_deduplication_existing_new_rows(db_cleanup):
     stream = CatStream(100, nested_count=2)
-    main(CONFIG, input_stream=stream)
+    target_sql(TargetPostgres, CONFIG, input_stream=stream)
 
     original_sequence = stream.sequence
 
     stream = CatStream(100,
                        nested_count=2,
                        sequence=original_sequence - 20)
-    main(CONFIG, input_stream=stream)
+    target_sql(TargetPostgres, CONFIG, input_stream=stream)
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
@@ -333,7 +333,7 @@ def mocked_mock_write_batch(stream_buffer):
     records = stream_buffer.flush_buffer()
 
 def test_multiple_batches_by_rows(db_cleanup):
-    with patch.object(postgres.PostgresTarget,
+    with patch.object(TargetPostgres,
                       'write_batch',
                       side_effect=mocked_mock_write_batch) as mock_write_batch:
         config = CONFIG.copy()
@@ -341,12 +341,12 @@ def test_multiple_batches_by_rows(db_cleanup):
         config['batch_detection_threshold'] = 5
 
         stream = CatStream(100)
-        main(config, input_stream=stream)
+        target_sql(TargetPostgres, config, input_stream=stream)
 
         assert mock_write_batch.call_count == 6
 
 def test_multiple_batches_by_memory(db_cleanup):
-    with patch.object(postgres.PostgresTarget,
+    with patch.object(TargetPostgres,
                       'write_batch',
                       side_effect=mocked_mock_write_batch) as mock_write_batch:
         config = CONFIG.copy()
@@ -354,7 +354,7 @@ def test_multiple_batches_by_memory(db_cleanup):
         config['batch_detection_threshold'] = 5
 
         stream = CatStream(100)
-        main(config, input_stream=stream)
+        target_sql(TargetPostgres, config, input_stream=stream)
 
         assert mock_write_batch.call_count == 21
 
@@ -364,7 +364,7 @@ def test_multiple_batches_upsert(db_cleanup):
     config['batch_detection_threshold'] = 5
 
     stream = CatStream(100, nested_count=2)
-    main(config, input_stream=stream)
+    target_sql(TargetPostgres, CONFIG, input_stream=stream)
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
@@ -375,7 +375,7 @@ def test_multiple_batches_upsert(db_cleanup):
         assert_records(conn, stream.records, 'cats', 'id')
 
     stream = CatStream(100, nested_count=3)
-    main(config, input_stream=stream)
+    target_sql(TargetPostgres, CONFIG, input_stream=stream)
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
@@ -391,7 +391,7 @@ def test_multiple_batches_by_memory_upsert(db_cleanup):
     config['batch_detection_threshold'] = 5
 
     stream = CatStream(100, nested_count=2)
-    main(config, input_stream=stream)
+    target_sql(TargetPostgres, CONFIG, input_stream=stream)
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
@@ -402,7 +402,7 @@ def test_multiple_batches_by_memory_upsert(db_cleanup):
         assert_records(conn, stream.records, 'cats', 'id')
 
     stream = CatStream(100, nested_count=3)
-    main(config, input_stream=stream)
+    target_sql(TargetPostgres, CONFIG, input_stream=stream)
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:

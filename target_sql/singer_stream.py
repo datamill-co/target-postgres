@@ -1,7 +1,7 @@
 from jsonschema import Draft4Validator, FormatChecker
 import arrow
 
-from target_postgres.pysize import get_size
+from target_sql.pysize import get_size
 
 SINGER_RECEIVED_AT = '_sdc_received_at'
 SINGER_BATCHED_AT = '_sdc_batched_at'

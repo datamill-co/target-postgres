@@ -9,7 +9,7 @@ from copy import deepcopy
 import arrow
 from psycopg2 import sql
 
-from target_postgres.singer_stream import (
+from target_sql.singer_stream import (
     SINGER_RECEIVED_AT,
     SINGER_BATCHED_AT,
     SINGER_SEQUENCE,
@@ -20,19 +20,36 @@ from target_postgres.singer_stream import (
 )
 
 class TransformStream(object):
-    def __init__(self, fun):
+    def __init__(self, fun, binary=False):
         self.fun = fun
+        self.binary = binary
 
     def read(self, *args, **kwargs):
-        return self.fun()
+        if self.binary:
+            return self.fun().encode('utf-8')
+        else:
+            return self.fun()
 
-class PostgresTarget(object):
+class TargetSQL(object):
     NESTED_SEPARATOR = '__'
 
-    def __init__(self, connection, logger, *args, postgres_schema='public', **kwargs):
-        self.conn = connection
+    def __init__(self, config, logger, *args, **kwargs):
         self.logger = logger
-        self.postgres_schema = postgres_schema
+        self.catalog = config.get('target_catalog', 'public')
+
+        self.create_connection(config)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.destroy_connection()
+
+    def create_connection(self, config):
+        raise NotImplementedError()
+
+    def destroy_connection(self):
+        raise NotImplementedError()
 
     def write_batch(self, stream_buffer):
         if stream_buffer.count == 0:
@@ -44,7 +61,7 @@ class PostgresTarget(object):
 
                 processed_records = map(partial(self.process_record_message,
                                                 stream_buffer.use_uuid_pk,
-                                                self.get_postgres_datetime()),
+                                                self.get_sql_datetime()),
                                         stream_buffer.peek_buffer())
                 versions = set()
                 max_version = None
@@ -58,7 +75,7 @@ class PostgresTarget(object):
                     records_all_versions.append(record)
 
                 table_metadata = self.get_table_metadata(cur,
-                                                         self.postgres_schema,
+                                                         self.catalog,
                                                          stream_buffer.stream)
 
                 ## TODO: check if PK has changed. Fail on PK change? Just update and log on PK change?
@@ -75,7 +92,7 @@ class PostgresTarget(object):
 
                 if current_table_version is not None and \
                    min(versions) < current_table_version:
-                    self.logger.warn('{} - Records from an earlier table vesion detected.'
+                    self.logger.warn('{} - Records from an earlier table version detected.'
                                      .format(stream_buffer.stream))
                 if len(versions) > 1:
                     self.logger.warn('{} - Multiple table versions in stream, only using the latest.'
@@ -156,7 +173,7 @@ class PostgresTarget(object):
                 cur.execute('BEGIN;')
 
                 table_metadata = self.get_table_metadata(cur,
-                                                         self.postgres_schema,
+                                                         self.catalog,
                                                          stream_buffer.stream)
 
                 if not table_metadata:
@@ -174,7 +191,7 @@ class PostgresTarget(object):
                         SELECT tablename FROM pg_tables
                         WHERE schemaname = {} AND tablename like {};
                         ''').format(
-                            sql.Literal(self.postgres_schema),
+                            sql.Literal(self.catalog),
                             sql.Literal(versioned_root_table + '%')))
 
                     for versioned_table_name in map(lambda x: x[0], cur.fetchall()):
@@ -185,7 +202,7 @@ class PostgresTarget(object):
                             ALTER TABLE {table_schema}.{version_table} RENAME TO {stream_table};
                             DROP TABLE {table_schema}.{stream_table_old};
                             COMMIT;''').format(
-                                table_schema=sql.Identifier(self.postgres_schema),
+                                table_schema=sql.Identifier(self.catalog),
                                 stream_table_old=sql.Identifier(table_name +
                                                                 self.NESTED_SEPARATOR +
                                                                 'old'),
@@ -409,11 +426,11 @@ class PostgresTarget(object):
             self.denest_record(table_name, None, record, records_map, key_properties, record_pk_fks, level)
 
     def upsert_table_schema(self, cur, table_name, schema, key_properties, table_version):
-        existing_table_schema = self.get_schema(cur, self.postgres_schema, table_name)
+        existing_table_schema = self.get_schema(cur, self.catalog, table_name)
 
         if existing_table_schema:
             schema = self.merge_put_schemas(cur,
-                                             self.postgres_schema,
+                                             self.catalog,
                                              table_name, 
                                              existing_table_schema,
                                              schema)
@@ -421,15 +438,15 @@ class PostgresTarget(object):
         else:
             schema = schema
             self.create_table(cur,
-                               self.postgres_schema,
-                               table_name,
-                               schema,
-                               key_properties,
-                               table_version)
+                              self.catalog,
+                              table_name,
+                              schema,
+                              key_properties,
+                              table_version)
             target_table_name = self.get_temp_table_name(table_name)
 
         self.create_table(cur,
-                           self.postgres_schema,
+                           self.catalog,
                            target_table_name,
                            schema,
                            key_properties,
@@ -439,10 +456,10 @@ class PostgresTarget(object):
 
     def get_update_sql(self, target_table_name, temp_table_name, key_properties, subkeys):
         full_table_name = sql.SQL('{}.{}').format(
-            sql.Identifier(self.postgres_schema),
+            sql.Identifier(self.catalog),
             sql.Identifier(target_table_name))
         full_temp_table_name = sql.SQL('{}.{}').format(
-            sql.Identifier(self.postgres_schema),
+            sql.Identifier(self.catalog),
             sql.Identifier(temp_table_name))
 
         pk_temp_select_list = []
@@ -526,6 +543,9 @@ class PostgresTarget(object):
                         insert_distinct_on=insert_distinct_on,
                         insert_distinct_order_by=insert_distinct_order_by)
 
+    def copy_rows(self, cur, table_name, headers, rows):
+        raise NotImplementedError()
+
     def persist_rows(self,
                      cur,
                      target_table_name,
@@ -544,23 +564,17 @@ class PostgresTarget(object):
             try:
                 row = next(rows)
                 with io.StringIO() as out:
-                    ## Serialize datetime to postgres compatible format
+                    ## Serialize datetime to sql compatible format
                     for prop in datetime_fields:
                         if prop in row:
-                            row[prop] = self.get_postgres_datetime(row[prop])
+                            row[prop] = self.get_sql_datetime(row[prop])
                     writer = csv.DictWriter(out, headers)
                     writer.writerow(row)
                     return out.getvalue()
             except StopIteration:
                 return ''
 
-        csv_rows = TransformStream(transform)
-
-        copy = sql.SQL('COPY {}.{} ({}) FROM STDIN CSV').format(
-            sql.Identifier(self.postgres_schema),
-            sql.Identifier(temp_table_name),
-            sql.SQL(', ').join(map(sql.Identifier, headers)))
-        cur.copy_expert(copy, csv_rows)
+        self.copy_rows(cur, temp_table_name, headers, transform)
 
         pattern = re.compile(SINGER_LEVEL.format('[0-9]+'))
         subkeys = list(filter(lambda header: re.match(pattern, header) is not None, headers))
@@ -571,7 +585,7 @@ class PostgresTarget(object):
                                          subkeys)
         cur.execute(update_sql)
 
-    def get_postgres_datetime(self, *args):
+    def get_sql_datetime(self, *args):
         if len(args) > 0:
             parsed_datetime = arrow.get(args[0])
         else:
@@ -605,63 +619,10 @@ class PostgresTarget(object):
         return stream_name + self.NESTED_SEPARATOR + str(uuid.uuid4()).replace('-', '')
 
     def sql_to_json_schema(self, sql_type, nullable):
-        _format = None
-        if sql_type == 'timestamp with time zone':
-            json_type = 'string'
-            _format = 'date-time'
-        elif sql_type == 'bigint':
-            json_type = 'integer'
-        elif sql_type == 'double precision':
-            json_type = 'number'
-        elif sql_type == 'boolean':
-            json_type = 'boolean'
-        elif sql_type == 'text':
-            json_type = 'string'
-        else:
-            raise Exception('Unsupported type `{}` in existing target table'.format(sql_type))
-
-        if nullable:
-            json_type = ['null', json_type]
-
-        json_schema = {'type': json_type}
-        if _format:
-            json_schema['format'] = _format
-
-        return json_schema
+        raise NotImplementedError()
 
     def json_schema_to_sql(self, json_schema):
-        _type = json_schema['type']
-        not_null = True
-        if isinstance(_type, list):
-            ln = len(_type)
-            if ln == 1:
-                _type = _type[0]
-            if ln == 2 and 'null' in _type:
-                not_null = False
-                if _type.index('null') == 0:
-                    _type = _type[1]
-                else:
-                    _type = _type[0]
-            elif ln > 2:
-                raise Exception('Multiple types per column not supported')
-
-        sql_type = 'text'
-
-        if 'format' in json_schema and \
-           json_schema['format'] == 'date-time' and \
-           _type == 'string':
-            sql_type = 'timestamp with time zone'
-        elif _type == 'boolean':
-            sql_type = 'boolean'
-        elif _type == 'integer':
-            sql_type = 'bigint'
-        elif _type == 'number':
-            sql_type = 'double precision'
-
-        if not_null:
-            sql_type += ' NOT NULL'
-
-        return sql_type
+        raise NotImplementedError()
 
     def get_table_metadata(self, cur, table_schema, table_name):
         cur.execute(

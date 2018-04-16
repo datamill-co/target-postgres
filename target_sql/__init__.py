@@ -9,13 +9,14 @@ import singer
 from singer import utils, metadata, metrics
 import psycopg2
 
-from target_postgres.postgres import PostgresTarget
-from target_postgres.singer_stream import BufferedSingerStream
+from target_sql.target_postgres import TargetPostgres
+from target_sql.target_redshift import TargetRedshift
+from target_sql.singer_stream import BufferedSingerStream
 
 LOGGER = singer.get_logger()
 
 REQUIRED_CONFIG_KEYS = [
-    'postgres_database'
+    'target_connection'
 ]
 
 def flush_stream(target, stream_buffer):
@@ -87,47 +88,40 @@ def line_handler(streams, target, max_batch_rows, max_batch_size, line):
             line_data['type'],
             line))
 
-def main(config, input_stream=None):
+def target_sql(target_class, config, input_stream=None):
     try:
-        connection = psycopg2.connect(
-            host=config.get('postgres_host', 'localhost'),
-            port=config.get('postgres_port', 5432),
-            dbname=config.get('postgres_database'),
-            user=config.get('postgres_username'),
-            password=config.get('postgres_password'))
+        with target_class(config, LOGGER) as target:
+            max_batch_rows = config.get('max_batch_rows')
+            max_batch_size = config.get('max_batch_size')
+            batch_detection_threshold = config.get('batch_detection_threshold', 5000)
 
-        streams = {}
-        postgres_target = PostgresTarget(
-            connection,
-            LOGGER,
-            postgres_schema=config.get('postgres_schema', 'public'))
+            if not input_stream:
+                input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
 
-        max_batch_rows = config.get('max_batch_rows')
-        max_batch_size = config.get('max_batch_size')
-        batch_detection_threshold = config.get('batch_detection_threshold', 5000)
+            line_count = 0
+            streams = {}
+            for line in input_stream:
+                line_handler(streams, target, max_batch_rows, max_batch_size, line)
+                if line_count > 0 and line_count % batch_detection_threshold == 0:
+                    flush_streams(streams, target)
+                line_count += 1
 
-        if not input_stream:
-            input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
-
-        line_count = 0
-        for line in input_stream:
-            line_handler(streams, postgres_target, max_batch_rows, max_batch_size, line)
-            if line_count > 0 and line_count % batch_detection_threshold == 0:
-                flush_streams(streams, postgres_target)
-            line_count += 1
-
-        flush_streams(streams, postgres_target, force=True)
-
-        connection.close()
+            flush_streams(streams, target, force=True)
     except Exception as e:
         LOGGER.critical(e)
         raise e
 
-if __name__ == "__main__":
+def main(target_class):
     try:
         args = utils.parse_args(REQUIRED_CONFIG_KEYS)
 
-        main(args.config)
+        target_sql(target_class, args.config)
     except Exception as e:
         LOGGER.critical(e)
         raise e
+
+def target_postgres_main():
+    main(TargetPostgres)
+
+def target_redshift_main():
+    main(TargetRedshift)

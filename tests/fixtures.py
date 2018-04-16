@@ -8,16 +8,18 @@ import arrow
 from faker import Faker
 from chance import chance
 
-from target_postgres.singer_stream import SINGER_SEQUENCE
+from target_sql.singer_stream import SINGER_SEQUENCE
 
 CONFIG = {
-    'postgres_database': 'target_postgres_test'
+    'target_connection': {
+        'database': 'target_postgres_test'
+    }
 }
 
 TEST_DB = {
     'host': 'localhost',
     'port': 5432,
-    'dbname': CONFIG['postgres_database'],
+    'dbname': CONFIG['target_connection']['database'],
     'user': None,
     'password': None
 }
