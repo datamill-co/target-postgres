@@ -6,6 +6,8 @@ from psycopg2 import sql
 from target_sql.target_postgres import TargetPostgres, TransformStream
 
 class TargetRedshift(TargetPostgres):
+    MAX_VARCHAR = 65535
+
     def __init__(self, config, *args, **kwargs):
         s3_config = config.get('target_s3')
         if not s3_config:
@@ -25,7 +27,7 @@ class TargetRedshift(TargetPostgres):
             json_type = 'number'
         elif sql_type == 'boolean':
             json_type = 'boolean'
-        elif sql_type[:7] == 'varchar':
+        elif sql_type == 'character varying':
             json_type = 'string'
         else:
             raise Exception('Unsupported type `{}` in existing target table'.format(sql_type))
@@ -55,7 +57,11 @@ class TargetRedshift(TargetPostgres):
             elif ln > 2:
                 raise Exception('Multiple types per column not supported')
 
-        sql_type = 'varchar(65535)'
+        max_length = json_schema.get('maxLength', self.MAX_VARCHAR)
+        if max_length > self.MAX_VARCHAR:
+            max_length = self.MAX_VARCHAR
+
+        sql_type = 'varchar({})'.format(max_length)
 
         if 'format' in json_schema and \
            json_schema['format'] == 'date-time' and \
@@ -93,7 +99,7 @@ class TargetRedshift(TargetPostgres):
             key)
 
         source = 's3://{}/{}'.format(bucket, key)
-        credentials = 'aws_access_key_id={};aws_secret_access_key={};'.format(
+        credentials = 'aws_access_key_id={};aws_secret_access_key={}'.format(
             self.s3_config.get('aws_access_key_id'),
             self.s3_config.get('aws_secret_access_key'))
 

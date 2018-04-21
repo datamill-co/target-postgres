@@ -55,6 +55,10 @@ class TargetSQL(object):
         if stream_buffer.count == 0:
             return
 
+        self.logger.info('{} - Writing batch ({})'.format(
+            stream_buffer.stream,
+            stream_buffer.count))
+
         with self.conn.cursor() as cur:
             try:
                 cur.execute('BEGIN;')
@@ -100,7 +104,15 @@ class TargetSQL(object):
 
                 if current_table_version is not None and \
                    target_table_version > current_table_version:
+                    self.logger.info('{} - New table version: {}'.format(
+                        stream_buffer.stream,
+                        target_table_version))
                     root_table_name = stream_buffer.stream + self.NESTED_SEPARATOR + str(target_table_version)
+                elif current_table_version is not None and \
+                     target_table_version < current_table_version:
+                    message = '{} - Previous table version encountered in stream'.format(stream_buffer.stream)
+                    self.logger.error(message)
+                    raise Exception(message)
                 else:
                     root_table_name = stream_buffer.stream
 
@@ -454,7 +466,7 @@ class TargetSQL(object):
 
         return target_table_name
 
-    def get_update_sql(self, target_table_name, temp_table_name, key_properties, subkeys):
+    def get_update_sql(self, target_table_name, temp_table_name, key_properties, columns, subkeys):
         full_table_name = sql.SQL('{}.{}').format(
             sql.Identifier(self.catalog),
             sql.Identifier(target_table_name))
@@ -472,7 +484,7 @@ class TargetSQL(object):
                                                                pk_identifier))
 
             pk_where_list.append(
-                sql.SQL('{table}.{pk} = {temp_table}.{pk}').format(
+                sql.SQL('{table}.{pk} = "dedupped".{pk}').format(
                     table=full_table_name,
                     temp_table=full_temp_table_name,
                     pk=pk_identifier))
@@ -491,8 +503,7 @@ class TargetSQL(object):
         pk_null = sql.SQL(' AND ').join(pk_null_list)
         cxt_where = sql.SQL(' AND ').join(cxt_where_list)
 
-        sequence_join = sql.SQL(' AND {}.{} >= {}.{}').format(
-            full_temp_table_name,
+        sequence_join = sql.SQL(' AND "dedupped".{} >= {}.{}').format(
             sql.Identifier(SINGER_SEQUENCE),
             full_table_name,
             sql.Identifier(SINGER_SEQUENCE))
@@ -517,19 +528,34 @@ class TargetSQL(object):
             insert_distinct_on = pk_temp_select
             insert_distinct_order_by = distinct_order_by
 
+        insert_columns_list = []
+        for column in columns:
+            insert_columns_list.append(sql.SQL('{}.{}').format(sql.Identifier('dedupped'),
+                                                               sql.Identifier(column)))
+        insert_columns = sql.SQL(', ').join(insert_columns_list)
+
         return sql.SQL('''
-            WITH "pks" AS (
-                SELECT DISTINCT ON ({pk_temp_select}) {pk_temp_select}
-                FROM {temp_table}
-                JOIN {table} ON {pk_where}{sequence_join}{distinct_order_by}
-            )
-            DELETE FROM {table} USING "pks" WHERE {cxt_where};
+            DELETE FROM {table} USING (
+                    SELECT "dedupped".*
+                    FROM (
+                        SELECT *,
+                               ROW_NUMBER() OVER (PARTITION BY {pk_temp_select}
+                                                  {distinct_order_by}) AS "pk_ranked"
+                        FROM {temp_table}
+                        {distinct_order_by}) AS "dedupped"
+                    JOIN {table} ON {pk_where}{sequence_join}
+                    WHERE pk_ranked = 1
+                ) AS "pks" WHERE {cxt_where};
             INSERT INTO {table} (
-                SELECT DISTINCT ON ({insert_distinct_on}) {temp_table}.*
-                FROM {temp_table}
+                SELECT {insert_columns}
+                FROM (
+                    SELECT *,
+                           ROW_NUMBER() OVER (PARTITION BY {insert_distinct_on}
+                                              {insert_distinct_order_by}) AS "pk_ranked"
+                    FROM {temp_table}
+                    {insert_distinct_order_by}) AS "dedupped"
                 LEFT JOIN {table} ON {pk_where}
-                WHERE {pk_null}
-                {insert_distinct_order_by}
+                WHERE pk_ranked = 1 AND {pk_null}
             );
             DROP TABLE {temp_table};
             ''').format(table=full_table_name,
@@ -541,7 +567,8 @@ class TargetSQL(object):
                         distinct_order_by=distinct_order_by,
                         pk_null=pk_null,
                         insert_distinct_on=insert_distinct_on,
-                        insert_distinct_order_by=insert_distinct_order_by)
+                        insert_distinct_order_by=insert_distinct_order_by,
+                        insert_columns=insert_columns)
 
     def copy_rows(self, cur, table_name, headers, rows):
         raise NotImplementedError()
@@ -582,8 +609,12 @@ class TargetSQL(object):
         update_sql = self.get_update_sql(target_table_name,
                                          temp_table_name,
                                          key_properties,
+                                         headers,
                                          subkeys)
+
         cur.execute(update_sql)
+
+        ## TODO: delete s3 / cleamup?
 
     def get_sql_datetime(self, *args):
         if len(args) > 0:
@@ -625,9 +656,22 @@ class TargetSQL(object):
         raise NotImplementedError()
 
     def get_table_metadata(self, cur, table_schema, table_name):
+        cur.execute(sql.SQL('''
+            SELECT EXISTS (
+                SELECT 1 FROM pg_tables
+                WHERE schemaname = {} AND
+                      tablename = {});''').format(
+            sql.Literal(table_schema),
+            sql.Literal(table_name)))
+        table_exists = cur.fetchone()[0]
+
+        if not table_exists:
+            return None
+
         cur.execute(
-            sql.SQL('SELECT obj_description(to_regclass({}));').format(
-                sql.Literal('{}.{}'.format(table_schema, table_name))))
+            sql.SQL('SELECT description FROM pg_description WHERE objoid = {}::regclass;').format(
+                sql.Literal(
+                    '"{}"."{}"'.format(table_schema, table_name))))
         comment = cur.fetchone()[0]
 
         if comment:
