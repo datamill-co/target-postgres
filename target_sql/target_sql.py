@@ -26,7 +26,17 @@ class TransformStream(object):
 
     def read(self, *args, **kwargs):
         if self.binary:
-            return self.fun().encode('utf-8')
+            if len(args) > 0:
+                max_bytes = args[0]
+            else:
+                max_bytes = None
+            output = b''
+            while (max_bytes is not None and len(output) < max_bytes) or True: ## TODO: overflow?
+                line = self.fun()
+                if line == '':
+                    return output
+                output += line.encode('utf-8')
+            return output
         else:
             return self.fun()
 
