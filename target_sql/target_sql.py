@@ -45,7 +45,8 @@ class TargetSQL(object):
 
     def __init__(self, config, logger, *args, **kwargs):
         self.logger = logger
-        self.catalog = config.get('target_catalog', 'public')
+        target_config = config.get('target_connection')
+        self.catalog = target_config.get('target_catalog', 'public')
 
         self.create_connection(config)
 
