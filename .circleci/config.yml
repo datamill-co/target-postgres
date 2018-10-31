@@ -22,7 +22,7 @@ jobs:
 
     - run:
         name: Run Tests
-        command: python setup.py pytest
+        command: python setup.py pytest --verbose
 
     - store_artifacts:
         path: target/test-results
