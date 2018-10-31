@@ -1,0 +1,29 @@
+version: 2.0
+
+workflows:
+  version: 2
+  test:
+    jobs:
+    - test
+
+jobs:
+  test:
+    docker:
+    - image: python:3.7.1-stretch
+    - image: circleci/postgres:9.6.2 # an example of how to specify a service container
+      environment:
+        POSTGRES_DB: target_postgres_test
+    working_directory: /code/
+    steps:
+    - checkout
+    - restore_cache:
+        keys:
+        - deps-v0.0.0-{{ checksum "setup.py" }}
+
+    - run:
+        name: Run Tests
+        command: python setup.py pytest
+
+    - store_artifacts:
+        path: target/test-results
+        destination: raw-test-output
