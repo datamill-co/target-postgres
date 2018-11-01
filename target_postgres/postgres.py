@@ -641,18 +641,17 @@ class PostgresTarget(object):
     def json_schema_to_sql(self, json_schema):
         _type = JSONSchema.sanitize_type(json_schema['type'])
         not_null = True
-        if isinstance(_type, list):
-            ln = len(_type)
-            if ln == 1:
+        ln = len(_type)
+        if ln == 1:
+            _type = _type[0]
+        if ln == 2 and 'null' in _type:
+            not_null = False
+            if _type.index('null') == 0:
+                _type = _type[1]
+            else:
                 _type = _type[0]
-            if ln == 2 and 'null' in _type:
-                not_null = False
-                if _type.index('null') == 0:
-                    _type = _type[1]
-                else:
-                    _type = _type[0]
-            elif ln > 2:
-                raise Exception('Multiple types per column not supported')
+        elif ln > 2:
+            raise Exception('Multiple types per column not supported')
 
         sql_type = 'text'
 
