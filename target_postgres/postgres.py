@@ -9,6 +9,8 @@ from copy import deepcopy
 import arrow
 from psycopg2 import sql
 
+import target_postgres.json_schema as JSONSchema
+
 from target_postgres.singer_stream import (
     SINGER_RECEIVED_AT,
     SINGER_BATCHED_AT,
@@ -112,6 +114,8 @@ class PostgresTarget(object):
 
                 nested_upsert_tables = []
                 for table_name, json_schema in subtables.items():
+                    json_schema['type'] = JSONSchema.sanitize_type(json_schema['type'])
+
                     temp_table_name = self.upsert_table_schema(cur,
                                                                table_name,
                                                                json_schema,
@@ -259,6 +263,8 @@ class PostgresTarget(object):
                              subtables,
                              level):
         for prop, json_schema in json_schema['properties'].items():
+            json_schema['type'] = JSONSchema.sanitize_type(json_schema['type'])
+
             next_path = current_path + self.NESTED_SEPARATOR + prop
             if json_schema['type'] == 'object':
                 self.denest_schema_helper(table_name,
@@ -290,6 +296,7 @@ class PostgresTarget(object):
             new_properties = {'value': json_schema['items']}
 
         for pk, json_schema in key_prop_schemas.items():
+            json_schema['type'] = JSONSchema.sanitize_type(json_schema['type'])
             new_properties[SINGER_SOURCE_PK_PREFIX + pk] = json_schema
 
         new_properties[SINGER_SEQUENCE] = {
@@ -310,6 +317,8 @@ class PostgresTarget(object):
     def denest_schema(self, table_name, schema, key_prop_schemas, subtables, current_path=None, level=-1):
         new_properties = {}
         for prop, json_schema in schema['properties'].items():
+            json_schema['type'] = JSONSchema.sanitize_type(json_schema['type'])
+
             if current_path:
                 next_path = current_path + self.NESTED_SEPARATOR + prop
             else:
@@ -623,14 +632,14 @@ class PostgresTarget(object):
         if nullable:
             json_type = ['null', json_type]
 
-        json_schema = {'type': json_type}
+        json_schema = {'type': JSONSchema.sanitize_type(json_type)}
         if _format:
             json_schema['format'] = _format
 
         return json_schema
 
     def json_schema_to_sql(self, json_schema):
-        _type = json_schema['type']
+        _type = JSONSchema.sanitize_type(json_schema['type'])
         not_null = True
         if isinstance(_type, list):
             ln = len(_type)
