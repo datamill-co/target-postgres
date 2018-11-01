@@ -31,7 +31,7 @@ CATS_SCHEMA = {
         'additionalProperties': False,
         'properties': {
             'id': {
-                'type': ['integer']
+                'type': 'integer'
             },
             'name': {
                 'type': ['string']
@@ -50,7 +50,7 @@ CATS_SCHEMA = {
                         'format': 'date-time'
                     },
                     'was_foster': {
-                        'type': ['boolean']
+                        'type': 'boolean'
                     },
                     'immunizations': {
                         'type': ['null','array'],
