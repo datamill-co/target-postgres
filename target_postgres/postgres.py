@@ -9,8 +9,7 @@ from copy import deepcopy
 import arrow
 from psycopg2 import sql
 
-import target_postgres.json_schema as JSONSchema
-
+import target_postgres.json_schema as json_schema
 from target_postgres.singer_stream import (
     SINGER_RECEIVED_AT,
     SINGER_BATCHED_AT,
@@ -113,17 +112,17 @@ class PostgresTarget(object):
                                                                 target_table_version)
 
                 nested_upsert_tables = []
-                for table_name, json_schema in subtables.items():
-                    json_schema['type'] = JSONSchema.sanitize_type(json_schema['type'])
+                for table_name, subtable_json_schema in subtables.items():
+                    subtable_json_schema['type'] = json_schema.sanitize_type(subtable_json_schema['type'])
 
                     temp_table_name = self.upsert_table_schema(cur,
                                                                table_name,
-                                                               json_schema,
+                                                               subtable_json_schema,
                                                                None,
                                                                None)
                     nested_upsert_tables.append({
                         'table_name': table_name,
-                        'json_schema': json_schema,
+                        'json_schema': subtable_json_schema,
                         'temp_table_name': temp_table_name
                     })
 
@@ -255,49 +254,49 @@ class PostgresTarget(object):
 
     def denest_schema_helper(self,
                              table_name,
-                             json_schema,
+                             table_json_schema,
                              not_null,
                              top_level_schema,
                              current_path,
                              key_prop_schemas,
                              subtables,
                              level):
-        for prop, json_schema in json_schema['properties'].items():
-            json_schema['type'] = JSONSchema.sanitize_type(json_schema['type'])
+        for prop, item_json_schema in table_json_schema['properties'].items():
+            item_json_schema['type'] = json_schema.sanitize_type(item_json_schema['type'])
 
             next_path = current_path + self.NESTED_SEPARATOR + prop
-            if json_schema['type'] == 'object':
+            if item_json_schema['type'] == 'object':
                 self.denest_schema_helper(table_name,
-                                          json_schema,
+                                          item_json_schema,
                                           not_null,
                                           top_level_schema,
                                           next_path,
                                           key_prop_schemas,
                                           subtables,
                                           level)
-            elif 'array' in json_schema['type']:
+            elif 'array' in item_json_schema['type']:
                 self.create_subtable(table_name + self.NESTED_SEPARATOR + prop,
-                                     json_schema,
+                                     item_json_schema,
                                      key_prop_schemas,
                                      subtables,
                                      level + 1)
             else:
-                if not_null and 'null' in json_schema['type']:
-                    json_schema['type'].remove('null')
-                elif 'null' not in json_schema['type']:
-                    json_schema['type'].append('null')
-                top_level_schema[next_path] = json_schema
+                if not_null and 'null' in item_json_schema['type']:
+                    item_json_schema['type'].remove('null')
+                elif 'null' not in item_json_schema['type']:
+                    item_json_schema['type'].append('null')
+                top_level_schema[next_path] = item_json_schema
 
-    def create_subtable(self, table_name, json_schema, key_prop_schemas, subtables, level):
-        array_type = json_schema['items']['type']
+    def create_subtable(self, table_name, table_json_schema, key_prop_schemas, subtables, level):
+        array_type = table_json_schema['items']['type']
         if 'object' in array_type:
-            new_properties = json_schema['items']['properties']
+            new_properties = table_json_schema['items']['properties']
         else:
-            new_properties = {'value': json_schema['items']}
+            new_properties = {'value': table_json_schema['items']}
 
-        for pk, json_schema in key_prop_schemas.items():
-            json_schema['type'] = JSONSchema.sanitize_type(json_schema['type'])
-            new_properties[SINGER_SOURCE_PK_PREFIX + pk] = json_schema
+        for pk, item_json_schema in key_prop_schemas.items():
+            item_json_schema['type'] = json_schema.sanitize_type(item_json_schema['type'])
+            new_properties[SINGER_SOURCE_PK_PREFIX + pk] = item_json_schema
 
         new_properties[SINGER_SEQUENCE] = {
             'type': ['null', 'integer']
@@ -314,35 +313,35 @@ class PostgresTarget(object):
 
         subtables[table_name] = new_schema
 
-    def denest_schema(self, table_name, schema, key_prop_schemas, subtables, current_path=None, level=-1):
+    def denest_schema(self, table_name, table_json_schema, key_prop_schemas, subtables, current_path=None, level=-1):
         new_properties = {}
-        for prop, json_schema in schema['properties'].items():
-            json_schema['type'] = JSONSchema.sanitize_type(json_schema['type'])
+        for prop, item_json_schema in table_json_schema['properties'].items():
+            item_json_schema['type'] = json_schema.sanitize_type(item_json_schema['type'])
 
             if current_path:
                 next_path = current_path + self.NESTED_SEPARATOR + prop
             else:
                 next_path = prop
 
-            if 'object' in json_schema['type']:
-                not_null = 'null' not in json_schema['type']
+            if 'object' in item_json_schema['type']:
+                not_null = 'null' not in item_json_schema['type']
                 self.denest_schema_helper(table_name + self.NESTED_SEPARATOR + next_path,
-                                          json_schema,
+                                          item_json_schema,
                                           not_null,
                                           new_properties,
                                           next_path,
                                           key_prop_schemas,
                                           subtables,
                                           level)
-            elif 'array' in json_schema['type']:
+            elif 'array' in item_json_schema['type']:
                 self.create_subtable(table_name + self.NESTED_SEPARATOR + next_path,
-                                     json_schema,
+                                     item_json_schema,
                                      key_prop_schemas,
                                      subtables,
                                      level + 1)
             else:
-                new_properties[prop] = json_schema
-        schema['properties'] = new_properties
+                new_properties[prop] = item_json_schema
+        table_json_schema['properties'] = new_properties
 
     def denest_subrecord(self,
                          table_name,
@@ -539,12 +538,12 @@ class PostgresTarget(object):
                      cur,
                      target_table_name,
                      temp_table_name,
-                     json_schema,
+                     target_table_json_schema,
                      key_properties,
                      records):
-        headers = list(json_schema['properties'].keys())
+        headers = list(target_table_json_schema['properties'].keys())
 
-        datetime_fields = [k for k,v in json_schema['properties'].items()
+        datetime_fields = [k for k,v in target_table_json_schema['properties'].items()
                            if v.get('format') == 'date-time']
 
         rows = iter(records)
@@ -593,8 +592,8 @@ class PostgresTarget(object):
                 sql.Identifier(table_name))
 
         columns_sql = []
-        for prop, json_schema in schema['properties'].items():
-            sql_type = self.json_schema_to_sql(json_schema)
+        for prop, item_json_schema in schema['properties'].items():
+            sql_type = self.json_schema_to_sql(item_json_schema)
             columns_sql.append(sql.SQL('{} {}').format(sql.Identifier(prop),
                                                        sql.SQL(sql_type)))
 
@@ -632,14 +631,14 @@ class PostgresTarget(object):
         if nullable:
             json_type = ['null', json_type]
 
-        json_schema = {'type': JSONSchema.sanitize_type(json_type)}
+        ret_json_schema = {'type': json_schema.sanitize_type(json_type)}
         if _format:
-            json_schema['format'] = _format
+            ret_json_schema['format'] = _format
 
-        return json_schema
+        return ret_json_schema
 
-    def json_schema_to_sql(self, json_schema):
-        _type = JSONSchema.sanitize_type(json_schema['type'])
+    def json_schema_to_sql(self, target_json_schema):
+        _type = json_schema.sanitize_type(target_json_schema['type'])
         not_null = True
         ln = len(_type)
         if ln == 1:
@@ -655,8 +654,8 @@ class PostgresTarget(object):
 
         sql_type = 'text'
 
-        if 'format' in json_schema and \
-           json_schema['format'] == 'date-time' and \
+        if 'format' in target_json_schema and \
+           target_json_schema['format'] == 'date-time' and \
            _type == 'string':
             sql_type = 'timestamp with time zone'
         elif _type == 'boolean':
@@ -706,11 +705,11 @@ class PostgresTarget(object):
 
         return schema
 
-    def get_null_default(self, column, json_schema):
-        if 'default' in json_schema:
-            return json_schema['default']
+    def get_null_default(self, column, target_json_schema):
+        if 'default' in target_json_schema:
+            return target_json_schema['default']
 
-        json_type = json_schema['type']
+        json_type = target_json_schema['type']
         if 'null' in json_type:
             return None
 
@@ -744,7 +743,7 @@ class PostgresTarget(object):
     def merge_put_schemas(self, cur, table_schema, table_name, existing_schema, new_schema):
         new_properties = new_schema['properties']
         existing_properties = existing_schema['properties']
-        for prop, json_schema in new_properties.items():
+        for prop in new_properties:
             if prop not in existing_properties:
                 existing_properties[prop] = new_properties[prop]
                 data_type = self.json_schema_to_sql(new_properties[prop])
