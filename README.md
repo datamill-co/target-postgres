@@ -35,7 +35,7 @@ Run `target-postgres` against a [Singer](https://singer.io) stream.
 
 It ignores "STATE" type Singer messages.
 
-## Limitations
+## Known Limitations
 - Requires a [JSON Schema](https://json-schema.org/) for every stream.
 - Only string, string with date-time format, integer, number, boolean, object, and array types with or without null are supported. Arrays can have any of the other types listed, including objects as types within items. 
     - Example of JSON Schema types that work
@@ -47,7 +47,6 @@ It ignores "STATE" type Singer messages.
         - ['integer', 'number']
         - ['any']
         - ['null']
-- Types must be arrays
 - Types cannot change
 - JSON Schema combinations such as "anyOf" and "allOf" are not supported.
 - JSON Schema $ref is not supported.
