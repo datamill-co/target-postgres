@@ -23,6 +23,10 @@ jobs:
     - run:
         name: Run Tests
         command: python setup.py pytest --verbose
+        environment:
+          POSTGRES_HOST: 'localhost'
+          POSTGRES_DATABASE: 'target_postgres_test'
+          POSTGRES_USERNAME: 'postgres'
 
     - store_artifacts:
         path: target/test-results
