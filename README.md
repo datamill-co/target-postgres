@@ -39,17 +39,22 @@ It ignores "STATE" type Singer messages.
 - Requires a [JSON Schema](https://json-schema.org/) for every stream.
 - Only string, string with date-time format, integer, number, boolean, object, and array types with or without null are supported. Arrays can have any of the other types listed, including objects as types within items. 
     - Example of JSON Schema types that work
-        - ['number']
-        - ['string']
-        - ['string', 'null']
+        - `['number']`
+        - `['string']`
+        - `['string', 'null']`
     - Exmaple of JSON Schema types that **DO NOT** work
-        - ['string', 'integer']
-        - ['integer', 'number']
-        - ['any']
-        - ['null']
+        - `['string', 'integer']`
+        - `['integer', 'number']`
+        - `['any']`
+        - `['null']`
 - Types cannot change
-- JSON Schema combinations such as "anyOf" and "allOf" are not supported.
-- JSON Schema $ref is not supported.
+- JSON Schema combinations such as `anyOf` and `allOf` are not supported.
+- JSON Schema $ref is partially supported:
+  - ***NOTE:*** The following limitations are known to **NOT** fail gracefully
+  - Presently you cannot have any circular or recursive `$ref`s
+  - `$ref`s must be present within the schema:
+    - URI's do not work
+    - if the `$ref` is broken, the behaviour is considered unexpected
 
 ## Developing
 `target-postgres` utilizes [setup.py](https://python-packaging.readthedocs.io/en/latest/index.html) for package
