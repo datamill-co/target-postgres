@@ -94,7 +94,7 @@ class PostgresTarget(object):
                 else:
                     records = records_all_versions
 
-                root_table_schema = deepcopy(stream_buffer.schema)
+                root_table_schema = json_schema.simplify(stream_buffer.schema)
 
                 ## Add singer columns to root table
                 self.add_singer_columns(root_table_schema, stream_buffer.key_properties)
@@ -113,8 +113,6 @@ class PostgresTarget(object):
 
                 nested_upsert_tables = []
                 for table_name, subtable_json_schema in subtables.items():
-                    subtable_json_schema['type'] = json_schema.sanitize_type(subtable_json_schema['type'])
-
                     temp_table_name = self.upsert_table_schema(cur,
                                                                table_name,
                                                                subtable_json_schema,
@@ -262,10 +260,8 @@ class PostgresTarget(object):
                              subtables,
                              level):
         for prop, item_json_schema in table_json_schema['properties'].items():
-            item_json_schema['type'] = json_schema.sanitize_type(item_json_schema['type'])
-
             next_path = current_path + self.NESTED_SEPARATOR + prop
-            if item_json_schema['type'] == 'object':
+            if json_schema.is_object(item_json_schema):
                 self.denest_schema_helper(table_name,
                                           item_json_schema,
                                           not_null,
@@ -274,28 +270,26 @@ class PostgresTarget(object):
                                           key_prop_schemas,
                                           subtables,
                                           level)
-            elif 'array' in item_json_schema['type']:
+            elif json_schema.is_iterable(item_json_schema):
                 self.create_subtable(table_name + self.NESTED_SEPARATOR + prop,
                                      item_json_schema,
                                      key_prop_schemas,
                                      subtables,
                                      level + 1)
             else:
-                if not_null and 'null' in item_json_schema['type']:
+                if not_null and json_schema.is_nullable(item_json_schema):
                     item_json_schema['type'].remove('null')
-                elif 'null' not in item_json_schema['type']:
+                elif not json_schema.is_nullable(item_json_schema):
                     item_json_schema['type'].append('null')
                 top_level_schema[next_path] = item_json_schema
 
     def create_subtable(self, table_name, table_json_schema, key_prop_schemas, subtables, level):
-        array_type = table_json_schema['items']['type']
-        if 'object' in array_type:
+        if json_schema.is_object(table_json_schema['items']):
             new_properties = table_json_schema['items']['properties']
         else:
             new_properties = {'value': table_json_schema['items']}
 
         for pk, item_json_schema in key_prop_schemas.items():
-            item_json_schema['type'] = json_schema.sanitize_type(item_json_schema['type'])
             new_properties[SINGER_SOURCE_PK_PREFIX + pk] = item_json_schema
 
         new_properties[SINGER_SEQUENCE] = {
@@ -316,14 +310,12 @@ class PostgresTarget(object):
     def denest_schema(self, table_name, table_json_schema, key_prop_schemas, subtables, current_path=None, level=-1):
         new_properties = {}
         for prop, item_json_schema in table_json_schema['properties'].items():
-            item_json_schema['type'] = json_schema.sanitize_type(item_json_schema['type'])
-
             if current_path:
                 next_path = current_path + self.NESTED_SEPARATOR + prop
             else:
                 next_path = prop
 
-            if 'object' in item_json_schema['type']:
+            if json_schema.is_object(item_json_schema):
                 not_null = 'null' not in item_json_schema['type']
                 self.denest_schema_helper(table_name + self.NESTED_SEPARATOR + next_path,
                                           item_json_schema,
@@ -333,7 +325,7 @@ class PostgresTarget(object):
                                           key_prop_schemas,
                                           subtables,
                                           level)
-            elif 'array' in item_json_schema['type']:
+            elif json_schema.is_iterable(item_json_schema):
                 self.create_subtable(table_name + self.NESTED_SEPARATOR + next_path,
                                      item_json_schema,
                                      key_prop_schemas,
@@ -593,7 +585,7 @@ class PostgresTarget(object):
 
         columns_sql = []
         for prop, item_json_schema in schema['properties'].items():
-            sql_type = self.json_schema_to_sql(item_json_schema)
+            sql_type = json_schema.to_sql(item_json_schema)
             columns_sql.append(sql.SQL('{} {}').format(sql.Identifier(prop),
                                                        sql.SQL(sql_type)))
 
@@ -611,64 +603,6 @@ class PostgresTarget(object):
 
     def get_temp_table_name(self, stream_name):
         return stream_name + self.NESTED_SEPARATOR + str(uuid.uuid4()).replace('-', '')
-
-    def sql_to_json_schema(self, sql_type, nullable):
-        _format = None
-        if sql_type == 'timestamp with time zone':
-            json_type = 'string'
-            _format = 'date-time'
-        elif sql_type == 'bigint':
-            json_type = 'integer'
-        elif sql_type == 'double precision':
-            json_type = 'number'
-        elif sql_type == 'boolean':
-            json_type = 'boolean'
-        elif sql_type == 'text':
-            json_type = 'string'
-        else:
-            raise Exception('Unsupported type `{}` in existing target table'.format(sql_type))
-
-        if nullable:
-            json_type = ['null', json_type]
-
-        ret_json_schema = {'type': json_schema.sanitize_type(json_type)}
-        if _format:
-            ret_json_schema['format'] = _format
-
-        return ret_json_schema
-
-    def json_schema_to_sql(self, target_json_schema):
-        _type = json_schema.sanitize_type(target_json_schema['type'])
-        not_null = True
-        ln = len(_type)
-        if ln == 1:
-            _type = _type[0]
-        if ln == 2 and 'null' in _type:
-            not_null = False
-            if _type.index('null') == 0:
-                _type = _type[1]
-            else:
-                _type = _type[0]
-        elif ln > 2:
-            raise Exception('Multiple types per column not supported')
-
-        sql_type = 'text'
-
-        if 'format' in target_json_schema and \
-           target_json_schema['format'] == 'date-time' and \
-           _type == 'string':
-            sql_type = 'timestamp with time zone'
-        elif _type == 'boolean':
-            sql_type = 'boolean'
-        elif _type == 'integer':
-            sql_type = 'bigint'
-        elif _type == 'number':
-            sql_type = 'double precision'
-
-        if not_null:
-            sql_type += ' NOT NULL'
-
-        return sql_type
 
     def get_table_metadata(self, cur, table_schema, table_name):
         cur.execute(
@@ -699,7 +633,7 @@ class PostgresTarget(object):
 
         properties = {}
         for column in columns:
-            properties[column[0]] = self.sql_to_json_schema(column[1], column[2] == 'YES')
+            properties[column[0]] = json_schema.from_sql(column[1], column[2] == 'YES')
 
         schema = {'properties': properties}
 
@@ -746,7 +680,7 @@ class PostgresTarget(object):
         for prop in new_properties:
             if prop not in existing_properties:
                 existing_properties[prop] = new_properties[prop]
-                data_type = self.json_schema_to_sql(new_properties[prop])
+                data_type = json_schema.to_sql(new_properties[prop])
                 default_value = self.get_null_default(prop, new_properties[prop])
                 self.add_column(cur,
                                  table_schema,
