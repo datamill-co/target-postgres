@@ -25,7 +25,7 @@ setup(
     ],
     entry_points='''
       [console_scripts]
-      target-postgres=target_postgres:main
+      target-postgres=target_postgres:cli
     ''',
     packages=find_packages()
 )
