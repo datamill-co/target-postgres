@@ -52,20 +52,40 @@ It ignores "STATE" type Singer messages.
 - JSON Schema $ref is not supported.
 
 ## Developing
-`target-postgres` utilizes [setup.py](https://python-packaging.readthedocs.io/en/latest/index.html) for package management, and [PyTest](https://docs.pytest.org/en/latest/contents.html) for testing.
+`target-postgres` utilizes [setup.py](https://python-packaging.readthedocs.io/en/latest/index.html) for package
+management, and [PyTest](https://docs.pytest.org/en/latest/contents.html) for testing.
+
+### Docker
+If you have [Docker](https://www.docker.com/) and [Docker Compose](https://docs.docker.com/compose/) installed, you can
+easily run the following to get a local env setup quickly.
+
+```sh
+$ docker-compose up -d --build
+$ docker logs -tf target-postgres_target-postgres_1 # You container names might differ
+```
+
+As soon as you see `INFO: Dev environment ready.` you can shell into the container and start running test commands:
+
+```sh
+$ docker exec -it target-postgres_target-postgres_1 sh # Your container names might differ
+```
+
+See the [PyTest](#pytest) commands below!
 
 ### DB
-To run the tests, you will need a PostgreSQL server running:
+To run the tests, you will need a PostgreSQL server running.
 
-```
-- localhost
-- DB: target_postgres_test
-- USER: postgres
-- NO PASSWORD
+***NOTE:*** Testing assumes that you've exposed the traditional port `5432`.
+
+Make sure to set the following env vars for [PyTest](#pytest):
+
+```sh
+$ EXPORT POSTGRES_HOST='<your-host-name>' # Most likely 'localhost'
+$ EXPORT POSTGRES_DB='<your-db-name>'     # We use 'target_postgres_test'
+$ EXPORT POSTGRES_USER='<your-user-name'  # Probably just 'postgres', make sure this user has no auth
 ```
 
 ### PyTest
-
 To run tests, try:
 
 ```sh

@@ -1,5 +1,5 @@
-import sys
 import json
+import os
 import random
 
 import pytest
@@ -11,15 +11,15 @@ from chance import chance
 from target_postgres.singer_stream import SINGER_SEQUENCE
 
 CONFIG = {
-    'postgres_database': 'target_postgres_test'
+    'postgres_host': os.environ['POSTGRES_HOST'],
+    'postgres_database': os.environ['POSTGRES_DATABASE'],
+    'postgres_username': os.environ['POSTGRES_USERNAME']
 }
 
 TEST_DB = {
-    'host': 'localhost',
-    'port': 5432,
+    'host': CONFIG['postgres_host'],
     'dbname': CONFIG['postgres_database'],
-    'user': None,
-    'password': None
+    'user': CONFIG['postgres_username']
 }
 
 fake = Faker()
