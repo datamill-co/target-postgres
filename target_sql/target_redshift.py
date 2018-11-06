@@ -16,6 +16,10 @@ class TargetRedshift(TargetPostgres):
 
         super(TargetRedshift, self).__init__(config, *args, **kwargs)
 
+    def compare_column_names(self, col_a, col_b):
+        # redshift lowercases column names
+        return col_a.lower() == col_b.lower()
+
     def sql_to_json_schema(self, sql_type, nullable):
         _format = None
         if sql_type == 'timestamp with time zone':

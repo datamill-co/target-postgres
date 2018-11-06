@@ -634,6 +634,9 @@ class TargetSQL(object):
             parsed_datetime = arrow.get() # defaults to UTC now
         return parsed_datetime.format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
 
+    def compare_column_names(self, col_a, col_b):
+        return col_a == col_b
+
     def create_table(self, cur, table_schema, table_name, schema, key_properties, table_version):
         create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
                 sql.Identifier(table_schema),
@@ -753,7 +756,13 @@ class TargetSQL(object):
         new_properties = new_schema['properties']
         existing_properties = existing_schema['properties']
         for prop, json_schema in new_properties.items():
-            if prop not in existing_properties:
+            prop_exists = False
+            for existing_prop in existing_properties:
+                if self.compare_column_names(prop, existing_prop):
+                    prop_exists = True
+                    break
+
+            if not prop_exists:
                 existing_properties[prop] = new_properties[prop]
                 data_type = self.json_schema_to_sql(new_properties[prop])
                 default_value = self.get_null_default(prop, new_properties[prop])
