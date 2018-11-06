@@ -55,7 +55,7 @@ It ignores "STATE" type Singer messages.
 
 [Singer.io](https://www.singer.io/) requires offical taps and targets to collect anonymous usage data. This data is only used in aggregate to report on individual tap/targets, as well as the Singer community at-large. IP addresses are recorded to detect unique tap/targets users but not shared with third-parties.
 
-To disable anonymous data collection set `disable_collection` to `false` in the configuration JSON file.
+To disable anonymous data collection set `disable_collection` to `true` in the configuration JSON file.
 
 ## Developing
 `target-postgres` utilizes [setup.py](https://python-packaging.readthedocs.io/en/latest/index.html) for package
