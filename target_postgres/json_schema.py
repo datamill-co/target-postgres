@@ -73,6 +73,16 @@ def is_iterable(schema):
            and 'items' in schema
 
 
+def is_nullable(schema):
+    """
+    Given a JSON Schema compatible dict, returns True when schema's type allows being 'null'
+    :param schema: dict, JSON Schema
+    :return: Boolean
+    """
+
+    return 'null' in get_type(schema)
+
+
 def _helper_simplify(root_schema, child_schema):
     if not child_schema:
         return child_schema
@@ -113,3 +123,64 @@ def simplify(schema):
     """
 
     return _helper_simplify(schema, schema)
+
+
+def from_sql(sql_type, nullable):
+    _format = None
+    if sql_type == 'timestamp with time zone':
+        json_type = 'string'
+        _format = 'date-time'
+    elif sql_type == 'bigint':
+        json_type = 'integer'
+    elif sql_type == 'double precision':
+        json_type = 'number'
+    elif sql_type == 'boolean':
+        json_type = 'boolean'
+    elif sql_type == 'text':
+        json_type = 'string'
+    else:
+        raise Exception('Unsupported type `{}` in existing target table'.format(sql_type))
+
+    json_type = [json_type]
+    if nullable:
+        json_type.append('null')
+
+    ret_json_schema = {'type': json_type}
+    if _format:
+        ret_json_schema['format'] = _format
+
+    return ret_json_schema
+
+
+def to_sql(schema):
+    _type = get_type(schema)
+    not_null = True
+    ln = len(_type)
+    if ln == 1:
+        _type = _type[0]
+    if ln == 2 and 'null' in _type:
+        not_null = False
+        if _type.index('null') == 0:
+            _type = _type[1]
+        else:
+            _type = _type[0]
+    elif ln > 2:
+        raise Exception('Multiple types per column not supported')
+
+    sql_type = 'text'
+
+    if 'format' in schema and \
+            schema['format'] == 'date-time' and \
+            _type == 'string':
+        sql_type = 'timestamp with time zone'
+    elif _type == 'boolean':
+        sql_type = 'boolean'
+    elif _type == 'integer':
+        sql_type = 'bigint'
+    elif _type == 'number':
+        sql_type = 'double precision'
+
+    if not_null:
+        sql_type += ' NOT NULL'
+
+    return sql_type
