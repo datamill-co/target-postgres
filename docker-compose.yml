@@ -1,0 +1,19 @@
+version: '2'
+services:
+  db:
+    image: postgres
+    environment:
+      POSTGRES_DB: target_postgres_test
+    ports:
+      - "5432:5432"
+
+  target-postgres:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    environment:
+      POSTGRES_HOST: 'db'
+      POSTGRES_DATABASE: 'target_postgres_test'
+      POSTGRES_USERNAME: 'postgres'
+    volumes:
+      - .:/code
