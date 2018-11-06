@@ -1,30 +1,20 @@
 import re
 
 
-def simplify_type(type):
-    """
-    Given a potentially non-array type instance, return an array type instance
-    :param type: str, array
-    :return: [type ...]
-    """
-
-    if isinstance(type, str):
-        return [type]
-
-    return type
-
-
 def get_type(schema):
     """
     Given a JSON Schema dict, extracts the simplified `type` value
     :param schema: dict, JSON Schema
     :return: [string ...]
     """
+    type = schema.get('type', None)
+    if not type:
+        return ['object']
 
-    if 'type' in schema:
-        return simplify_type(schema['type'])
+    if isinstance(type, str):
+        return [type]
 
-    return ['object']
+    return type
 
 
 def _get_ref(schema, paths):

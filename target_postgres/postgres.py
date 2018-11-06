@@ -94,7 +94,7 @@ class PostgresTarget(object):
                 else:
                     records = records_all_versions
 
-                root_table_schema = deepcopy(stream_buffer.schema)
+                root_table_schema = json_schema.simplify(stream_buffer.schema)
 
                 ## Add singer columns to root table
                 self.add_singer_columns(root_table_schema, stream_buffer.key_properties)
@@ -113,8 +113,6 @@ class PostgresTarget(object):
 
                 nested_upsert_tables = []
                 for table_name, subtable_json_schema in subtables.items():
-                    subtable_json_schema['type'] = json_schema.simplify_type(subtable_json_schema['type'])
-
                     temp_table_name = self.upsert_table_schema(cur,
                                                                table_name,
                                                                subtable_json_schema,
@@ -262,8 +260,6 @@ class PostgresTarget(object):
                              subtables,
                              level):
         for prop, item_json_schema in table_json_schema['properties'].items():
-            item_json_schema['type'] = json_schema.simplify_type(item_json_schema['type'])
-
             next_path = current_path + self.NESTED_SEPARATOR + prop
             if item_json_schema['type'] == 'object':
                 self.denest_schema_helper(table_name,
@@ -295,7 +291,6 @@ class PostgresTarget(object):
             new_properties = {'value': table_json_schema['items']}
 
         for pk, item_json_schema in key_prop_schemas.items():
-            item_json_schema['type'] = json_schema.simplify_type(item_json_schema['type'])
             new_properties[SINGER_SOURCE_PK_PREFIX + pk] = item_json_schema
 
         new_properties[SINGER_SEQUENCE] = {
@@ -316,8 +311,6 @@ class PostgresTarget(object):
     def denest_schema(self, table_name, table_json_schema, key_prop_schemas, subtables, current_path=None, level=-1):
         new_properties = {}
         for prop, item_json_schema in table_json_schema['properties'].items():
-            item_json_schema['type'] = json_schema.simplify_type(item_json_schema['type'])
-
             if current_path:
                 next_path = current_path + self.NESTED_SEPARATOR + prop
             else:
@@ -628,17 +621,18 @@ class PostgresTarget(object):
         else:
             raise Exception('Unsupported type `{}` in existing target table'.format(sql_type))
 
+        json_type = [json_type]
         if nullable:
-            json_type = ['null', json_type]
+            json_type.append('null')
 
-        ret_json_schema = {'type': json_schema.simplify_type(json_type)}
+        ret_json_schema = {'type': json_type}
         if _format:
             ret_json_schema['format'] = _format
 
         return ret_json_schema
 
     def json_schema_to_sql(self, target_json_schema):
-        _type = json_schema.simplify_type(target_json_schema['type'])
+        _type = json_schema.get_type(target_json_schema)
         not_null = True
         ln = len(_type)
         if ln == 1:
