@@ -21,6 +21,9 @@ def _get_ref(schema, paths):
     if not paths:
         return schema
 
+    if not paths[0] in schema:
+        raise Exception('`$ref` "{}" not found in provided JSON Schema'.format(paths[0]))
+
     return _get_ref(schema[paths[0]], paths[1:])
 
 
@@ -30,10 +33,15 @@ def get_ref(schema, ref):
     :param schema: dict, JSON Schema
     :param ref: string
     :return: dict, JSON Schema
+    :raises: Exception
     """
 
+    # Explicitly only allow absolute internally defined $ref's
+    if not re.match(r'^#/.*', ref):
+        raise Exception('Invalid format for `$ref`: "{}"'.format(ref))
+
     return _get_ref(schema,
-                    re.split('/', re.sub('#/', '', ref)))
+                    re.split('/', re.sub(r'^#/', '', ref)))
 
 
 def is_ref(schema):
@@ -42,7 +50,7 @@ def is_ref(schema):
 
     NOTE: `$ref` OVERRIDES all other keys present in a schema
     :param schema:
-    :return:
+    :return: Boolean
     """
 
     return '$ref' in schema
@@ -88,7 +96,10 @@ def _helper_simplify(root_schema, child_schema):
         return child_schema
 
     elif is_ref(child_schema):
-        return _helper_simplify(root_schema, get_ref(root_schema, child_schema['$ref']))
+        try:
+            return _helper_simplify(root_schema, get_ref(root_schema, child_schema['$ref']))
+        except RecursionError:
+            raise Exception('Target `$ref` "{}" is recursive'.format(get_ref(root_schema, child_schema['$ref'])))
 
     elif is_object(child_schema):
         properties = {}
@@ -120,6 +131,7 @@ def simplify(schema):
 
     :param schema: dict, JSON Schema
     :return: dict, JSON Schema
+    :raises: Exception
     """
 
     return _helper_simplify(schema, schema)
