@@ -51,6 +51,12 @@ It ignores "STATE" type Singer messages.
 - JSON Schema combinations such as "anyOf" and "allOf" are not supported.
 - JSON Schema $ref is not supported.
 
+## Usage Logging
+
+[Singer.io](https://www.singer.io/) requires offical taps and targets to collect anonymous usage data. This data is only used in aggregate to report on individual tap/targets, as well as the Singer community at-large. IP addresses are recorded to detect unique tap/targets users but not shared with third-parties.
+
+To disable anonymous data collection set `disable_collection` to `false` in the configuration JSON file.
+
 ## Developing
 `target-postgres` utilizes [setup.py](https://python-packaging.readthedocs.io/en/latest/index.html) for package
 management, and [PyTest](https://docs.pytest.org/en/latest/contents.html) for testing.
@@ -91,3 +97,12 @@ To run tests, try:
 ```sh
 $ python setup.py pytest
 ```
+
+## Sponsorship
+
+Target Postgres is sponsored by Data Mill (Data Mill Services, LLC) [datamill.co](https://datamill.co/).
+
+Data Mill helps organizations utilize modern data infrastructure and data science to power analytics, products, and services.
+
+------
+Copyright Data Mill Services, LLC 2018

@@ -4,6 +4,9 @@ import sys
 import io
 import json
 import uuid
+import threading
+import http.client
+import pkg_resources
 
 import singer
 from singer import utils, metadata, metrics
@@ -87,8 +90,32 @@ def line_handler(streams, target, max_batch_rows, max_batch_size, line):
             line_data['type'],
             line))
 
+def send_usage_stats():
+    try:
+        version = pkg_resources.get_distribution('target-csv').version
+        conn = http.client.HTTPConnection('collector.singer.io', timeout=10)
+        conn.connect()
+        params = {
+            'e': 'se',
+            'aid': 'singer',
+            'se_ca': 'target-postgres',
+            'se_ac': 'open',
+            'se_la': version,
+        }
+        conn.request('GET', '/i?' + urllib.parse.urlencode(params))
+        response = conn.getresponse()
+        conn.close()
+    except:
+        logger.debug('Collection request failed')
+
 def main(config, input_stream=None):
     try:
+        if not config.get('disable_collection', False):
+            logger.info('Sending version information to singer.io. ' +
+                        'To disable sending anonymous usage data, set ' +
+                        'the config parameter "disable_collection" to true')
+            threading.Thread(target=send_usage_stats).start()
+
         connection = psycopg2.connect(
             host=config.get('postgres_host', 'localhost'),
             port=config.get('postgres_port', 5432),
