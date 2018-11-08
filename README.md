@@ -39,17 +39,28 @@ It ignores "STATE" type Singer messages.
 - Requires a [JSON Schema](https://json-schema.org/) for every stream.
 - Only string, string with date-time format, integer, number, boolean, object, and array types with or without null are supported. Arrays can have any of the other types listed, including objects as types within items. 
     - Example of JSON Schema types that work
-        - ['number']
-        - ['string']
-        - ['string', 'null']
+        - `['number']`
+        - `['string']`
+        - `['string', 'null']`
     - Exmaple of JSON Schema types that **DO NOT** work
-        - ['string', 'integer']
-        - ['integer', 'number']
-        - ['any']
-        - ['null']
+        - `['string', 'integer']`
+        - `['integer', 'number']`
+        - `['any']`
+        - `['null']`
 - Types cannot change
-- JSON Schema combinations such as "anyOf" and "allOf" are not supported.
-- JSON Schema $ref is not supported.
+- JSON Schema combinations such as `anyOf` and `allOf` are not supported.
+- JSON Schema $ref is partially supported:
+  - ***NOTE:*** The following limitations are known to **NOT** fail gracefully
+  - Presently you cannot have any circular or recursive `$ref`s
+  - `$ref`s must be present within the schema:
+    - URI's do not work
+    - if the `$ref` is broken, the behaviour is considered unexpected
+
+## Usage Logging
+
+[Singer.io](https://www.singer.io/) requires offical taps and targets to collect anonymous usage data. This data is only used in aggregate to report on individual tap/targets, as well as the Singer community at-large. IP addresses are recorded to detect unique tap/targets users but not shared with third-parties.
+
+To disable anonymous data collection set `disable_collection` to `true` in the configuration JSON file.
 
 ## Developing
 `target-postgres` utilizes [setup.py](https://python-packaging.readthedocs.io/en/latest/index.html) for package
@@ -91,3 +102,12 @@ To run tests, try:
 ```sh
 $ python setup.py pytest
 ```
+
+## Sponsorship
+
+Target Postgres is sponsored by Data Mill (Data Mill Services, LLC) [datamill.co](https://datamill.co/).
+
+Data Mill helps organizations utilize modern data infrastructure and data science to power analytics, products, and services.
+
+------
+Copyright Data Mill Services, LLC 2018
