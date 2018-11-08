@@ -140,7 +140,7 @@ def test_loading__invalid__configuration__schema():
         main(CONFIG, input_stream=stream)
 
 
-def test_loading_simple(db_cleanup):
+def test_loading__simple(db_cleanup):
     stream = CatStream(100)
     main(CONFIG, input_stream=stream)
 

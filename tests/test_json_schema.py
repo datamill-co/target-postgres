@@ -10,11 +10,11 @@ def test_is_object():
     assert json_schema.is_object({})
 
 
-def test_simplify_empty():
+def test_simplify__empty():
     assert json_schema.simplify({}) == {}
 
 
-def test_simplify_types_into_arrays():
+def test_simplify__types_into_arrays():
     assert \
         json_schema.simplify(
             {'type': 'null'}
@@ -31,7 +31,7 @@ def test_simplify_types_into_arrays():
                 'a': {'type': ['string']}}}
 
 
-def test_simplify_complex():
+def test_simplify__complex():
     assert \
         json_schema.simplify({
             'type': ['null', 'array'],
@@ -96,7 +96,7 @@ def test_simplify_complex():
                                         'format': 'date-time'}}}}}}}}
 
 
-def test_simplify_refs():
+def test_simplify__refs():
     assert \
         json_schema.simplify(
             {
@@ -179,7 +179,7 @@ def test_simplify_refs():
                         'state': {'type': ['string']}}}}}
 
 
-def test_simplify_refs_invalid_format():
+def test_simplify__refs__invalid_format():
     with pytest.raises(Exception, match=r'Invalid format.*'):
         json_schema.simplify(
             {
@@ -199,7 +199,7 @@ def test_simplify_refs_invalid_format():
                     'singleton': {'$ref': '#definitions/singleton'}}})
 
 
-def test_simplify_refs_missing():
+def test_simplify__refs__missing():
     with pytest.raises(Exception, match=r'.*not found.*'):
         json_schema.simplify(
             {
@@ -218,7 +218,7 @@ def test_simplify_refs_missing():
                     'singleton': {'$ref': '#/definitions/foo/bar'}}})
 
 
-def test_simplify_refs_circular():
+def test_simplify__refs__circular():
     with pytest.raises(Exception, match=r'.*is recursive.*'):
         json_schema.simplify(
             {
@@ -258,7 +258,7 @@ def test_simplify_refs_circular():
                     'person': {'$ref': '#/definitions/person'}}})
 
 
-def test_validation_errors_valid_schemas():
+def test_validation_errors():
     assert json_schema.validation_errors({}) \
            == []
 
@@ -306,7 +306,7 @@ def _non_string_elements(x):
     return problems
 
 
-def test_validation_errors_invalid_schemas():
+def test_validation_errors__invalid_schemas():
     invalid_type_test = json_schema.validation_errors({'type': 'well this should not work'})
     assert invalid_type_test
     assert not _non_string_elements(invalid_type_test)
@@ -339,7 +339,7 @@ def test_validation_errors_invalid_schemas():
     assert not _non_string_elements(non_standard_schema_version)
 
 
-def test_validation_errors_invalid_draft_version():
+def test_validation_errors__invalid_draft_version():
     draft_3 = json_schema.validation_errors({'$schema': 'http://json-schema.org/draft-03/schema#'})
     assert draft_3
     assert not _non_string_elements(draft_3)
