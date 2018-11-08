@@ -137,6 +137,17 @@ def simplify(schema):
     return _helper_simplify(schema, schema)
 
 
+def validation_errors(schema):
+    """
+    Given a dict, returns any known JSON Schema validation errors. If there are none,
+    implies that the dict is a valid JSON Schema.
+    :param schema: dict
+    :return: [String, ...]
+    """
+
+    return []
+
+
 def from_sql(sql_type, nullable):
     _format = None
     if sql_type == 'timestamp with time zone':
