@@ -191,6 +191,24 @@ class CatStream(FakeStream):
             'adoption': adoption
         }
 
+class InvalidCatStream(CatStream):
+    def generate_record(self):
+        record = CatStream.generate_record(self)
+
+        if chance.boolean(likelihood=50):
+            record['adoption'] = ['invalid', 'adoption']
+        elif chance.boolean(likelihood=50):
+            record['age'] = 'very invalid age'
+        elif chance.boolean(likelihood=50):
+            record['adoption']['immunizations'] = {
+                'type': chance.pickone(['a', 'b', 'c']),
+                'date_administered': ['clearly', 'not', 'a', 'date']
+            }
+        else:
+            record['name'] = 22/7
+
+        return record
+
 def clear_db():
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
