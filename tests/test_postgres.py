@@ -1,9 +1,11 @@
 import io
+from copy import deepcopy
 from datetime import datetime
 from unittest.mock import patch
 
 import psycopg2
 import psycopg2.extras
+import pytest
 
 from target_postgres import main
 from target_postgres import singer_stream
@@ -127,6 +129,16 @@ def assert_records(conn, records, table_name, pks, match_pks=False):
 
             if match_pks:
                 assert sorted(list(persisted_records.keys())) == sorted(records_pks)
+
+
+def test_loading__invalid__configuration__schema():
+    stream = CatStream(1)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['type'] = 'invalid type for a JSON Schema'
+
+    with pytest.raises(Exception, match=r'.*invalid JSON Schema instance.*'):
+        main(CONFIG, input_stream=stream)
+
 
 def test_loading_simple(db_cleanup):
     stream = CatStream(100)
