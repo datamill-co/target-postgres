@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from target_postgres import json_schema
@@ -304,6 +306,27 @@ def _non_string_elements(x):
         if not isinstance(x[i], str):
             problems.append((i, x[i]))
     return problems
+
+
+def test_validation_errors__invalid_objects():
+    def _invalid_type_ex(ret):
+        return re.match(r'.*not a dict.*', ret[0])
+
+    non_dict_object__int = json_schema.validation_errors(12345)
+    assert _invalid_type_ex(non_dict_object__int)
+    assert not _non_string_elements(non_dict_object__int)
+
+    non_dict_object__string = json_schema.validation_errors('woah no')
+    assert _invalid_type_ex(non_dict_object__string)
+    assert not _non_string_elements(non_dict_object__string)
+
+    non_dict_object__tuple = json_schema.validation_errors(('hello', 'world'))
+    assert _invalid_type_ex(non_dict_object__tuple)
+    assert not _non_string_elements(non_dict_object__tuple)
+
+    non_dict_object__list = json_schema.validation_errors([1, 2, 3])
+    assert _invalid_type_ex(non_dict_object__list)
+    assert not _non_string_elements(non_dict_object__list)
 
 
 def test_validation_errors__invalid_schemas():

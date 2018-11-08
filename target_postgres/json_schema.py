@@ -175,6 +175,9 @@ def validation_errors(schema):
 
     errors = []
 
+    if not isinstance(schema, dict):
+        errors.append('Parameter `schema` is not a dict, instead found: {}'.format(type(schema)))
+
     try:
         if not _valid_schema_version(schema):
             errors.append('Schema version must be Draft 4. Found: {}'.format('$schema'))
