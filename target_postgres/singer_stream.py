@@ -3,6 +3,13 @@ import arrow
 
 from target_postgres.pysize import get_size
 
+
+class Error(Exception):
+    """
+    Raise when there is an Exception with Singer Streams.
+    """
+
+
 SINGER_RECEIVED_AT = '_sdc_received_at'
 SINGER_BATCHED_AT = '_sdc_batched_at'
 SINGER_SEQUENCE = '_sdc_sequence'
@@ -11,17 +18,22 @@ SINGER_PK = '_sdc_primary_key'
 SINGER_SOURCE_PK_PREFIX = '_sdc_source_key_'
 SINGER_LEVEL = '_sdc_level_{}_id'
 
+
 class BufferedSingerStream(object):
     def __init__(self,
                  stream,
                  schema,
                  key_properties,
                  *args,
+                 invalid_records_detect=True,
+                 invalid_records_threshold=0,
                  max_rows=200000,
-                 max_buffer_size=104857600, # 100MB
+                 max_buffer_size=104857600,  # 100MB
                  **kwargs):
         self.update_schema(schema, key_properties)
         self.stream = stream
+        self.invalid_records_detect = invalid_records_detect
+        self.invalid_records_threshold = invalid_records_threshold
         self.max_rows = max_rows
         self.max_buffer_size = max_buffer_size
 

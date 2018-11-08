@@ -78,7 +78,10 @@ def line_handler(streams, target, max_batch_rows, max_batch_size, line):
             raise Exception('A record for stream {} was encountered before a corresponding schema'
                 .format(line_data['stream']))
 
-        streams[line_data['stream']].add_record_message(line_data)
+        message = streams[line_data['stream']].add_record_message(line_data)
+        if message:
+            raise Exception('Adding record failed',message)
+
     elif line_data['type'] == 'ACTIVATE_VERSION':
         if 'stream' not in line_data:
             raise Exception('`stream` is a required key: {}'.format(line))
