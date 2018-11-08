@@ -1,4 +1,3 @@
-import io
 from copy import deepcopy
 from datetime import datetime
 from unittest.mock import patch
@@ -10,7 +9,7 @@ import pytest
 from target_postgres import main
 from target_postgres import singer_stream
 from target_postgres import postgres
-from fixtures import CatStream, InvalidCatStream, CONFIG, TEST_DB, db_cleanup
+from fixtures import CatStream, CONFIG, db_cleanup, InvalidCatStream, TEST_DB
 
 ## TODO: create and test more fake streams
 ## TODO: test invalid data against JSON Schema

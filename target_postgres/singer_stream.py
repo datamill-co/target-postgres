@@ -1,6 +1,5 @@
 from jsonschema import Draft4Validator, FormatChecker
 from jsonschema.exceptions import ValidationError
-import arrow
 
 from target_postgres.pysize import get_size
 
