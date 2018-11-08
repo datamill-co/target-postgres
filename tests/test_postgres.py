@@ -152,6 +152,13 @@ def test_loading__invalid__records__disable():
 
     main(config, input_stream=InvalidCatStream(100))
 
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_columns_sql('cats'))
+            # No columns for a non existent table
+            ## Since all `cat`s records were invalid, we could not persist them, hence, no table created
+            assert not cur.fetchall()
+
 
 def test_loading__invalid__records__threshold():
     config = deepcopy(CONFIG)

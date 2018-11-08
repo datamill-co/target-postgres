@@ -199,7 +199,7 @@ class InvalidCatStream(CatStream):
             record['adoption'] = ['invalid', 'adoption']
         elif chance.boolean(likelihood=50):
             record['age'] = 'very invalid age'
-        elif chance.boolean(likelihood=50):
+        elif record['adoption'] and chance.boolean(likelihood=50):
             record['adoption']['immunizations'] = {
                 'type': chance.pickone(['a', 'b', 'c']),
                 'date_administered': ['clearly', 'not', 'a', 'date']

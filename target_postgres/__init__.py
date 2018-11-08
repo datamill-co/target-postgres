@@ -30,7 +30,7 @@ def flush_streams(streams, target, force=False):
         if force or stream_buffer.buffer_full:
             flush_stream(target, stream_buffer)
 
-def line_handler(streams, target, max_batch_rows, max_batch_size, line):
+def line_handler(streams, target, invalid_records_detect, invalid_records_threshold, max_batch_rows, max_batch_size, line):
     try:
         line_data = json.loads(line)
     except json.decoder.JSONDecodeError:
@@ -63,7 +63,9 @@ def line_handler(streams, target, max_batch_rows, max_batch_size, line):
         if stream not in streams:
             buffered_stream = BufferedSingerStream(stream,
                                                    schema,
-                                                   key_properties)
+                                                   key_properties,
+                                                   invalid_records_detect=invalid_records_detect,
+                                                   invalid_records_threshold=invalid_records_threshold)
             if max_batch_rows:
                 buffered_stream.max_rows = max_batch_rows
             if max_batch_size:
@@ -138,6 +140,8 @@ def main(config, input_stream=None):
             LOGGER,
             postgres_schema=config.get('postgres_schema', 'public'))
 
+        invalid_records_detect = config.get('invalid_records_detect')
+        invalid_records_threshold = config.get('invalid_records_threshold')
         max_batch_rows = config.get('max_batch_rows')
         max_batch_size = config.get('max_batch_size')
         batch_detection_threshold = config.get('batch_detection_threshold', 5000)
@@ -147,7 +151,13 @@ def main(config, input_stream=None):
 
         line_count = 0
         for line in input_stream:
-            line_handler(streams, postgres_target, max_batch_rows, max_batch_size, line)
+            line_handler(streams,
+                         postgres_target,
+                         invalid_records_detect,
+                         invalid_records_threshold,
+                         max_batch_rows,
+                         max_batch_size,
+                         line)
             if line_count > 0 and line_count % batch_detection_threshold == 0:
                 flush_streams(streams, postgres_target)
             line_count += 1

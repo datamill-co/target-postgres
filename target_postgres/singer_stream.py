@@ -26,18 +26,28 @@ class BufferedSingerStream(object):
                  schema,
                  key_properties,
                  *args,
-                 invalid_records_detect=True,
-                 invalid_records_threshold=0,
+                 invalid_records_detect=None,
+                 invalid_records_threshold=None,
                  max_rows=200000,
                  max_buffer_size=104857600,  # 100MB
                  **kwargs):
+        """
+        :param invalid_records_detect: Defaults to True when value is None
+        :param invalid_records_threshold: Defaults to 0 when value is None
+        """
         self.update_schema(schema, key_properties)
         self.stream = stream
         self.invalid_records = []
-        self.invalid_records_detect = invalid_records_detect
-        self.invalid_records_threshold = invalid_records_threshold
         self.max_rows = max_rows
         self.max_buffer_size = max_buffer_size
+
+        self.invalid_records_detect = invalid_records_detect
+        self.invalid_records_threshold = invalid_records_threshold
+
+        if self.invalid_records_detect is None:
+            self.invalid_records_detect = True
+        if self.invalid_records_threshold is None:
+            self.invalid_records_threshold = 0
 
         self.__buffer = []
         self.__count = 0
@@ -76,22 +86,21 @@ class BufferedSingerStream(object):
     def add_record_message(self, record_message):
         add_record = True
 
-        if self.invalid_records_detect:
-            try:
-                self.validator.validate(record_message['record'])
-            except ValidationError as error:
-                add_record = False
-                self.invalid_records.append((error, record_message))
-
-                if len(self.invalid_records) >= self.invalid_records_threshold:
-                    raise Error('Invalid records detected above threshold: {}. See `.args` for details.'.format(
-                        self.invalid_records_threshold
-                    ), self.invalid_records)
+        try:
+            self.validator.validate(record_message['record'])
+        except ValidationError as error:
+            add_record = False
+            self.invalid_records.append((error, record_message))
 
         if add_record:
             self.__buffer.append(record_message)
             self.__size += get_size(record_message)
             self.__count += 1
+        elif self.invalid_records_detect \
+                and len(self.invalid_records) >= self.invalid_records_threshold:
+            raise Error('Invalid records detected above threshold: {}. See `.args` for details.'.format(
+                self.invalid_records_threshold
+            ), self.invalid_records)
 
     def peek_buffer(self):
         return self.__buffer
