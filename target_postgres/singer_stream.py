@@ -1,4 +1,5 @@
 from jsonschema import Draft4Validator, FormatChecker
+from jsonschema.exceptions import ValidationError
 import arrow
 
 from target_postgres.pysize import get_size
@@ -32,6 +33,7 @@ class BufferedSingerStream(object):
                  **kwargs):
         self.update_schema(schema, key_properties)
         self.stream = stream
+        self.invalid_records = []
         self.invalid_records_detect = invalid_records_detect
         self.invalid_records_threshold = invalid_records_threshold
         self.max_rows = max_rows
@@ -72,10 +74,24 @@ class BufferedSingerStream(object):
         return False
 
     def add_record_message(self, record_message):
-        self.validator.validate(record_message['record'])
-        self.__buffer.append(record_message)
-        self.__size += get_size(record_message)
-        self.__count += 1
+        add_record = True
+
+        if self.invalid_records_detect:
+            try:
+                self.validator.validate(record_message['record'])
+            except ValidationError as error:
+                add_record = False
+                self.invalid_records.append((error, record_message))
+
+                if len(self.invalid_records) >= self.invalid_records_threshold:
+                    raise Error('Invalid records detected above threshold: {}. See `.args` for details.'.format(
+                        self.invalid_records_threshold
+                    ), self.invalid_records)
+
+        if add_record:
+            self.__buffer.append(record_message)
+            self.__size += get_size(record_message)
+            self.__count += 1
 
     def peek_buffer(self):
         return self.__buffer
