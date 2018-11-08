@@ -30,6 +30,14 @@ def flush_streams(streams, target, force=False):
         if force or stream_buffer.buffer_full:
             flush_stream(target, stream_buffer)
 
+def report_invalid_records(streams):
+    for stream_buffer in streams.values():
+        if stream_buffer.peek_invalid_records():
+            LOGGER.error("Invalid records detected for stream {}: {}".format(
+                stream_buffer.stream,
+                stream_buffer.peek_invalid_records()
+            ))
+
 def line_handler(streams, target, invalid_records_detect, invalid_records_threshold, max_batch_rows, max_batch_size, line):
     try:
         line_data = json.loads(line)
@@ -120,6 +128,7 @@ def send_usage_stats():
         LOGGER.debug('Collection request failed')
 
 def main(config, input_stream=None):
+    streams = {}
     try:
         if not config.get('disable_collection', False):
             LOGGER.info('Sending version information to singer.io. ' +
@@ -134,7 +143,6 @@ def main(config, input_stream=None):
             user=config.get('postgres_username'),
             password=config.get('postgres_password'))
 
-        streams = {}
         postgres_target = PostgresTarget(
             connection,
             LOGGER,
@@ -168,6 +176,8 @@ def main(config, input_stream=None):
     except Exception as e:
         LOGGER.critical(e)
         raise e
+    finally:
+        report_invalid_records(streams)
 
 def cli():
     args = utils.parse_args(REQUIRED_CONFIG_KEYS)
