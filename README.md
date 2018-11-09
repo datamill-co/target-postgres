@@ -35,6 +35,16 @@ Run `target-postgres` against a [Singer](https://singer.io) stream.
 
 It ignores "STATE" type Singer messages.
 
+### Configuration
+#### Invalid Records
+- `invalid_records_detect`: Optional `Boolean`
+  - Defaults to `true`
+  - Include `false` in your config to disable `target-postgres` from crashing on invalid records
+- `invalid_records_threshold`: Optional `Integer`
+  - Defaults to `0`
+  - Include a positive value `n` in your config to allow for `target-postgres` to encounter at most `n` invalid records
+    per stream before giving up.
+
 ## Known Limitations
 - Requires a [JSON Schema](https://json-schema.org/) for every stream.
 - Only string, string with date-time format, integer, number, boolean, object, and array types with or without null are supported. Arrays can have any of the other types listed, including objects as types within items. 
