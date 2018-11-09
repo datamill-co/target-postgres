@@ -67,10 +67,17 @@ class PostgresTarget(object):
                                                          self.postgres_schema,
                                                          stream_buffer.stream)
 
-                ## TODO: check if PK has changed. Fail on PK change? Just update and log on PK change?
-
                 if table_metadata:
                     current_table_version = table_metadata.get('version', None)
+
+                    if set(stream_buffer.key_properties) \
+                            != set(table_metadata.get('key_properties')):
+                        raise Error(
+                            '`key_properties` change detected. Existing values are: {}. Streamed values are: {}'.format(
+                                table_metadata.get('key_properties'),
+                                stream_buffer.key_properties
+                            ))
+
                 else:
                     current_table_version = None
 
