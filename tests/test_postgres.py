@@ -233,6 +233,20 @@ def test_upsert(db_cleanup):
             assert cur.fetchone()[0] == 200
         assert_records(conn, stream.records, 'cats', 'id')
 
+
+def test_upsert__invalid__primary_key_change(db_cleanup):
+    stream = CatStream(100)
+    main(CONFIG, input_stream=stream)
+
+    stream = CatStream(100)
+    schema = deepcopy(stream.schema)
+    schema['key_properties'].append('name')
+    stream.schema = schema
+
+    with pytest.raises(postgres.Error, match=r'.*key_properties.*'):
+        main(CONFIG, input_stream=stream)
+
+
 def test_nested_delete_on_parent(db_cleanup):
     stream = CatStream(100, nested_count=3)
     main(CONFIG, input_stream=stream)
