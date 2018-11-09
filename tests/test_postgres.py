@@ -6,7 +6,7 @@ import psycopg2
 import psycopg2.extras
 import pytest
 
-from target_postgres import main
+from target_postgres import TargetError, main
 from target_postgres import singer_stream
 from target_postgres import postgres
 from fixtures import CatStream, CONFIG, db_cleanup, InvalidCatStream, TEST_DB
@@ -135,12 +135,12 @@ def test_loading__invalid__configuration__schema():
     stream.schema = deepcopy(stream.schema)
     stream.schema['schema']['type'] = 'invalid type for a JSON Schema'
 
-    with pytest.raises(Exception, match=r'.*invalid JSON Schema instance.*'):
+    with pytest.raises(TargetError, match=r'.*invalid JSON Schema instance.*'):
         main(CONFIG, input_stream=stream)
 
 
 def test_loading__invalid__records():
-    with pytest.raises(Exception, match=r'.*'):
+    with pytest.raises(singer_stream.Error, match=r'.*'):
         main(CONFIG,
              input_stream=InvalidCatStream(1))
 
@@ -163,7 +163,7 @@ def test_loading__invalid__records__threshold():
     config = deepcopy(CONFIG)
     config['invalid_records_threshold'] = 10
 
-    with pytest.raises(Exception, match=r'.*.10*'):
+    with pytest.raises(singer_stream.Error, match=r'.*.10*'):
         main(config, input_stream=InvalidCatStream(20))
 
 

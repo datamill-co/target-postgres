@@ -20,6 +20,11 @@ from target_postgres.singer_stream import (
     SINGER_LEVEL
 )
 
+class Error(Exception):
+    """
+    Raise this when there is an error with regards to Postgres streaming
+    """
+
 class TransformStream(object):
     def __init__(self, fun):
         self.fun = fun
@@ -144,10 +149,11 @@ class PostgresTarget(object):
                                       records_map[nested_upsert_table['table_name']])
 
                 cur.execute('COMMIT;')
-            except:
+            except Exception as ex:
                 cur.execute('ROLLBACK;')
-                self.logger.exception('Exception writing records')
-                raise
+                message = 'Exception writing records'
+                self.logger.exception(message)
+                raise Error(message, ex)
 
         stream_buffer.flush_buffer()
 
@@ -192,12 +198,13 @@ class PostgresTarget(object):
                                                                 'old'),
                                 stream_table=sql.Identifier(table_name),
                                 version_table=sql.Identifier(versioned_table_name)))
-            except:
+            except Exception as ex:
                 cur.execute('ROLLBACK;')
-                self.logger.exception('{} - Exception activating table version {}'.format(
+                message = '{} - Exception activating table version {}'.format(
                     stream_buffer.stream,
-                    version))
-                raise
+                    version)
+                self.logger.exception(message)
+                raise Error(message, ex)
 
     def add_singer_columns(self, schema, key_properties):
         properties = schema['properties']
@@ -613,9 +620,10 @@ class PostgresTarget(object):
         if comment:
             try:
                 comment_meta = json.loads(comment)
-            except:
-                self.logger.exception('Could not load table comment metadata')
-                raise
+            except Exception as ex:
+                message = 'Could not load table comment metadata'
+                self.logger.exception(message)
+                raise Error(message, ex)
         else:
             comment_meta = None
 
@@ -657,7 +665,7 @@ class PostgresTarget(object):
         if _type == 'boolean':
             return 'FALSE'
 
-        raise Exception('Non-trival default needed on new non-null column `{}`'.format(column))
+        raise Error('Non-trival default needed on new non-null column `{}`'.format(column))
 
     def add_column(self, cur, table_schema, table_name, column_name, data_type, default_value):
         if default_value is not None:
