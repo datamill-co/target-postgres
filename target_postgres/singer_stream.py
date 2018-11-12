@@ -4,7 +4,7 @@ from jsonschema.exceptions import ValidationError
 from target_postgres.pysize import get_size
 
 
-class Error(Exception):
+class SingerStreamError(Exception):
     """
     Raise when there is an Exception with Singer Streams.
     """
@@ -97,7 +97,7 @@ class BufferedSingerStream(object):
             self.__count += 1
         elif self.invalid_records_detect \
                 and len(self.invalid_records) >= self.invalid_records_threshold:
-            raise Error('Invalid records detected above threshold: {}. See `.args` for details.'.format(
+            raise SingerStreamError('Invalid records detected above threshold: {}. See `.args` for details.'.format(
                 self.invalid_records_threshold
             ), self.invalid_records)
 

@@ -1,6 +1,6 @@
 import pytest
 
-from target_postgres.singer_stream import BufferedSingerStream, Error
+from target_postgres.singer_stream import BufferedSingerStream, SingerStreamError
 from fixtures import CatStream, InvalidCatStream, CATS_SCHEMA
 
 
@@ -24,7 +24,7 @@ def test_add_record_message__invalid_record():
     singer_stream = BufferedSingerStream(CATS_SCHEMA['stream'],
                                          CATS_SCHEMA['schema'],
                                          CATS_SCHEMA['key_properties'])
-    with pytest.raises(Error):
+    with pytest.raises(SingerStreamError):
         singer_stream.add_record_message(stream.generate_record_message())
 
     assert singer_stream.peek_invalid_records()
@@ -55,7 +55,7 @@ def test_add_record_message__invalid_record__cross_threshold():
     singer_stream.add_record_message(stream.generate_record_message())
     singer_stream.add_record_message(stream.generate_record_message())
 
-    with pytest.raises(Error):
+    with pytest.raises(SingerStreamError):
         singer_stream.add_record_message(stream.generate_record_message())
 
     assert singer_stream.peek_invalid_records()
