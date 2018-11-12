@@ -1,5 +1,14 @@
 import re
 
+from jsonschema import Draft4Validator
+from jsonschema.exceptions import SchemaError
+
+
+class JSONSchemaError(Exception):
+    """
+    Raise this when there is an error with regards to an instance of JSON Schema
+    """
+
 
 def get_type(schema):
     """
@@ -22,7 +31,7 @@ def _get_ref(schema, paths):
         return schema
 
     if not paths[0] in schema:
-        raise Exception('`$ref` "{}" not found in provided JSON Schema'.format(paths[0]))
+        raise JSONSchemaError('`$ref` "{}" not found in provided JSON Schema'.format(paths[0]))
 
     return _get_ref(schema[paths[0]], paths[1:])
 
@@ -38,7 +47,7 @@ def get_ref(schema, ref):
 
     # Explicitly only allow absolute internally defined $ref's
     if not re.match(r'^#/.*', ref):
-        raise Exception('Invalid format for `$ref`: "{}"'.format(ref))
+        raise JSONSchemaError('Invalid format for `$ref`: "{}"'.format(ref))
 
     return _get_ref(schema,
                     re.split('/', re.sub(r'^#/', '', ref)))
@@ -99,7 +108,7 @@ def _helper_simplify(root_schema, child_schema):
         try:
             return _helper_simplify(root_schema, get_ref(root_schema, child_schema['$ref']))
         except RecursionError:
-            raise Exception('Target `$ref` "{}" is recursive'.format(get_ref(root_schema, child_schema['$ref'])))
+            raise JSONSchemaError('`$ref` path "{}" is recursive'.format(get_ref(root_schema, child_schema['$ref'])))
 
     elif is_object(child_schema):
         properties = {}
@@ -135,6 +144,61 @@ def simplify(schema):
     """
 
     return _helper_simplify(schema, schema)
+
+
+def _valid_schema_version(schema):
+    return '$schema' not in schema \
+           or schema['$schema'] == 'http://json-schema.org/draft-04/schema#'
+
+
+def _unexpected_validation_error(errors, exception):
+    """
+
+    :param errors: [String, ...]
+    :param exception: Exception
+    :return: [String, ...]
+    """
+
+    if not errors:
+        return ['Unexpected exception encountered: {}'.format(str(exception))]
+
+    return errors
+
+
+def validation_errors(schema):
+    """
+    Given a dict, returns any known JSON Schema validation errors. If there are none,
+    implies that the dict is a valid JSON Schema.
+    :param schema: dict
+    :return: [String, ...]
+    """
+
+    errors = []
+
+    if not isinstance(schema, dict):
+        errors.append('Parameter `schema` is not a dict, instead found: {}'.format(type(schema)))
+
+    try:
+        if not _valid_schema_version(schema):
+            errors.append('Schema version must be Draft 4. Found: {}'.format('$schema'))
+    except Exception as ex:
+        errors = _unexpected_validation_error(errors, ex)
+
+    try:
+        Draft4Validator.check_schema(schema)
+    except SchemaError as error:
+        errors.append(str(error))
+    except Exception as ex:
+        errors = _unexpected_validation_error(errors, ex)
+
+    try:
+        simplify(schema)
+    except JSONSchemaError as error:
+        errors.append(str(error))
+    except Exception as ex:
+        errors = _unexpected_validation_error(errors, ex)
+
+    return errors
 
 
 def from_sql(sql_type, nullable):
