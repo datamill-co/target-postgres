@@ -14,6 +14,7 @@ import psycopg2
 
 from target_postgres.postgres import PostgresTarget
 from target_postgres.singer_stream import BufferedSingerStream
+from target_postgres import json_schema
 
 LOGGER = singer.get_logger()
 
@@ -42,11 +43,18 @@ def line_handler(streams, target, max_batch_rows, max_batch_size, line):
     if line_data['type'] == 'SCHEMA':
         if 'stream' not in line_data:
             raise Exception('`stream` is a required key: {}'.format(line))
+
+        stream = line_data['stream']
+
         if 'schema' not in line_data:
             raise Exception('`schema` is a required key: {}'.format(line))
 
-        stream = line_data['stream']
         schema = line_data['schema']
+
+        schema_validation_errors = json_schema.validation_errors(schema)
+        if schema_validation_errors:
+            raise Exception('`schema` is an invalid JSON Schema instance: {}'.format(line), *schema_validation_errors)
+
         if 'key_properties' in line_data:
             key_properties = line_data['key_properties']
         else:
