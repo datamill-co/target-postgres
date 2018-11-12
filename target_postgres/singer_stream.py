@@ -97,9 +97,10 @@ class BufferedSingerStream(object):
             self.__count += 1
         elif self.invalid_records_detect \
                 and len(self.invalid_records) >= self.invalid_records_threshold:
-            raise SingerStreamError('Invalid records detected above threshold: {}. See `.args` for details.'.format(
-                self.invalid_records_threshold
-            ), self.invalid_records)
+            raise SingerStreamError(
+                'Invalid records detected above threshold: {}. See `.args` for details.'.format(
+                    self.invalid_records_threshold),
+                self.invalid_records)
 
     def peek_buffer(self):
         return self.__buffer

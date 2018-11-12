@@ -33,7 +33,7 @@ def flush_streams(streams, target, force=False):
 def report_invalid_records(streams):
     for stream_buffer in streams.values():
         if stream_buffer.peek_invalid_records():
-            LOGGER.error("Invalid records detected for stream {}: {}".format(
+            LOGGER.warn("Invalid records detected for stream {}: {}".format(
                 stream_buffer.stream,
                 stream_buffer.peek_invalid_records()
             ))
