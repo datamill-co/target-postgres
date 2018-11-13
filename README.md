@@ -58,6 +58,27 @@ here.
 | `invalid_records_detect` | `["boolean", "null"]`| `true` | Include `false` in your config to disable `target-postgres` from crashing on invalid records |
 | `invalid_records_threshold` | `["integer", "null"]` | `0` | Include a positive value `n` in your config to allow for `target-postgres` to encounter at most `n` invalid records per stream before giving up. |
 
+### Supported Versions
+
+`target-postgres` only supports [JSON Schema Draft4](http://json-schema.org/specification-links.html#draft-4).
+While declaring a schema _is optional_, any input schema which declares a version
+other than 4 will be rejected.
+
+`target-postgres` supports all versions of PostgreSQL which are presently supported
+by the PostgreSQL Global Development Group. Our [CI config](https://github.com/datamill-co/target-postgres/blob/master/.circleci/config.yml) defines all versions we are currently supporting.
+
+
+| Version | Current minor | Supported | First Release | Final Release |
+| ------- | ------------- | --------- | ------------- | ------------- |
+| 11 | 11.1 | Yes | October 18, 2018 | November 9, 2023 |
+| 10 | 10.6 | Yes | October 5, 2017 | November 10, 2022 |
+| 9.6 | 9.6.11 | Yes | September 29, 2016 | November 11, 2021 |
+| 9.5 | 9.5.15 | Yes | January 7, 2016 | February 11, 2021 |
+| 9.4 | 9.4.20 | Yes | December 18, 2014 | February 13, 2020 |
+| 9.3 | 9.3.25 | No | September 9, 2013 | November 8, 2018 |
+
+_The above is copied from the [current list of versions](https://www.postgresql.org/support/versioning/) on Postgresql.org_
+
 ## Known Limitations
 
 - Ignores `STATE` Singer messages.
@@ -91,10 +112,12 @@ here.
 To disable anonymous data collection set `disable_collection` to `true` in the configuration JSON file.
 
 ## Developing
+
 `target-postgres` utilizes [setup.py](https://python-packaging.readthedocs.io/en/latest/index.html) for package
 management, and [PyTest](https://docs.pytest.org/en/latest/contents.html) for testing.
 
 ### Docker
+
 If you have [Docker](https://www.docker.com/) and [Docker Compose](https://docs.docker.com/compose/) installed, you can
 easily run the following to get a local env setup quickly.
 
@@ -112,6 +135,7 @@ $ docker exec -it target-postgres_target-postgres_1 sh # Your container names mi
 See the [PyTest](#pytest) commands below!
 
 ### DB
+
 To run the tests, you will need a PostgreSQL server running.
 
 ***NOTE:*** Testing assumes that you've exposed the traditional port `5432`.
@@ -125,6 +149,7 @@ $ EXPORT POSTGRES_USER='<your-user-name'  # Probably just 'postgres', make sure 
 ```
 
 ### PyTest
+
 To run tests, try:
 
 ```sh
