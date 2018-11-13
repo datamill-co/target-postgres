@@ -22,6 +22,11 @@ REQUIRED_CONFIG_KEYS = [
     'postgres_database'
 ]
 
+class TargetError(Exception):
+    """
+    Raise when there is an Exception streaming data to the target.
+    """
+
 def flush_stream(target, stream_buffer):
     target.write_batch(stream_buffer)
 
@@ -46,22 +51,22 @@ def line_handler(streams, target, invalid_records_detect, invalid_records_thresh
         raise
 
     if 'type' not in line_data:
-        raise Exception('`type` is a required key: {}'.format(line))
+        raise TargetError('`type` is a required key: {}'.format(line))
 
     if line_data['type'] == 'SCHEMA':
         if 'stream' not in line_data:
-            raise Exception('`stream` is a required key: {}'.format(line))
+            raise TargetError('`stream` is a required key: {}'.format(line))
 
         stream = line_data['stream']
 
         if 'schema' not in line_data:
-            raise Exception('`schema` is a required key: {}'.format(line))
+            raise TargetError('`schema` is a required key: {}'.format(line))
 
         schema = line_data['schema']
 
         schema_validation_errors = json_schema.validation_errors(schema)
         if schema_validation_errors:
-            raise Exception('`schema` is an invalid JSON Schema instance: {}'.format(line), *schema_validation_errors)
+            raise TargetError('`schema` is an invalid JSON Schema instance: {}'.format(line), *schema_validation_errors)
 
         if 'key_properties' in line_data:
             key_properties = line_data['key_properties']
@@ -83,21 +88,21 @@ def line_handler(streams, target, invalid_records_detect, invalid_records_thresh
             streams[stream].update_schema(schema, key_properties)
     elif line_data['type'] == 'RECORD':
         if 'stream' not in line_data:
-            raise Exception('`stream` is a required key: {}'.format(line))
+            raise TargetError('`stream` is a required key: {}'.format(line))
         if line_data['stream'] not in streams:
-            raise Exception('A record for stream {} was encountered before a corresponding schema'
-                .format(line_data['stream']))
+            raise TargetError('A record for stream {} was encountered before a corresponding schema'
+                              .format(line_data['stream']))
 
         streams[line_data['stream']].add_record_message(line_data)
 
     elif line_data['type'] == 'ACTIVATE_VERSION':
         if 'stream' not in line_data:
-            raise Exception('`stream` is a required key: {}'.format(line))
+            raise TargetError('`stream` is a required key: {}'.format(line))
         if 'version' not in line_data:
-            raise Exception('`version` is a required key: {}'.format(line))
+            raise TargetError('`version` is a required key: {}'.format(line))
         if line_data['stream'] not in streams:
-            raise Exception('A ACTIVATE_VERSION for stream {} was encountered before a corresponding schema'
-                .format(line_data['stream']))
+            raise TargetError('A ACTIVATE_VERSION for stream {} was encountered before a corresponding schema'
+                              .format(line_data['stream']))
 
         stream_buffer = streams[line_data['stream']]
         target.write_batch(stream_buffer)
@@ -105,7 +110,7 @@ def line_handler(streams, target, invalid_records_detect, invalid_records_thresh
     elif line_data['type'] == 'STATE':
         LOGGER.warn('`STATE` Singer message type not supported')
     else:
-        raise Exception('Unknown message type {} in message {}'.format(
+        raise TargetError('Unknown message type {} in message {}'.format(
             line_data['type'],
             line))
 
