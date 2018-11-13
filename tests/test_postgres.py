@@ -6,7 +6,7 @@ import psycopg2
 import psycopg2.extras
 import pytest
 
-from target_postgres import main
+from target_postgres import TargetError, main
 from target_postgres import singer_stream
 from target_postgres import postgres
 from fixtures import CatStream, CONFIG, db_cleanup, InvalidCatStream, TEST_DB
@@ -135,12 +135,12 @@ def test_loading__invalid__configuration__schema():
     stream.schema = deepcopy(stream.schema)
     stream.schema['schema']['type'] = 'invalid type for a JSON Schema'
 
-    with pytest.raises(Exception, match=r'.*invalid JSON Schema instance.*'):
+    with pytest.raises(TargetError, match=r'.*invalid JSON Schema instance.*'):
         main(CONFIG, input_stream=stream)
 
 
 def test_loading__invalid__records():
-    with pytest.raises(Exception, match=r'.*'):
+    with pytest.raises(singer_stream.SingerStreamError, match=r'.*'):
         main(CONFIG,
              input_stream=InvalidCatStream(1))
 
@@ -163,7 +163,7 @@ def test_loading__invalid__records__threshold():
     config = deepcopy(CONFIG)
     config['invalid_records_threshold'] = 10
 
-    with pytest.raises(Exception, match=r'.*.10*'):
+    with pytest.raises(singer_stream.SingerStreamError, match=r'.*.10*'):
         main(config, input_stream=InvalidCatStream(20))
 
 
@@ -232,6 +232,20 @@ def test_upsert(db_cleanup):
             cur.execute(get_count_sql('cats'))
             assert cur.fetchone()[0] == 200
         assert_records(conn, stream.records, 'cats', 'id')
+
+
+def test_upsert__invalid__primary_key_change(db_cleanup):
+    stream = CatStream(100)
+    main(CONFIG, input_stream=stream)
+
+    stream = CatStream(100)
+    schema = deepcopy(stream.schema)
+    schema['key_properties'].append('name')
+    stream.schema = schema
+
+    with pytest.raises(postgres.PostgresError, match=r'.*key_properties.*'):
+        main(CONFIG, input_stream=stream)
+
 
 def test_nested_delete_on_parent(db_cleanup):
     stream = CatStream(100, nested_count=3)
