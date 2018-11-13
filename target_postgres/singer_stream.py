@@ -1,7 +1,14 @@
 from jsonschema import Draft4Validator, FormatChecker
-import arrow
+from jsonschema.exceptions import ValidationError
 
 from target_postgres.pysize import get_size
+
+
+class SingerStreamError(Exception):
+    """
+    Raise when there is an Exception with Singer Streams.
+    """
+
 
 SINGER_RECEIVED_AT = '_sdc_received_at'
 SINGER_BATCHED_AT = '_sdc_batched_at'
@@ -11,19 +18,35 @@ SINGER_PK = '_sdc_primary_key'
 SINGER_SOURCE_PK_PREFIX = '_sdc_source_key_'
 SINGER_LEVEL = '_sdc_level_{}_id'
 
+
 class BufferedSingerStream(object):
     def __init__(self,
                  stream,
                  schema,
                  key_properties,
                  *args,
+                 invalid_records_detect=None,
+                 invalid_records_threshold=None,
                  max_rows=200000,
-                 max_buffer_size=104857600, # 100MB
+                 max_buffer_size=104857600,  # 100MB
                  **kwargs):
+        """
+        :param invalid_records_detect: Defaults to True when value is None
+        :param invalid_records_threshold: Defaults to 0 when value is None
+        """
         self.update_schema(schema, key_properties)
         self.stream = stream
+        self.invalid_records = []
         self.max_rows = max_rows
         self.max_buffer_size = max_buffer_size
+
+        self.invalid_records_detect = invalid_records_detect
+        self.invalid_records_threshold = invalid_records_threshold
+
+        if self.invalid_records_detect is None:
+            self.invalid_records_detect = True
+        if self.invalid_records_threshold is None:
+            self.invalid_records_threshold = 0
 
         self.__buffer = []
         self.__count = 0
@@ -60,10 +83,24 @@ class BufferedSingerStream(object):
         return False
 
     def add_record_message(self, record_message):
-        self.validator.validate(record_message['record'])
-        self.__buffer.append(record_message)
-        self.__size += get_size(record_message)
-        self.__count += 1
+        add_record = True
+
+        try:
+            self.validator.validate(record_message['record'])
+        except ValidationError as error:
+            add_record = False
+            self.invalid_records.append((error, record_message))
+
+        if add_record:
+            self.__buffer.append(record_message)
+            self.__size += get_size(record_message)
+            self.__count += 1
+        elif self.invalid_records_detect \
+                and len(self.invalid_records) >= self.invalid_records_threshold:
+            raise SingerStreamError(
+                'Invalid records detected above threshold: {}. See `.args` for details.'.format(
+                    self.invalid_records_threshold),
+                self.invalid_records)
 
     def peek_buffer(self):
         return self.__buffer
@@ -74,3 +111,6 @@ class BufferedSingerStream(object):
         self.__size = 0
         self.__count = 0
         return _buffer
+
+    def peek_invalid_records(self):
+        return self.invalid_records

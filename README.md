@@ -14,12 +14,11 @@ A [Singer](https://singer.io/) postgres target, for use with Singer streams gene
 
 ## Usage
 
-Create a config file with postgres connection information and target postgres schema.
+Create a [JSON config file](#configjson) similar to the following:
 
 ```json
 {
   "postgres_host": "locahost",
-  "postgres_port": 5432,
   "postgres_database": "my_analytics",
   "postgres_username": "myuser",
   "postgres_password": "1234",
@@ -27,13 +26,26 @@ Create a config file with postgres connection information and target postgres sc
 }
 ```
 
-Run `target-postgres` against a [Singer](https://singer.io) stream.
+Then run `target-postgres` against a [Singer](https://singer.io) stream:
 
 ```sh
-	tap-something | target-postgres --config config.json
+  tap-something | target-postgres --config config.json
 ```
 
-It ignores "STATE" type Singer messages.
+NOTE: It ignores "STATE" type Singer messages.postgres connection information and target postgres schema.
+
+### Config.json
+
+| Field | Type | Default | Details |
+| ----- | ---- | ------- | ------- |
+| `postgres_host` |`["string", "null"]` | `"localhost"` | |
+| `postgres_port` | `["integer", "null"]`|  `5432` | |
+| `postgres_database` | `["string"]`|  `N/A` | |
+| `postgres_username` | `["string", "null"]` |  `"postgres"` | |
+| `postgres_password` | `["string", "null"]`|  `null` | |
+| `postgres_schema` | `["string", "null"]` |  `"public"` | |
+| `invalid_records_detect` | `["boolean", "null"]`| `true` | Include `false` in your config to disable `target-postgres` from crashing on invalid records |
+| `invalid_records_threshold` | `["integer", "null"]` | `0` | Include a positive value `n` in your config to allow for `target-postgres` to encounter at most `n` invalid records per stream before giving up. |
 
 ## Known Limitations
 - Requires a [JSON Schema](https://json-schema.org/) for every stream.

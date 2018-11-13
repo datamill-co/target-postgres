@@ -30,7 +30,15 @@ def flush_streams(streams, target, force=False):
         if force or stream_buffer.buffer_full:
             flush_stream(target, stream_buffer)
 
-def line_handler(streams, target, max_batch_rows, max_batch_size, line):
+def report_invalid_records(streams):
+    for stream_buffer in streams.values():
+        if stream_buffer.peek_invalid_records():
+            LOGGER.warn("Invalid records detected for stream {}: {}".format(
+                stream_buffer.stream,
+                stream_buffer.peek_invalid_records()
+            ))
+
+def line_handler(streams, target, invalid_records_detect, invalid_records_threshold, max_batch_rows, max_batch_size, line):
     try:
         line_data = json.loads(line)
     except json.decoder.JSONDecodeError:
@@ -63,7 +71,9 @@ def line_handler(streams, target, max_batch_rows, max_batch_size, line):
         if stream not in streams:
             buffered_stream = BufferedSingerStream(stream,
                                                    schema,
-                                                   key_properties)
+                                                   key_properties,
+                                                   invalid_records_detect=invalid_records_detect,
+                                                   invalid_records_threshold=invalid_records_threshold)
             if max_batch_rows:
                 buffered_stream.max_rows = max_batch_rows
             if max_batch_size:
@@ -79,6 +89,7 @@ def line_handler(streams, target, max_batch_rows, max_batch_size, line):
                 .format(line_data['stream']))
 
         streams[line_data['stream']].add_record_message(line_data)
+
     elif line_data['type'] == 'ACTIVATE_VERSION':
         if 'stream' not in line_data:
             raise Exception('`stream` is a required key: {}'.format(line))
@@ -117,6 +128,7 @@ def send_usage_stats():
         LOGGER.debug('Collection request failed')
 
 def main(config, input_stream=None):
+    streams = {}
     try:
         if not config.get('disable_collection', False):
             LOGGER.info('Sending version information to singer.io. ' +
@@ -131,12 +143,13 @@ def main(config, input_stream=None):
             user=config.get('postgres_username'),
             password=config.get('postgres_password'))
 
-        streams = {}
         postgres_target = PostgresTarget(
             connection,
             LOGGER,
             postgres_schema=config.get('postgres_schema', 'public'))
 
+        invalid_records_detect = config.get('invalid_records_detect')
+        invalid_records_threshold = config.get('invalid_records_threshold')
         max_batch_rows = config.get('max_batch_rows')
         max_batch_size = config.get('max_batch_size')
         batch_detection_threshold = config.get('batch_detection_threshold', 5000)
@@ -146,7 +159,13 @@ def main(config, input_stream=None):
 
         line_count = 0
         for line in input_stream:
-            line_handler(streams, postgres_target, max_batch_rows, max_batch_size, line)
+            line_handler(streams,
+                         postgres_target,
+                         invalid_records_detect,
+                         invalid_records_threshold,
+                         max_batch_rows,
+                         max_batch_size,
+                         line)
             if line_count > 0 and line_count % batch_detection_threshold == 0:
                 flush_streams(streams, postgres_target)
             line_count += 1
@@ -157,6 +176,8 @@ def main(config, input_stream=None):
     except Exception as e:
         LOGGER.critical(e)
         raise e
+    finally:
+        report_invalid_records(streams)
 
 def cli():
     args = utils.parse_args(REQUIRED_CONFIG_KEYS)
