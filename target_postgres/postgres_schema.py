@@ -1,4 +1,15 @@
+from copy import deepcopy
 import re
+
+from target_postgres.singer_stream import (
+    SINGER_RECEIVED_AT,
+    SINGER_BATCHED_AT,
+    SINGER_SEQUENCE,
+    SINGER_TABLE_VERSION,
+    SINGER_PK,
+    SINGER_SOURCE_PK_PREFIX,
+    SINGER_LEVEL
+)
 
 """
 NAMEDATALEN _defaults_ to 64 in PostgreSQL. The maxmimum length for an identifier is
@@ -43,3 +54,37 @@ def canonicalize_column_name(column_name):
 
     lowered_name = column_name.lower()
     return lowered_name[0] + re.sub(r'[^\w\d_$]', '_', lowered_name[1:])
+
+
+def add_singer_columns(schema, key_properties):
+    ret_schema = deepcopy(schema)
+    properties = ret_schema['properties']
+
+    if SINGER_RECEIVED_AT not in properties:
+        properties[SINGER_RECEIVED_AT] = {
+            'type': ['null', 'string'],
+            'format': 'date-time'
+        }
+
+    if SINGER_SEQUENCE not in properties:
+        properties[SINGER_SEQUENCE] = {
+            'type': ['null', 'integer']
+        }
+
+    if SINGER_TABLE_VERSION not in properties:
+        properties[SINGER_TABLE_VERSION] = {
+            'type': ['null', 'integer']
+        }
+
+    if SINGER_BATCHED_AT not in properties:
+        properties[SINGER_BATCHED_AT] = {
+            'type': ['null', 'string'],
+            'format': 'date-time'
+        }
+
+    if len(key_properties) == 0:
+        properties[SINGER_PK] = {
+            'type': ['string']
+        }
+
+    return ret_schema

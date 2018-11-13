@@ -107,10 +107,9 @@ class PostgresTarget(object):
                 else:
                     records = records_all_versions
 
-                root_table_schema = json_schema.simplify(stream_buffer.schema)
-
-                ## Add singer columns to root table
-                self.add_singer_columns(root_table_schema, stream_buffer.key_properties)
+                root_table_schema = postgres_schema.add_singer_columns(
+                    json_schema.simplify(stream_buffer.schema),
+                    stream_buffer.key_properties)
 
                 subtables = {}
                 key_prop_schemas = {}
@@ -213,36 +212,6 @@ class PostgresTarget(object):
                     version)
                 self.logger.exception(message)
                 raise PostgresError(message, ex)
-
-    def add_singer_columns(self, schema, key_properties):
-        properties = schema['properties']
-
-        if SINGER_RECEIVED_AT not in properties:
-            properties[SINGER_RECEIVED_AT] = {
-                'type': ['null', 'string'],
-                'format': 'date-time'
-            }
-
-        if SINGER_SEQUENCE not in properties:
-            properties[SINGER_SEQUENCE] = {
-                'type': ['null', 'integer']
-            }
-
-        if SINGER_TABLE_VERSION not in properties:
-            properties[SINGER_TABLE_VERSION] = {
-                'type': ['null', 'integer']
-            }
-
-        if SINGER_BATCHED_AT not in properties:
-            properties[SINGER_BATCHED_AT] = {
-                'type': ['null', 'string'],
-                'format': 'date-time'
-            }
-
-        if len(key_properties) == 0:
-            properties[SINGER_PK] = {
-                'type': ['string']
-            }
 
     def process_record_message(self, use_uuid_pk, batched_at, record_message):
         record = record_message['record']
