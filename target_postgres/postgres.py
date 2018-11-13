@@ -20,7 +20,7 @@ from target_postgres.singer_stream import (
     SINGER_LEVEL
 )
 
-class Error(Exception):
+class PostgresError(Exception):
     """
     Raise this when there is an error with regards to Postgres streaming
     """
@@ -72,7 +72,7 @@ class PostgresTarget(object):
 
                     if set(stream_buffer.key_properties) \
                             != set(table_metadata.get('key_properties')):
-                        raise Error(
+                        raise PostgresError(
                             '`key_properties` change detected. Existing values are: {}. Streamed values are: {}'.format(
                                 table_metadata.get('key_properties'),
                                 stream_buffer.key_properties
@@ -160,7 +160,7 @@ class PostgresTarget(object):
                 cur.execute('ROLLBACK;')
                 message = 'Exception writing records'
                 self.logger.exception(message)
-                raise Error(message, ex)
+                raise PostgresError(message, ex)
 
         stream_buffer.flush_buffer()
 
@@ -211,7 +211,7 @@ class PostgresTarget(object):
                     stream_buffer.stream,
                     version)
                 self.logger.exception(message)
-                raise Error(message, ex)
+                raise PostgresError(message, ex)
 
     def add_singer_columns(self, schema, key_properties):
         properties = schema['properties']
@@ -630,7 +630,7 @@ class PostgresTarget(object):
             except Exception as ex:
                 message = 'Could not load table comment metadata'
                 self.logger.exception(message)
-                raise Error(message, ex)
+                raise PostgresError(message, ex)
         else:
             comment_meta = None
 
@@ -672,7 +672,7 @@ class PostgresTarget(object):
         if _type == 'boolean':
             return 'FALSE'
 
-        raise Error('Non-trival default needed on new non-null column `{}`'.format(column))
+        raise PostgresError('Non-trival default needed on new non-null column `{}`'.format(column))
 
     def add_column(self, cur, table_schema, table_name, column_name, data_type, default_value):
         if default_value is not None:

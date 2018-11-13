@@ -140,7 +140,7 @@ def test_loading__invalid__configuration__schema():
 
 
 def test_loading__invalid__records():
-    with pytest.raises(singer_stream.Error, match=r'.*'):
+    with pytest.raises(singer_stream.SingerStreamError, match=r'.*'):
         main(CONFIG,
              input_stream=InvalidCatStream(1))
 
@@ -163,7 +163,7 @@ def test_loading__invalid__records__threshold():
     config = deepcopy(CONFIG)
     config['invalid_records_threshold'] = 10
 
-    with pytest.raises(singer_stream.Error, match=r'.*.10*'):
+    with pytest.raises(singer_stream.SingerStreamError, match=r'.*.10*'):
         main(config, input_stream=InvalidCatStream(20))
 
 
@@ -243,7 +243,7 @@ def test_upsert__invalid__primary_key_change(db_cleanup):
     schema['key_properties'].append('name')
     stream.schema = schema
 
-    with pytest.raises(postgres.Error, match=r'.*key_properties.*'):
+    with pytest.raises(postgres.PostgresError, match=r'.*key_properties.*'):
         main(CONFIG, input_stream=stream)
 
 

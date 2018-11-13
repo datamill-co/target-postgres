@@ -215,7 +215,7 @@ def from_sql(sql_type, nullable):
     elif sql_type == 'text':
         json_type = 'string'
     else:
-        raise Error('Unsupported type `{}` in existing target table'.format(sql_type))
+        raise JSONSchemaError('Unsupported type `{}` in existing target table'.format(sql_type))
 
     json_type = [json_type]
     if nullable:
@@ -241,7 +241,7 @@ def to_sql(schema):
         else:
             _type = _type[0]
     elif ln > 2:
-        raise Error('Multiple types per column not supported')
+        raise JSONSchemaError('Multiple types per column not supported')
 
     sql_type = 'text'
 
