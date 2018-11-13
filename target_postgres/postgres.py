@@ -10,6 +10,7 @@ import arrow
 from psycopg2 import sql
 
 import target_postgres.json_schema as json_schema
+import target_postgres.postgres_schema as postgres_schema
 from target_postgres.singer_stream import (
     SINGER_RECEIVED_AT,
     SINGER_BATCHED_AT,
@@ -600,8 +601,9 @@ class PostgresTarget(object):
         columns_sql = []
         for prop, item_json_schema in schema['properties'].items():
             sql_type = json_schema.to_sql(item_json_schema)
-            columns_sql.append(sql.SQL('{} {}').format(sql.Identifier(prop),
-                                                       sql.SQL(sql_type)))
+            columns_sql.append(sql.SQL('{} {}').format(
+                sql.Identifier(postgres_schema.canonicalize_column_name(prop)),
+                sql.SQL(sql_type)))
 
         if key_properties:
             comment_sql = sql.SQL('COMMENT ON TABLE {}.{} IS {};').format(
@@ -685,7 +687,7 @@ class PostgresTarget(object):
                     'ADD COLUMN {column_name} {data_type}{default_value};').format(
                     table_schema=sql.Identifier(table_schema),
                     table_name=sql.Identifier(table_name),
-                    column_name=sql.Identifier(column_name),
+                    column_name=sql.Identifier(postgres_schema.canonicalize_column_name(column_name)),
                     data_type=sql.SQL(data_type),
                     default_value=default_value))
 

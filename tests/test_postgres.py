@@ -9,7 +9,8 @@ import pytest
 from target_postgres import TargetError, main
 from target_postgres import singer_stream
 from target_postgres import postgres
-from fixtures import CatStream, CONFIG, db_cleanup, InvalidCatStream, TEST_DB
+from target_postgres import postgres_schema
+from fixtures import CatStream, CATS_SCHEMA, CONFIG, db_cleanup, InvalidCatStream, TEST_DB
 
 ## TODO: create and test more fake streams
 ## TODO: test invalid data against JSON Schema
@@ -204,6 +205,21 @@ def test_loading__simple(db_cleanup):
             assert cur.fetchone()[0] == 100
 
         assert_records(conn, stream.records, 'cats', 'id')
+
+
+def test_loading__invalid_columns(db_cleanup):
+    stream = CatStream(100)
+
+    invalid_schema = deepcopy(CATS_SCHEMA)
+    invalid_schema['schema']['properties']['!!!invalid_column_name'] = invalid_schema['schema']['properties']['age']
+
+    stream.schema = invalid_schema
+
+    with pytest.raises(postgres.PostgresError) as ex:
+        main(CONFIG, input_stream=stream)
+
+    assert isinstance(ex.value.args[1], postgres_schema.SchemaError)
+
 
 def test_upsert(db_cleanup):
     stream = CatStream(100)

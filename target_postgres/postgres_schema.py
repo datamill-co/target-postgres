@@ -29,12 +29,12 @@ def canonicalize_column_name(column_name):
 
     if not re.match(r'^[a-zA-Z_]', column_name):
         raise SchemaError(
-            'Field {} cannot be canonicalized. Must start with an letter, or underscore'.format(
+            'Field "{}" cannot be canonicalized. Must start with an letter, or underscore'.format(
                 column_name))
 
     if len(column_name) > NAMEDATALEN:
         raise SchemaError(
-            'Field {} cannot be canonicalized. Length {} must be less than or equal to {}'.format(
+            'Field "{}" cannot be canonicalized. Length {} must be less than or equal to {}'.format(
                 column_name,
                 len(column_name),
                 NAMEDATALEN))
