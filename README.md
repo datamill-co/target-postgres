@@ -14,27 +14,38 @@ A [Singer](https://singer.io/) postgres target, for use with Singer streams gene
 
 ## Usage
 
-Create a [JSON config file](#configjson) similar to the following:
+1. Follow the
+   [Singer.io Best Practices](https://github.com/singer-io/getting-started/blob/master/docs/RUNNING_AND_DEVELOPING.md#running-a-singer-tap-with-a-singer-target)
+   for setting up separate `tap` and `target` virtualenvs to avoid version
+   conflicts.
 
-```json
-{
-  "postgres_host": "locahost",
-  "postgres_database": "my_analytics",
-  "postgres_username": "myuser",
-  "postgres_password": "1234",
-  "postgres_schema": "mytapname"
-}
-```
+1. Create a [config file](#configjson) at
+   `~/singer.io/target_postgres_config.json` with postgres connection
+   information and target postgres schema.
 
-Then run `target-postgres` against a [Singer](https://singer.io) stream:
+   ```json
+   {
+     "postgres_host": "localhost",
+     "postgres_port": 5432,
+     "postgres_database": "my_analytics",
+     "postgres_username": "myuser",
+     "postgres_password": "1234",
+     "postgres_schema": "mytapname"
+   }
+   ```
 
-```sh
-  tap-something | target-postgres --config config.json
-```
+1. Run `target-postgres` against a [Singer](https://singer.io) tap.
 
-NOTE: It ignores "STATE" type Singer messages.postgres connection information and target postgres schema.
+   ```bash
+   ~/.virtualenvs/tap-something/bin/tap-something \
+     | ~/.virtualenvs/target-postgres/bin/target-postgres \
+       --config ~/singer.io/target_postgres_config.json
+   ```
 
 ### Config.json
+
+The fields available to be specified in the config file are specified
+here.
 
 | Field | Type | Default | Details |
 | ----- | ---- | ------- | ------- |
@@ -70,8 +81,12 @@ _The above is copied from the [current list of versions](https://www.postgresql.
 
 ## Known Limitations
 
+- Ignores `STATE` Singer messages.
 - Requires a [JSON Schema](https://json-schema.org/) for every stream.
-- Only string, string with date-time format, integer, number, boolean, object, and array types with or without null are supported. Arrays can have any of the other types listed, including objects as types within items. 
+- Only string, string with date-time format, integer, number, boolean,
+  object, and array types with or without null are supported. Arrays can
+  have any of the other types listed, including objects as types within
+  items.
     - Example of JSON Schema types that work
         - `['number']`
         - `['string']`
