@@ -1,7 +1,7 @@
 version: '2'
 services:
   db:
-    image: postgres
+    image: postgres:9.6.11
     environment:
       POSTGRES_DB: target_postgres_test
     ports:
