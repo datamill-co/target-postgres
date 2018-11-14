@@ -713,14 +713,24 @@ class PostgresTarget(object):
     def merge_put_schemas(self, cur, table_schema, table_name, existing_schema, new_schema):
         new_properties = new_schema['properties']
         existing_properties = existing_schema['properties']
-        for prop in new_properties:
-            if prop not in existing_properties:
-                existing_properties[prop] = new_properties[prop]
+        for name, schema in new_properties.items():
+            if name not in existing_properties:
+                existing_properties[name] = schema
                 self.add_column(cur,
                                 table_schema,
                                 table_name,
-                                prop,
+                                name,
                                 schema)
-            ## TODO: types do not match
+            elif json_schema.to_sql(schema) \
+                    != json_schema.to_sql(existing_properties[name]):
+                raise PostgresError('Column type change detected for: {}.{}.{}. Expected {} ({}), got {} ({})'.format(
+                    table_schema,
+                    table_name,
+                    name,
+                    json_schema.get_type(schema),
+                    json_schema.to_sql(schema),
+                    json_schema.get_type(existing_properties[name]),
+                    json_schema.to_sql(existing_properties[name])
+                ))
 
         return existing_schema
