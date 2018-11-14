@@ -10,6 +10,7 @@ import arrow
 from psycopg2 import sql
 
 import target_postgres.json_schema as json_schema
+from target_postgres.sql_schema import SQLSchema
 from target_postgres.singer_stream import (
     SINGER_RECEIVED_AT,
     SINGER_BATCHED_AT,
@@ -106,16 +107,8 @@ class PostgresTarget(object):
                 else:
                     records = records_all_versions
 
-                root_table_schema = json_schema.simplify(stream_buffer.schema)
-
-                ## Add singer columns to root table
-                self.add_singer_columns(root_table_schema, stream_buffer.key_properties)
-
-                subtables = {}
-                key_prop_schemas = {}
-                for key in stream_buffer.key_properties:
-                    key_prop_schemas[key] = root_table_schema['properties'][key]
-                self.denest_schema(root_table_name, root_table_schema, key_prop_schemas, subtables)
+                sql_schema = SQLSchema(root_table_name, stream_buffer)
+                root_table_schema = sql_schema.get_tables()[0][1]
 
                 root_temp_table_name = self.upsert_table_schema(cur,
                                                                 root_table_name,
@@ -124,7 +117,7 @@ class PostgresTarget(object):
                                                                 target_table_version)
 
                 nested_upsert_tables = []
-                for table_name, subtable_json_schema in subtables.items():
+                for table_name, subtable_json_schema in sql_schema.get_tables()[1:]:
                     temp_table_name = self.upsert_table_schema(cur,
                                                                table_name,
                                                                subtable_json_schema,
