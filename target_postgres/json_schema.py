@@ -227,7 +227,7 @@ def from_sql(sql_type, nullable, default):
     if _format:
         ret_json_schema['format'] = _format
 
-    if default:
+    if default is not None:
         ret_json_schema['default'] = default
 
     return ret_json_schema

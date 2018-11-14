@@ -553,7 +553,7 @@ class PostgresTarget(object):
                            if v.get('format') == 'date-time']
 
         default_fields = [k for k,v in target_table_json_schema['properties'].items()
-                          if v.get('default')]
+                          if v.get('default') is not None]
 
         rows = iter(records)
 
