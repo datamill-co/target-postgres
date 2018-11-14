@@ -674,7 +674,7 @@ class PostgresTarget(object):
 
     def get_schema(self, cur, table_schema, table_name):
         cur.execute(
-            sql.SQL('SELECT column_name, data_type, is_nullable FROM information_schema.columns ') +
+            sql.SQL('SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns ') +
             sql.SQL('WHERE table_schema = {} and table_name = {};').format(
                 sql.Literal(table_schema), sql.Literal(table_name)))
         columns = cur.fetchall()
@@ -684,7 +684,7 @@ class PostgresTarget(object):
 
         properties = {}
         for column in columns:
-            properties[column[0]] = json_schema.from_sql(column[1], column[2] == 'YES')
+            properties[column[0]] = json_schema.from_sql(column[1], column[2] == 'YES', column[3])
 
         schema = {'properties': properties}
 

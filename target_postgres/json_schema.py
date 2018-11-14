@@ -206,7 +206,7 @@ def validation_errors(schema):
     return errors
 
 
-def from_sql(sql_type, nullable):
+def from_sql(sql_type, nullable, default):
     _format = None
     if sql_type == 'timestamp with time zone':
         json_type = 'string'
@@ -229,6 +229,9 @@ def from_sql(sql_type, nullable):
     ret_json_schema = {'type': json_type}
     if _format:
         ret_json_schema['format'] = _format
+
+    if default:
+        ret_json_schema['default'] = default
 
     return ret_json_schema
 
