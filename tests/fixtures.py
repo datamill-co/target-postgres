@@ -36,6 +36,14 @@ CATS_SCHEMA = {
             'name': {
                 'type': ['string']
             },
+            'paw_size': {
+                'type': ['integer'],
+                'default': 314159
+            },
+            'flea_check_complete': {
+                'type': ['boolean'],
+                'default': False
+            },
             'pattern': {
                 'type': ['null', 'string']
             },
