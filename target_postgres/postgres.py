@@ -115,14 +115,18 @@ class PostgresTarget(object):
                                                                 root_table_schema.get_key_properties(),
                                                                 target_table_version)
 
-                nested_upsert_tables = []
+                upsert_tables = [{
+                    'table_schema': root_table_schema,
+                    'temp_table_name': root_temp_table_name
+                }]
+
                 for table_schema in sql_schema.get_tables()[1:]:
                     temp_table_name = self.upsert_table_schema(cur,
                                                                table_schema.get_name(),
                                                                table_schema.get_schema(),
                                                                None,
                                                                None)
-                    nested_upsert_tables.append({
+                    upsert_tables.append({
                         'table_schema': table_schema,
                         'temp_table_name': temp_table_name
                     })
@@ -132,17 +136,12 @@ class PostgresTarget(object):
                                     records,
                                     records_map,
                                     root_table_schema.get_key_properties())
-                self.persist_rows(cur,
-                                  root_table_schema.get_name(),
-                                  root_temp_table_name,
-                                  root_table_schema.get_schema(),
-                                  stream_buffer.key_properties,
-                                  records_map[root_table_name])
-                for nested_upsert_table in nested_upsert_tables:
-                    table_schema = nested_upsert_table['table_schema']
+
+                for upsert_table in upsert_tables:
+                    table_schema = upsert_table['table_schema']
                     self.persist_rows(cur,
                                       table_schema.get_name(),
-                                      nested_upsert_table['temp_table_name'],
+                                      upsert_table['temp_table_name'],
                                       table_schema.get_schema(),
                                       table_schema.get_key_properties(),
                                       records_map[table_schema.get_name()])
