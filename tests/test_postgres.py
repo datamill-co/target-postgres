@@ -186,6 +186,7 @@ def test_loading__simple(db_cleanup):
                 ('age', 'bigint', 'YES'),
                 ('id', 'bigint', 'NO'),
                 ('name', 'text', 'NO'),
+                ('paw_size', 'bigint', 'NO'),
                 ('pattern', 'text', 'YES')
             }
 

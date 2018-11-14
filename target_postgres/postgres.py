@@ -552,12 +552,20 @@ class PostgresTarget(object):
         datetime_fields = [k for k,v in target_table_json_schema['properties'].items()
                            if v.get('format') == 'date-time']
 
+        default_fields = [k for k,v in target_table_json_schema['properties'].items()
+                          if v.get('default')]
+
         rows = iter(records)
 
         def transform():
             try:
                 row = next(rows)
                 with io.StringIO() as out:
+                    ## Serialize fields which are not present but have default values set
+                    for prop in default_fields:
+                        if not prop in row:
+                            row[prop] = target_table_json_schema['properties'][prop]['default']
+
                     ## Serialize datetime to postgres compatible format
                     for prop in datetime_fields:
                         if prop in row:

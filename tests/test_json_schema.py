@@ -69,6 +69,10 @@ def test_simplify__complex():
                 'name': {
                     'type': ['string']
                 },
+                'paw_size': {
+                    'type': ['integer'],
+                    'default': 314159
+                },
                 'pattern': {
                     'type': ['null', 'string']
                 },
