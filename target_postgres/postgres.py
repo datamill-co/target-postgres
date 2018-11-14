@@ -107,12 +107,12 @@ class PostgresTarget(object):
                     records = records_all_versions
 
                 sql_schema = SQLSchema(root_table_name, stream_buffer)
-                root_table_schema = sql_schema.get_tables()[0].get_schema()
+                root_table_schema = sql_schema.get_tables()[0]
 
                 root_temp_table_name = self.upsert_table_schema(cur,
-                                                                root_table_name,
-                                                                root_table_schema,
-                                                                stream_buffer.key_properties,
+                                                                root_table_schema.get_name(),
+                                                                root_table_schema.get_schema(),
+                                                                root_table_schema.get_key_properties(),
                                                                 target_table_version)
 
                 nested_upsert_tables = []
@@ -123,29 +123,29 @@ class PostgresTarget(object):
                                                                None,
                                                                None)
                     nested_upsert_tables.append({
-                        'table_name': table_schema.get_name(),
-                        'json_schema': table_schema.get_schema(),
+                        'table_schema': table_schema,
                         'temp_table_name': temp_table_name
                     })
 
                 records_map = {}
-                self.denest_records(root_table_name, records, records_map, stream_buffer.key_properties)
+                self.denest_records(root_table_schema.get_name(),
+                                    records,
+                                    records_map,
+                                    root_table_schema.get_key_properties())
                 self.persist_rows(cur,
-                                  root_table_name,
+                                  root_table_schema.get_name(),
                                   root_temp_table_name,
-                                  root_table_schema,
+                                  root_table_schema.get_schema(),
                                   stream_buffer.key_properties,
                                   records_map[root_table_name])
                 for nested_upsert_table in nested_upsert_tables:
-                    key_properties = []
-                    for key in stream_buffer.key_properties:
-                        key_properties.append(SINGER_SOURCE_PK_PREFIX + key)
+                    table_schema = nested_upsert_table['table_schema']
                     self.persist_rows(cur,
-                                      nested_upsert_table['table_name'],
+                                      table_schema.get_name(),
                                       nested_upsert_table['temp_table_name'],
-                                      nested_upsert_table['json_schema'],
-                                      key_properties,
-                                      records_map[nested_upsert_table['table_name']])
+                                      table_schema.get_schema(),
+                                      table_schema.get_key_properties(),
+                                      records_map[table_schema.get_name()])
 
                 cur.execute('COMMIT;')
             except Exception as ex:
