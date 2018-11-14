@@ -103,10 +103,7 @@ def is_nullable(schema):
 def _helper_simplify(root_schema, child_schema):
     ret_schema = {}
 
-    if not child_schema:
-        pass
-
-    elif is_ref(child_schema):
+    if is_ref(child_schema):
         try:
             ret_schema = _helper_simplify(root_schema, get_ref(root_schema, child_schema['$ref']))
         except RecursionError:

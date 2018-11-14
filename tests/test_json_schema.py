@@ -12,8 +12,8 @@ def test_is_object():
     assert json_schema.is_object({})
 
 
-def test_simplify__empty():
-    assert json_schema.simplify({}) == {}
+def test_simplify__empty_becomes_object():
+    assert json_schema.simplify({}) == {'properties': {}, 'type': ['object']}
 
 
 def test_simplify__types_into_arrays():
