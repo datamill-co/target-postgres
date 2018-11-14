@@ -107,7 +107,7 @@ class PostgresTarget(object):
                     records = records_all_versions
 
                 sql_schema = SQLSchema(root_table_name, stream_buffer)
-                root_table_schema = sql_schema.get_tables()[0][1]
+                root_table_schema = sql_schema.get_tables()[0].get_schema()
 
                 root_temp_table_name = self.upsert_table_schema(cur,
                                                                 root_table_name,
@@ -116,15 +116,15 @@ class PostgresTarget(object):
                                                                 target_table_version)
 
                 nested_upsert_tables = []
-                for table_name, subtable_json_schema in sql_schema.get_tables()[1:]:
+                for table_schema in sql_schema.get_tables()[1:]:
                     temp_table_name = self.upsert_table_schema(cur,
-                                                               table_name,
-                                                               subtable_json_schema,
+                                                               table_schema.get_name(),
+                                                               table_schema.get_schema(),
                                                                None,
                                                                None)
                     nested_upsert_tables.append({
-                        'table_name': table_name,
-                        'json_schema': subtable_json_schema,
+                        'table_name': table_schema.get_name(),
+                        'json_schema': table_schema.get_schema(),
                         'temp_table_name': temp_table_name
                     })
 

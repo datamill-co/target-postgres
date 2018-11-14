@@ -47,8 +47,11 @@ def _create_subtable(table_name, table_json_schema, key_prop_schemas, subtables,
     else:
         new_properties = {'value': table_json_schema['items']}
 
+    nested_key_properties = []
     for pk, item_json_schema in key_prop_schemas.items():
-        new_properties[SINGER_SOURCE_PK_PREFIX + pk] = item_json_schema
+        nested_pk = SINGER_SOURCE_PK_PREFIX + pk
+        nested_key_properties.append(nested_pk)
+        new_properties[nested_pk] = item_json_schema
 
     new_properties[SINGER_SEQUENCE] = {
         'type': ['null', 'integer']
@@ -63,7 +66,7 @@ def _create_subtable(table_name, table_json_schema, key_prop_schemas, subtables,
 
     _denest_schema(table_name, new_schema, key_prop_schemas, subtables, level=level)
 
-    subtables[table_name] = new_schema
+    subtables.append(TableSchema(table_name, new_schema, nested_key_properties))
 
 
 def _denest_schema_helper(
@@ -131,6 +134,22 @@ def _add_singer_columns(schema, key_properties):
         }
 
 
+class TableSchema(object):
+    def __init__(self, name, schema, key_properties):
+        self.name = name
+        self.schema = schema
+        self.key_properties = key_properties
+
+    def get_name(self):
+        return self.name
+
+    def get_schema(self):
+        return self.schema
+
+    def get_key_properties(self):
+        return self.key_properties
+
+
 class SQLSchema(object):
     def __init__(self, table_name, stream_buffer):
         temp_json_schema = json_schema.simplify(stream_buffer.schema)
@@ -139,14 +158,11 @@ class SQLSchema(object):
         for key in stream_buffer.key_properties:
             key_prop_schemas[key] = temp_json_schema['properties'][key]
 
-        sub_tables_dict = {}
+        self.tables = [TableSchema(table_name, temp_json_schema, stream_buffer.key_properties)]
         _denest_schema(table_name,
                        temp_json_schema,
                        key_prop_schemas,
-                       sub_tables_dict)
-        self.tables = [(table_name, temp_json_schema)]
-        for name, schema in sub_tables_dict.items():
-            self.tables.append((name, schema))
+                       self.tables)
 
     def get_tables(self):
         """
