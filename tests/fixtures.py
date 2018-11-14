@@ -36,6 +36,10 @@ CATS_SCHEMA = {
             'name': {
                 'type': ['string']
             },
+            'paw_size': {
+                'type': ['integer'],
+                'default': 314159
+            },
             'pattern': {
                 'type': ['null', 'string']
             },

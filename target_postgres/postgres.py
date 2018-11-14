@@ -592,16 +592,35 @@ class PostgresTarget(object):
             parsed_datetime = arrow.get() # defaults to UTC now
         return parsed_datetime.format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
 
+    def add_column(self, cur, table_schema, table_name, column_name, column_schema):
+        data_type = json_schema.to_sql(column_schema)
+
+        default_value = self.get_null_default(column_name, column_schema)
+
+        if default_value is not None:
+            default_value = sql.SQL(' DEFAULT {}').format(sql.Literal(default_value))
+        elif not self.is_table_empty(cur, table_schema, table_name):
+            raise PostgresError('Non-trival default needed on new non-null column `{}.{}.{}`'.format(
+                table_schema,
+                table_name,
+                column_name))
+        else:
+            default_value = sql.SQL('')
+
+        to_execute = sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
+                             'ADD COLUMN {column_name} {data_type}{default_value};').format(
+            table_schema=sql.Identifier(table_schema),
+            table_name=sql.Identifier(table_name),
+            column_name=sql.Identifier(column_name),
+            data_type=sql.SQL(data_type),
+            default_value=default_value)
+
+        cur.execute(to_execute)
+
     def create_table(self, cur, table_schema, table_name, schema, key_properties, table_version):
         create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
                 sql.Identifier(table_schema),
                 sql.Identifier(table_name))
-
-        columns_sql = []
-        for prop, item_json_schema in schema['properties'].items():
-            sql_type = json_schema.to_sql(item_json_schema)
-            columns_sql.append(sql.SQL('{} {}').format(sql.Identifier(prop),
-                                                       sql.SQL(sql_type)))
 
         if key_properties:
             comment_sql = sql.SQL('COMMENT ON TABLE {}.{} IS {};').format(
@@ -611,9 +630,11 @@ class PostgresTarget(object):
         else:
             comment_sql = sql.SQL('')
 
-        cur.execute(sql.SQL('{} ({});{}').format(create_table_sql,
-                                                 sql.SQL(', ').join(columns_sql),
-                                                 comment_sql))
+        cur.execute(sql.SQL('{} ();{}').format(create_table_sql,
+                                               comment_sql))
+
+        for prop, column_json_schema in schema['properties'].items():
+            self.add_column(cur, table_schema, table_name, prop, column_json_schema)
 
     def get_temp_table_name(self, stream_name):
         return stream_name + self.NESTED_SEPARATOR + str(uuid.uuid4()).replace('-', '')
@@ -635,6 +656,13 @@ class PostgresTarget(object):
             comment_meta = None
 
         return comment_meta
+
+    def is_table_empty(self, cur, table_schema, table_name):
+        cur.execute(sql.SQL('SELECT COUNT(1) FROM {}.{};').format(
+            sql.Identifier(table_schema),
+            sql.Identifier(table_name)))
+
+        return cur.fetchall()[0][0] == 0
 
     def get_schema(self, cur, table_schema, table_name):
         cur.execute(
@@ -672,22 +700,7 @@ class PostgresTarget(object):
         if _type == 'boolean':
             return 'FALSE'
 
-        raise PostgresError('Non-trival default needed on new non-null column `{}`'.format(column))
-
-    def add_column(self, cur, table_schema, table_name, column_name, data_type, default_value):
-        if default_value is not None:
-            default_value = sql.SQL(' DEFAULT {}').format(sql.Literal(default_value))
-        else:
-            default_value = sql.SQL('')
-
-        cur.execute(
-            sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
-                    'ADD COLUMN {column_name} {data_type}{default_value};').format(
-                    table_schema=sql.Identifier(table_schema),
-                    table_name=sql.Identifier(table_name),
-                    column_name=sql.Identifier(column_name),
-                    data_type=sql.SQL(data_type),
-                    default_value=default_value))
+        return None
 
     def merge_put_schemas(self, cur, table_schema, table_name, existing_schema, new_schema):
         new_properties = new_schema['properties']
@@ -695,14 +708,11 @@ class PostgresTarget(object):
         for prop in new_properties:
             if prop not in existing_properties:
                 existing_properties[prop] = new_properties[prop]
-                data_type = json_schema.to_sql(new_properties[prop])
-                default_value = self.get_null_default(prop, new_properties[prop])
                 self.add_column(cur,
-                                 table_schema,
-                                 table_name,
-                                 prop,
-                                 data_type,
-                                 default_value)
+                                table_schema,
+                                table_name,
+                                prop,
+                                schema)
             ## TODO: types do not match
 
         return existing_schema

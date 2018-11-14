@@ -101,12 +101,14 @@ def is_nullable(schema):
 
 
 def _helper_simplify(root_schema, child_schema):
+    ret_schema = {}
+
     if not child_schema:
-        return child_schema
+        pass
 
     elif is_ref(child_schema):
         try:
-            return _helper_simplify(root_schema, get_ref(root_schema, child_schema['$ref']))
+            ret_schema = _helper_simplify(root_schema, get_ref(root_schema, child_schema['$ref']))
         except RecursionError:
             raise JSONSchemaError('`$ref` path "{}" is recursive'.format(get_ref(root_schema, child_schema['$ref'])))
 
@@ -115,19 +117,22 @@ def _helper_simplify(root_schema, child_schema):
         for field, field_json_schema in child_schema.get('properties', {}).items():
             properties[field] = _helper_simplify(root_schema, field_json_schema)
 
-        return {'type': get_type(child_schema),
-                'properties': properties}
+        ret_schema = {'type': get_type(child_schema),
+                      'properties': properties}
 
     elif is_iterable(child_schema):
-        return {'type': get_type(child_schema),
-                'items': _helper_simplify(root_schema, child_schema.get('items', {}))}
+        ret_schema = {'type': get_type(child_schema),
+                      'items': _helper_simplify(root_schema, child_schema.get('items', {}))}
     else:
         ret_schema = {'type': get_type(child_schema)}
 
-        if 'format' in child_schema:
-            ret_schema['format'] = child_schema.get('format')
+    if 'format' in child_schema:
+        ret_schema['format'] = child_schema.get('format')
 
-        return ret_schema
+    if 'default' in child_schema:
+        ret_schema['default'] = child_schema.get('default')
+
+    return ret_schema
 
 
 def simplify(schema):
