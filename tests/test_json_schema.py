@@ -12,8 +12,8 @@ def test_is_object():
     assert json_schema.is_object({})
 
 
-def test_simplify__empty():
-    assert json_schema.simplify({}) == {}
+def test_simplify__empty_becomes_object():
+    assert json_schema.simplify({}) == {'properties': {}, 'type': ['object']}
 
 
 def test_simplify__types_into_arrays():
@@ -68,6 +68,14 @@ def test_simplify__complex():
                 },
                 'name': {
                     'type': ['string']
+                },
+                'paw_size': {
+                    'type': ['integer'],
+                    'default': 314159
+                },
+                'flea_check_complete': {
+                    'type': ['boolean'],
+                    'default': False
                 },
                 'pattern': {
                     'type': ['null', 'string']

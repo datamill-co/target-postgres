@@ -101,12 +101,11 @@ def is_nullable(schema):
 
 
 def _helper_simplify(root_schema, child_schema):
-    if not child_schema:
-        return child_schema
+    ret_schema = {}
 
-    elif is_ref(child_schema):
+    if is_ref(child_schema):
         try:
-            return _helper_simplify(root_schema, get_ref(root_schema, child_schema['$ref']))
+            ret_schema = _helper_simplify(root_schema, get_ref(root_schema, child_schema['$ref']))
         except RecursionError:
             raise JSONSchemaError('`$ref` path "{}" is recursive'.format(get_ref(root_schema, child_schema['$ref'])))
 
@@ -115,19 +114,22 @@ def _helper_simplify(root_schema, child_schema):
         for field, field_json_schema in child_schema.get('properties', {}).items():
             properties[field] = _helper_simplify(root_schema, field_json_schema)
 
-        return {'type': get_type(child_schema),
-                'properties': properties}
+        ret_schema = {'type': get_type(child_schema),
+                      'properties': properties}
 
     elif is_iterable(child_schema):
-        return {'type': get_type(child_schema),
-                'items': _helper_simplify(root_schema, child_schema.get('items', {}))}
+        ret_schema = {'type': get_type(child_schema),
+                      'items': _helper_simplify(root_schema, child_schema.get('items', {}))}
     else:
         ret_schema = {'type': get_type(child_schema)}
 
-        if 'format' in child_schema:
-            ret_schema['format'] = child_schema.get('format')
+    if 'format' in child_schema:
+        ret_schema['format'] = child_schema.get('format')
 
-        return ret_schema
+    if 'default' in child_schema:
+        ret_schema['default'] = child_schema.get('default')
+
+    return ret_schema
 
 
 def simplify(schema):
@@ -201,7 +203,7 @@ def validation_errors(schema):
     return errors
 
 
-def from_sql(sql_type, nullable):
+def from_sql(sql_type, nullable, default):
     _format = None
     if sql_type == 'timestamp with time zone':
         json_type = 'string'
@@ -224,6 +226,9 @@ def from_sql(sql_type, nullable):
     ret_json_schema = {'type': json_type}
     if _format:
         ret_json_schema['format'] = _format
+
+    if default is not None:
+        ret_json_schema['default'] = default
 
     return ret_json_schema
 
