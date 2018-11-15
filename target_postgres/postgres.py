@@ -90,12 +90,12 @@ class PostgresTarget(object):
                     target_table_version = None
 
                 if current_table_version is not None and \
-                   min(versions) < current_table_version:
-                    self.logger.warn('{} - Records from an earlier table vesion detected.'
-                                     .format(stream_buffer.stream))
+                        min(versions) < current_table_version:
+                    self.logger.warning('{} - Records from an earlier table vesion detected.'
+                                        .format(stream_buffer.stream))
                 if len(versions) > 1:
-                    self.logger.warn('{} - Multiple table versions in stream, only using the latest.'
-                                     .format(stream_buffer.stream))
+                    self.logger.warning('{} - Multiple table versions in stream, only using the latest.'
+                                        .format(stream_buffer.stream))
 
                 if current_table_version is not None and \
                    target_table_version > current_table_version:
@@ -180,7 +180,7 @@ class PostgresTarget(object):
                     self.logger.error('{} - Table for stream does not exist'.format(
                         stream_buffer.stream))
                 elif table_metadata.get('version') == version:
-                    self.logger.warn('{} - Table version {} already active'.format(
+                    self.logger.warning('{} - Table version {} already active'.format(
                         stream_buffer.stream,
                         version))
                 else:
@@ -577,7 +577,7 @@ class PostgresTarget(object):
 
                         ## Serialize NULL default value
                         if row.get(prop, False) == RESERVED_NULL_DEFAULT:
-                            self.logger.warn(
+                            self.logger.warning(
                                 'Reserved {} value found at: {}.{}.{}. Value will be turned into literal null'.format(
                                     RESERVED_NULL_DEFAULT,
                                     self.postgres_schema,
