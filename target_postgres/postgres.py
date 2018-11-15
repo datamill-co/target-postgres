@@ -429,28 +429,27 @@ class PostgresTarget():
         existing_table_schema = self.get_schema(cur, self.postgres_schema, table_name)
 
         if existing_table_schema is not None:
-            schema = self.merge_put_schemas(cur,
-                                            self.postgres_schema,
-                                            table_name,
-                                            existing_table_schema,
-                                            schema)
-            target_table_name = self.get_temp_table_name(table_name)
+            self.merge_put_schemas(cur,
+                                   self.postgres_schema,
+                                   table_name,
+                                   existing_table_schema,
+                                   schema)
         else:
-            schema = schema
             self.create_table(cur,
-                               self.postgres_schema,
-                               table_name,
-                               schema,
-                               key_properties,
-                               table_version)
-            target_table_name = self.get_temp_table_name(table_name)
+                              self.postgres_schema,
+                              table_name,
+                              schema,
+                              key_properties,
+                              table_version)
+
+        target_table_name = self.get_temp_table_name(table_name)
 
         self.create_table(cur,
-                           self.postgres_schema,
-                           target_table_name,
-                           schema,
-                           key_properties,
-                           table_version)
+                          self.postgres_schema,
+                          target_table_name,
+                          self.get_schema(cur, self.postgres_schema, table_name).get('schema'),
+                          key_properties,
+                          table_version)
 
         return target_table_name
 
@@ -820,5 +819,3 @@ class PostgresTarget():
                         name,
                         self.mapping_name(name, schema)
                     ))
-
-        return existing_schema['schema']
