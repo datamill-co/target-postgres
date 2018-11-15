@@ -73,6 +73,10 @@ def test_simplify__complex():
                     'type': ['integer'],
                     'default': 314159
                 },
+                'paw_colour': {
+                    'type': ['string'],
+                    'default': ''
+                },
                 'flea_check_complete': {
                     'type': ['boolean'],
                     'default': False

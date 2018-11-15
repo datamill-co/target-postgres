@@ -428,7 +428,7 @@ class PostgresTarget(object):
         if existing_table_schema:
             schema = self.merge_put_schemas(cur,
                                              self.postgres_schema,
-                                             table_name, 
+                                             table_name,
                                              existing_table_schema,
                                              schema)
             target_table_name = self.get_temp_table_name(table_name)
@@ -561,15 +561,29 @@ class PostgresTarget(object):
             try:
                 row = next(rows)
                 with io.StringIO() as out:
-                    ## Serialize fields which are not present but have default values set
-                    for prop in default_fields:
-                        if not prop in row:
+                    for prop in headers:
+                        ## Serialize fields which are not present but have default values set
+                        if prop in default_fields \
+                                and not prop in row:
                             row[prop] = target_table_json_schema['properties'][prop]['default']
 
-                    ## Serialize datetime to postgres compatible format
-                    for prop in datetime_fields:
-                        if prop in row:
+                        ## Serialize datetime to postgres compatible format
+                        if prop in datetime_fields \
+                                and prop in row:
                             row[prop] = self.get_postgres_datetime(row[prop])
+
+                        if row.get(prop, False) == 'NULL':
+                            raise PostgresError('Reserved NULL value found at: {}.{}.{}'.format(
+                                self.postgres_schema,
+                                target_table_name,
+                                prop
+                            ))
+
+                        ## Serialize NULL default value
+                        if not prop in row \
+                                or row.get(prop, None) is None:
+                            row[prop] = 'NULL'
+
                     writer = csv.DictWriter(out, headers)
                     writer.writerow(row)
                     return out.getvalue()
@@ -578,10 +592,11 @@ class PostgresTarget(object):
 
         csv_rows = TransformStream(transform)
 
-        copy = sql.SQL('COPY {}.{} ({}) FROM STDIN CSV').format(
+        copy = sql.SQL('COPY {}.{} ({}) FROM STDIN WITH (FORMAT CSV, NULL {})').format(
             sql.Identifier(self.postgres_schema),
             sql.Identifier(temp_table_name),
-            sql.SQL(', ').join(map(sql.Identifier, headers)))
+            sql.SQL(', ').join(map(sql.Identifier, headers)),
+            sql.Literal('NULL'))
         cur.copy_expert(copy, csv_rows)
 
         pattern = re.compile(SINGER_LEVEL.format('[0-9]+'))
