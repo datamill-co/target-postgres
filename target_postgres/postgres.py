@@ -575,15 +575,15 @@ class PostgresTarget(object):
                                 and prop in row:
                             row[prop] = self.get_postgres_datetime(row[prop])
 
-                        if row.get(prop, False) == RESERVED_NULL_DEFAULT:
-                            raise PostgresError('Reserved {} value found at: {}.{}.{}'.format(
-                                RESERVED_NULL_DEFAULT,
-                                self.postgres_schema,
-                                target_table_name,
-                                prop
-                            ))
-
                         ## Serialize NULL default value
+                        if row.get(prop, False) == RESERVED_NULL_DEFAULT:
+                            self.logger.warn(
+                                'Reserved {} value found at: {}.{}.{}. Value will be turned into literal null'.format(
+                                    RESERVED_NULL_DEFAULT,
+                                    self.postgres_schema,
+                                    target_table_name,
+                                    prop))
+
                         if not prop in row \
                                 or row.get(prop, None) is None:
                             row[prop] = RESERVED_NULL_DEFAULT

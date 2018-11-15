@@ -167,7 +167,7 @@ def test_loading__invalid__records__threshold():
         main(config, input_stream=InvalidCatStream(20))
 
 
-def test_loading__invalid__default_null_value():
+def test_loading__invalid__default_null_value__non_nullable_column():
 
     class NullDefaultCatStream(CatStream):
 
@@ -176,7 +176,7 @@ def test_loading__invalid__default_null_value():
             record['name'] = postgres.RESERVED_NULL_DEFAULT
             return record
 
-    with pytest.raises(postgres.PostgresError, match=r'.*Reserved NULL value found.*'):
+    with pytest.raises(postgres.PostgresError, match=r'.*IntegrityError.*'):
         main(CONFIG, input_stream=NullDefaultCatStream(20))
 
 
