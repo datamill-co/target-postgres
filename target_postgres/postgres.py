@@ -20,6 +20,9 @@ from target_postgres.singer_stream import (
     SINGER_LEVEL
 )
 
+RESERVED_NULL_DEFAULT = 'NULL'
+
+
 class PostgresError(Exception):
     """
     Raise this when there is an error with regards to Postgres streaming
@@ -572,8 +575,9 @@ class PostgresTarget(object):
                                 and prop in row:
                             row[prop] = self.get_postgres_datetime(row[prop])
 
-                        if row.get(prop, False) == 'NULL':
-                            raise PostgresError('Reserved NULL value found at: {}.{}.{}'.format(
+                        if row.get(prop, False) == RESERVED_NULL_DEFAULT:
+                            raise PostgresError('Reserved {} value found at: {}.{}.{}'.format(
+                                RESERVED_NULL_DEFAULT,
                                 self.postgres_schema,
                                 target_table_name,
                                 prop
@@ -582,7 +586,7 @@ class PostgresTarget(object):
                         ## Serialize NULL default value
                         if not prop in row \
                                 or row.get(prop, None) is None:
-                            row[prop] = 'NULL'
+                            row[prop] = RESERVED_NULL_DEFAULT
 
                     writer = csv.DictWriter(out, headers)
                     writer.writerow(row)
@@ -596,7 +600,7 @@ class PostgresTarget(object):
             sql.Identifier(self.postgres_schema),
             sql.Identifier(temp_table_name),
             sql.SQL(', ').join(map(sql.Identifier, headers)),
-            sql.Literal('NULL'))
+            sql.Literal(RESERVED_NULL_DEFAULT))
         cur.copy_expert(copy, csv_rows)
 
         pattern = re.compile(SINGER_LEVEL.format('[0-9]+'))

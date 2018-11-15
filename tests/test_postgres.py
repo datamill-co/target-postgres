@@ -173,7 +173,7 @@ def test_loading__invalid__default_null_value():
 
         def generate_record(self):
             record = CatStream.generate_record(self)
-            record['name'] = 'NULL'
+            record['name'] = postgres.RESERVED_NULL_DEFAULT
             return record
 
     with pytest.raises(postgres.PostgresError, match=r'.*Reserved NULL value found.*'):
