@@ -167,6 +167,19 @@ def test_loading__invalid__records__threshold():
         main(config, input_stream=InvalidCatStream(20))
 
 
+def test_loading__invalid__default_null_value__non_nullable_column():
+
+    class NullDefaultCatStream(CatStream):
+
+        def generate_record(self):
+            record = CatStream.generate_record(self)
+            record['name'] = postgres.RESERVED_NULL_DEFAULT
+            return record
+
+    with pytest.raises(postgres.PostgresError, match=r'.*IntegrityError.*'):
+        main(CONFIG, input_stream=NullDefaultCatStream(20))
+
+
 def test_loading__simple(db_cleanup):
     stream = CatStream(100)
     main(CONFIG, input_stream=stream)
@@ -187,6 +200,7 @@ def test_loading__simple(db_cleanup):
                 ('id', 'bigint', 'NO'),
                 ('name', 'text', 'NO'),
                 ('paw_size', 'bigint', 'NO'),
+                ('paw_colour', 'text', 'NO'),
                 ('flea_check_complete', 'boolean', 'NO'),
                 ('pattern', 'text', 'YES')
             }
@@ -204,6 +218,11 @@ def test_loading__simple(db_cleanup):
 
             cur.execute(get_count_sql('cats'))
             assert cur.fetchone()[0] == 100
+
+        for record in stream.records:
+            record['paw_size'] = 314159
+            record['paw_colour'] = ''
+            record['flea_check_complete'] = False
 
         assert_records(conn, stream.records, 'cats', 'id')
 
