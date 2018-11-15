@@ -698,6 +698,22 @@ class PostgresTarget():
 
         return comment_meta
 
+
+    def add_column_mapping(self, cur, table_schema, table_name, column_name, mapped_name, mapped_schema):
+        metadata = self.get_table_metadata(cur, table_schema, table_name)
+
+        if not metadata:
+            metadata = {}
+
+        if not 'mappings' in metadata:
+            metadata['mappings'] = {}
+
+        metadata['mappings'][mapped_name] = {'type': json_schema.get_type(mapped_schema),
+                                             'from': column_name}
+
+        self.set_table_metadata(cur, table_schema, table_name, metadata)
+
+
     def is_table_empty(self, cur, table_schema, table_name):
         cur.execute(sql.SQL('SELECT COUNT(1) FROM {}.{};').format(
             sql.Identifier(table_schema),
@@ -728,11 +744,26 @@ class PostgresTarget():
 
         return metadata
 
+    def mapping_name(self, field, schema):
+        return field + self.SEPARATOR + json_schema.sql_shorthand(schema)
+
+    def get_mapping(self, metadata, field, schema):
+        typed_field = self.mapping_name(field, schema)
+
+        if 'mappings' in metadata \
+                and typed_field in metadata['mappings']\
+                and field == metadata['mappings'][typed_field]:
+            return typed_field
+
+        return None
+
     def merge_put_schemas(self, cur, table_schema, table_name, existing_schema, new_schema):
         new_properties = new_schema['properties']
         existing_properties = existing_schema['schema']['properties']
         for name, schema in new_properties.items():
-            if name not in existing_properties:
+            if self.get_mapping(existing_schema, name, schema) is not None:
+                pass
+            elif name not in existing_properties:
                 existing_properties[name] = schema
                 self.add_column(cur,
                                 table_schema,
@@ -740,15 +771,54 @@ class PostgresTarget():
                                 name,
                                 schema)
             elif json_schema.to_sql(schema) \
-                    != json_schema.to_sql(existing_properties[name]):
-                raise PostgresError('Column type change detected for: {}.{}.{}. Expected {} ({}), got {} ({})'.format(
-                    table_schema,
-                    table_name,
-                    name,
-                    json_schema.get_type(schema),
-                    json_schema.to_sql(schema),
-                    json_schema.get_type(existing_properties[name]),
-                    json_schema.to_sql(existing_properties[name])
-                ))
+                    == json_schema.to_sql(existing_properties[name]):
+                pass
+            elif self.mapping_name(name, schema) \
+                    == self.mapping_name(name, existing_properties[name]):
+                raise PostgresError(
+                    'Cannot handle column type change for: {}.{}.{}. Issue with nullable constraints.'.format(
+                        table_schema,
+                        table_name,
+                        name
+                    ))
+            elif self.mapping_name(name, schema) not in existing_properties \
+                and self.mapping_name(name, existing_properties[name]) not in existing_properties:
+                existing_field_mapping = self.mapping_name(name, existing_properties[name])
+                field_mapping = self.mapping_name(name, schema)
 
-        return existing_schema
+                existing_properties[existing_field_mapping] = json_schema.make_nullable(existing_properties[name])
+                existing_properties[field_mapping] = json_schema.make_nullable(schema)
+
+                self.add_column_mapping(cur, table_schema, table_name, name,
+                                        existing_field_mapping,
+                                        existing_properties[existing_field_mapping])
+                self.add_column_mapping(cur, table_schema, table_name, name,
+                                        field_mapping,
+                                        existing_properties[field_mapping])
+
+                print('!!!', name, existing_field_mapping, field_mapping, existing_properties[existing_field_mapping],
+                      existing_properties[field_mapping],
+                      self.get_schema(cur, table_schema, table_name))
+
+                ## NOTE: all migrated columns will be nullable and remain that way
+                self.add_column(cur,
+                                table_schema,
+                                table_name,
+                                existing_field_mapping,
+                                existing_properties[existing_field_mapping])
+
+                self.add_column(cur,
+                                table_schema,
+                                table_name,
+                                field_mapping,
+                                existing_properties[field_mapping])
+            else:
+                raise PostgresError(
+                    'Cannot handle column type change for: {}.{} columns {} and {}. Name collision likely.'.format(
+                        table_schema,
+                        table_name,
+                        name,
+                        self.mapping_name(name, schema)
+                    ))
+
+        return existing_schema['schema']
