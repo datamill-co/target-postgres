@@ -287,7 +287,7 @@ def test_loading__column_type_change(db_cleanup):
     stream.schema['schema']['properties']['paw_toe_count'] = {'type': 'string',
                                                               'default': 'five'}
 
-    main(CONFIG, input_stream=CatStream(100))
+    main(CONFIG, input_stream=stream)
 
     stream = CatStream(20)
     stream.schema = deepcopy(stream.schema)
@@ -295,6 +295,29 @@ def test_loading__column_type_change(db_cleanup):
                                                               'default': 5}
 
     main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_columns_sql('cats'))
+            columns = cur.fetchall()
+
+            assert set(columns) == {
+                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_sequence', 'bigint', 'YES'),
+                ('_sdc_table_version', 'bigint', 'YES'),
+                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                ('adoption__was_foster', 'boolean', 'YES'),
+                ('age', 'bigint', 'YES'),
+                ('id', 'bigint', 'NO'),
+                ('name', 'text', 'NO'),
+                ('paw_size', 'bigint', 'NO'),
+                ('paw_colour', 'text', 'NO'),
+                ('paw_toe_count__S', 'text', 'YES'),
+                ('paw_toe_count__I', 'bigint', 'YES'),
+                ('flea_check_complete', 'boolean', 'NO'),
+                ('pattern', 'text', 'YES')
+            }
 
 
 def test_loading__column_type_change__nullable(db_cleanup):
