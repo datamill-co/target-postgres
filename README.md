@@ -104,6 +104,7 @@ _The above is copied from the [current list of versions](https://www.postgresql.
   - `$ref`s must be present within the schema:
     - URI's do not work
     - if the `$ref` is broken, the behaviour is considered unexpected
+- Any values which are the `string` `NULL` will be streamed to PostgreSQL as the literal `null`
 
 ## Usage Logging
 
