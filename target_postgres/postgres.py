@@ -542,6 +542,29 @@ class PostgresTarget():
                         insert_distinct_on=insert_distinct_on,
                         insert_distinct_order_by=insert_distinct_order_by)
 
+    def serialized_value(self, field, value, default_fields, datetime_fields):
+        ## Serialize fields which are not present but have default values set
+        if field in default_fields \
+                and value is None:
+            value = default_fields[field]
+
+        ## Serialize datetime to postgres compatible format
+        if field in datetime_fields \
+                and value is not None:
+            value = self.get_postgres_datetime(value)
+
+        ## Serialize NULL default value
+        if value == RESERVED_NULL_DEFAULT:
+            self.logger.warning(
+                'Reserved {} value found in field: {}. Value will be turned into literal null'.format(
+                    RESERVED_NULL_DEFAULT,
+                    field))
+
+        if value is None:
+            value = RESERVED_NULL_DEFAULT
+
+        return value
+
     def persist_rows(self,
                      cur,
                      target_table_name,
@@ -549,13 +572,18 @@ class PostgresTarget():
                      target_table_json_schema,
                      key_properties,
                      records):
-        headers = list(target_table_json_schema['properties'].keys())
+        target_schema = self.get_schema(cur, self.postgres_schema, target_table_name)
+
+        headers = list(target_schema['schema']['properties'].keys())
 
         datetime_fields = [k for k,v in target_table_json_schema['properties'].items()
                            if v.get('format') == 'date-time']
 
-        default_fields = [k for k,v in target_table_json_schema['properties'].items()
-                          if v.get('default') is not None]
+        default_fields = {k: v.get('default') for k, v in target_table_json_schema['properties'].items()
+                          if v.get('default') is not None}
+
+        mapped_fields = target_schema.get('mappings', {})
+        mapped_from_fields = set([v['from'] for k,v in mapped_fields.items()])
 
         rows = iter(records)
 
@@ -564,28 +592,25 @@ class PostgresTarget():
                 row = next(rows)
                 with io.StringIO() as out:
                     for prop in headers:
-                        ## Serialize fields which are not present but have default values set
-                        if prop in default_fields \
-                                and not prop in row:
-                            row[prop] = target_table_json_schema['properties'][prop]['default']
-
-                        ## Serialize datetime to postgres compatible format
-                        if prop in datetime_fields \
-                                and prop in row:
-                            row[prop] = self.get_postgres_datetime(row[prop])
-
-                        ## Serialize NULL default value
-                        if row.get(prop, False) == RESERVED_NULL_DEFAULT:
-                            self.logger.warning(
-                                'Reserved {} value found at: {}.{}.{}. Value will be turned into literal null'.format(
-                                    RESERVED_NULL_DEFAULT,
-                                    self.postgres_schema,
-                                    target_table_name,
-                                    prop))
-
-                        if not prop in row \
-                                or row.get(prop, None) is None:
+                        if prop in mapped_fields:
                             row[prop] = RESERVED_NULL_DEFAULT
+                        else:
+                            row[prop] = self.serialized_value(prop,
+                                                              row.get(prop, None),
+                                                              default_fields,
+                                                              datetime_fields)
+
+                    for prop in mapped_from_fields:
+                        if prop in row:
+                            mapped_field = self.get_mapping(target_schema,
+                                                            prop,
+                                                            target_table_json_schema['properties'][prop])
+
+                            row[mapped_field] = self.serialized_value(prop,
+                                                                      row.get(prop, None),
+                                                                      default_fields,
+                                                                      datetime_fields)
+                            row.pop(prop, None)
 
                     writer = csv.DictWriter(out, headers)
                     writer.writerow(row)
@@ -638,6 +663,12 @@ class PostgresTarget():
 
         cur.execute(to_execute)
 
+    def drop_column(self, cur, table_schema, table_name, column_name):
+        cur.execute(sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
+                            'DROP COLUMN {column_name};').format(
+            table_schema=sql.Identifier(table_schema),
+            table_name=sql.Identifier(table_name),
+            column_name=sql.Identifier(column_name)))
 
     def set_table_metadata(self, cur, table_schema, table_name, metadata):
         """
@@ -795,10 +826,6 @@ class PostgresTarget():
                                         field_mapping,
                                         existing_properties[field_mapping])
 
-                print('!!!', name, existing_field_mapping, field_mapping, existing_properties[existing_field_mapping],
-                      existing_properties[field_mapping],
-                      self.get_schema(cur, table_schema, table_name))
-
                 ## NOTE: all migrated columns will be nullable and remain that way
                 self.add_column(cur,
                                 table_schema,
@@ -811,6 +838,14 @@ class PostgresTarget():
                                 table_name,
                                 field_mapping,
                                 existing_properties[field_mapping])
+
+                self.drop_column(cur,
+                                 table_schema,
+                                 table_name,
+                                 name)
+
+                del existing_properties[name]
+
             else:
                 raise PostgresError(
                     'Cannot handle column type change for: {}.{} columns {} and {}. Name collision likely.'.format(
