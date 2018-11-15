@@ -38,7 +38,7 @@ def flush_streams(streams, target, force=False):
 def report_invalid_records(streams):
     for stream_buffer in streams.values():
         if stream_buffer.peek_invalid_records():
-            LOGGER.warn("Invalid records detected for stream {}: {}".format(
+            LOGGER.warning("Invalid records detected for stream {}: {}".format(
                 stream_buffer.stream,
                 stream_buffer.peek_invalid_records()
             ))
@@ -108,7 +108,7 @@ def line_handler(streams, target, invalid_records_detect, invalid_records_thresh
         target.write_batch(stream_buffer)
         target.activate_version(stream_buffer, line_data['version'])
     elif line_data['type'] == 'STATE':
-        LOGGER.warn('`STATE` Singer message type not supported')
+        LOGGER.warning('`STATE` Singer message type not supported')
     else:
         raise TargetError('Unknown message type {} in message {}'.format(
             line_data['type'],
