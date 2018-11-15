@@ -282,9 +282,25 @@ def test_loading__new_non_null_column(db_cleanup):
 
 
 def test_loading__column_type_change(db_cleanup):
+    stream = CatStream(20)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties']['paw_toe_count'] = {'type': 'string',
+                                                              'default': 'five'}
+
     main(CONFIG, input_stream=CatStream(100))
 
-    with pytest.raises(postgres.PostgresError, match=r'Column type change detected.*'):
+    stream = CatStream(20)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties']['paw_toe_count'] = {'type': 'integer',
+                                                              'default': 5}
+
+    main(CONFIG, input_stream=stream)
+
+
+def test_loading__column_type_change__nullable(db_cleanup):
+    main(CONFIG, input_stream=CatStream(100))
+
+    with pytest.raises(postgres.PostgresError, match=r'Cannot handle column type change.*'):
         stream = CatStream(20)
         stream.schema = deepcopy(stream.schema)
         stream.schema['schema']['properties']['name']['type'].append('null')
