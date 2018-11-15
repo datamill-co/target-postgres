@@ -9,7 +9,7 @@ from copy import deepcopy
 import arrow
 from psycopg2 import sql
 
-import target_postgres.json_schema as json_schema
+from target_postgres import json_schema
 from target_postgres.singer_stream import (
     SINGER_RECEIVED_AT,
     SINGER_BATCHED_AT,
@@ -28,14 +28,14 @@ class PostgresError(Exception):
     Raise this when there is an error with regards to Postgres streaming
     """
 
-class TransformStream(object):
+class TransformStream():
     def __init__(self, fun):
         self.fun = fun
 
     def read(self, *args, **kwargs):
         return self.fun()
 
-class PostgresTarget(object):
+class PostgresTarget():
     NESTED_SEPARATOR = '__'
 
     def __init__(self, connection, logger, *args, postgres_schema='public', **kwargs):
