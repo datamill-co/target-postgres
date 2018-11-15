@@ -130,7 +130,7 @@ $ docker logs -tf target-postgres_target-postgres_1 # You container names might 
 As soon as you see `INFO: Dev environment ready.` you can shell into the container and start running test commands:
 
 ```sh
-$ docker exec -it target-postgres_target-postgres_1 sh # Your container names might differ
+$ docker exec -it target-postgres_target-postgres_1 bash # Your container names might differ
 ```
 
 See the [PyTest](#pytest) commands below!
@@ -155,6 +155,12 @@ To run tests, try:
 
 ```sh
 $ python setup.py pytest
+```
+
+If you've `bash` shelled into the Docker Compose container ([see above](#docker)), you should be able to simply use:
+
+```sh
+$ pytest
 ```
 
 ## Sponsorship
