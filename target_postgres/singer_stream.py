@@ -19,7 +19,7 @@ SINGER_SOURCE_PK_PREFIX = '_sdc_source_key_'
 SINGER_LEVEL = '_sdc_level_{}_id'
 
 
-class BufferedSingerStream(object):
+class BufferedSingerStream():
     def __init__(self,
                  stream,
                  schema,
