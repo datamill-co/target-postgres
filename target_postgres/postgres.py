@@ -36,7 +36,7 @@ class TransformStream():
         return self.fun()
 
 class PostgresTarget():
-    NESTED_SEPARATOR = '__'
+    SEPARATOR = '__'
 
     def __init__(self, connection, logger, *args, postgres_schema='public', **kwargs):
         self.conn = connection
@@ -99,7 +99,7 @@ class PostgresTarget():
 
                 if current_table_version is not None and \
                    target_table_version > current_table_version:
-                    root_table_name = stream_buffer.stream + self.NESTED_SEPARATOR + str(target_table_version)
+                    root_table_name = stream_buffer.stream + self.SEPARATOR + str(target_table_version)
                 else:
                     root_table_name = stream_buffer.stream
 
@@ -184,7 +184,7 @@ class PostgresTarget():
                         stream_buffer.stream,
                         version))
                 else:
-                    versioned_root_table = stream_buffer.stream + self.NESTED_SEPARATOR + str(version)
+                    versioned_root_table = stream_buffer.stream + self.SEPARATOR + str(version)
 
                     cur.execute(
                         sql.SQL('''
@@ -204,7 +204,7 @@ class PostgresTarget():
                             COMMIT;''').format(
                                 table_schema=sql.Identifier(self.postgres_schema),
                                 stream_table_old=sql.Identifier(table_name +
-                                                                self.NESTED_SEPARATOR +
+                                                                self.SEPARATOR +
                                                                 'old'),
                                 stream_table=sql.Identifier(table_name),
                                 version_table=sql.Identifier(versioned_table_name)))
@@ -277,7 +277,7 @@ class PostgresTarget():
                              subtables,
                              level):
         for prop, item_json_schema in table_json_schema['properties'].items():
-            next_path = current_path + self.NESTED_SEPARATOR + prop
+            next_path = current_path + self.SEPARATOR + prop
             if json_schema.is_object(item_json_schema):
                 self.denest_schema_helper(table_name,
                                           item_json_schema,
@@ -288,7 +288,7 @@ class PostgresTarget():
                                           subtables,
                                           level)
             elif json_schema.is_iterable(item_json_schema):
-                self.create_subtable(table_name + self.NESTED_SEPARATOR + prop,
+                self.create_subtable(table_name + self.SEPARATOR + prop,
                                      item_json_schema,
                                      key_prop_schemas,
                                      subtables,
@@ -328,13 +328,13 @@ class PostgresTarget():
         new_properties = {}
         for prop, item_json_schema in table_json_schema['properties'].items():
             if current_path:
-                next_path = current_path + self.NESTED_SEPARATOR + prop
+                next_path = current_path + self.SEPARATOR + prop
             else:
                 next_path = prop
 
             if json_schema.is_object(item_json_schema):
                 not_null = 'null' not in item_json_schema['type']
-                self.denest_schema_helper(table_name + self.NESTED_SEPARATOR + next_path,
+                self.denest_schema_helper(table_name + self.SEPARATOR + next_path,
                                           item_json_schema,
                                           not_null,
                                           new_properties,
@@ -343,7 +343,7 @@ class PostgresTarget():
                                           subtables,
                                           level)
             elif json_schema.is_iterable(item_json_schema):
-                self.create_subtable(table_name + self.NESTED_SEPARATOR + next_path,
+                self.create_subtable(table_name + self.SEPARATOR + next_path,
                                      item_json_schema,
                                      key_prop_schemas,
                                      subtables,
@@ -362,11 +362,11 @@ class PostgresTarget():
                          pk_fks,
                          level):
         for prop, value in record.items():
-            next_path = current_path + self.NESTED_SEPARATOR + prop
+            next_path = current_path + self.SEPARATOR + prop
             if isinstance(value, dict):
                 self.denest_subrecord(table_name, next_path, parent_record, value, pk_fks, level)
             elif isinstance(value, list):
-                self.denest_records(table_name + self.NESTED_SEPARATOR + next_path,
+                self.denest_records(table_name + self.SEPARATOR + next_path,
                                     value,
                                     records_map,
                                     key_properties,
@@ -379,7 +379,7 @@ class PostgresTarget():
         denested_record = {}
         for prop, value in record.items():
             if current_path:
-                next_path = current_path + self.NESTED_SEPARATOR + prop
+                next_path = current_path + self.SEPARATOR + prop
             else:
                 next_path = prop
 
@@ -393,7 +393,7 @@ class PostgresTarget():
                                       pk_fks,
                                       level)
             elif isinstance(value, list):
-                self.denest_records(table_name + self.NESTED_SEPARATOR + next_path,
+                self.denest_records(table_name + self.SEPARATOR + next_path,
                                     value,
                                     records_map,
                                     key_properties,
@@ -678,7 +678,7 @@ class PostgresTarget():
             self.add_column(cur, table_schema, table_name, prop, column_json_schema)
 
     def get_temp_table_name(self, stream_name):
-        return stream_name + self.NESTED_SEPARATOR + str(uuid.uuid4()).replace('-', '')
+        return stream_name + self.SEPARATOR + str(uuid.uuid4()).replace('-', '')
 
     def get_table_metadata(self, cur, table_schema, table_name):
         cur.execute(
