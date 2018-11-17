@@ -622,25 +622,20 @@ class PostgresTarget():
     def add_column(self, cur, table_schema, table_name, column_name, column_schema):
         data_type = json_schema.to_sql(column_schema)
 
-        default_value = self.get_null_default(column_name, column_schema)
-
-        if default_value is not None:
-            default_value = sql.SQL(' DEFAULT {}').format(sql.Literal(default_value))
-        elif not self.is_table_empty(cur, table_schema, table_name):
-            raise PostgresError('Non-trival default needed on new non-null column `{}.{}.{}`'.format(
+        if not json_schema.is_nullable(column_schema) \
+                and not self.is_table_empty(cur, table_schema, table_name):
+            self.logger.warning('Forcing new column `{}.{}.{}` to be nullable due to table not empty.'.format(
                 table_schema,
                 table_name,
                 column_name))
-        else:
-            default_value = sql.SQL('')
+            data_type = json_schema.to_sql(json_schema.make_nullable(column_schema))
 
         to_execute = sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
-                             'ADD COLUMN {column_name} {data_type}{default_value};').format(
+                             'ADD COLUMN {column_name} {data_type};').format(
             table_schema=sql.Identifier(table_schema),
             table_name=sql.Identifier(table_name),
             column_name=sql.Identifier(column_name),
-            data_type=sql.SQL(data_type),
-            default_value=default_value)
+            data_type=sql.SQL(data_type))
 
         cur.execute(to_execute)
 
@@ -708,12 +703,6 @@ class PostgresTarget():
         schema = {'properties': properties}
 
         return schema
-
-    def get_null_default(self, column, target_json_schema):
-        if 'default' in target_json_schema:
-            return target_json_schema['default']
-
-        return None
 
     def merge_put_schemas(self, cur, table_schema, table_name, existing_schema, new_schema):
         new_properties = new_schema['properties']
