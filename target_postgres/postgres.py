@@ -693,7 +693,7 @@ class PostgresTarget():
 
     def get_schema(self, cur, table_schema, table_name):
         cur.execute(
-            sql.SQL('SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns ') +
+            sql.SQL('SELECT column_name, data_type, is_nullable FROM information_schema.columns ') +
             sql.SQL('WHERE table_schema = {} and table_name = {};').format(
                 sql.Literal(table_schema), sql.Literal(table_name)))
         columns = cur.fetchall()
@@ -703,7 +703,7 @@ class PostgresTarget():
 
         properties = {}
         for column in columns:
-            properties[column[0]] = json_schema.from_sql(column[1], column[2] == 'YES', column[3])
+            properties[column[0]] = json_schema.from_sql(column[1], column[2] == 'YES')
 
         schema = {'properties': properties}
 
@@ -712,20 +712,6 @@ class PostgresTarget():
     def get_null_default(self, column, target_json_schema):
         if 'default' in target_json_schema:
             return target_json_schema['default']
-
-        json_type = target_json_schema['type']
-        if 'null' in json_type:
-            return None
-
-        if len(json_type) == 1 or json_type != 'null':
-            _type = json_type[0]
-        else:
-            _type = json_type[1]
-
-        if _type == 'string':
-            return ''
-        if _type == 'boolean':
-            return 'FALSE'
 
         return None
 
