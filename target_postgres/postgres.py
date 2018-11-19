@@ -428,12 +428,12 @@ class PostgresTarget():
     def upsert_table_schema(self, cur, table_name, schema, key_properties, table_version):
         existing_table_schema = self.get_schema(cur, self.postgres_schema, table_name)
 
-        if existing_table_schema:
+        if existing_table_schema is not None:
             schema = self.merge_put_schemas(cur,
-                                             self.postgres_schema,
-                                             table_name,
-                                             existing_table_schema,
-                                             schema)
+                                            self.postgres_schema,
+                                            table_name,
+                                            existing_table_schema,
+                                            schema)
             target_table_name = self.get_temp_table_name(table_name)
         else:
             schema = schema
@@ -639,21 +639,40 @@ class PostgresTarget():
 
         cur.execute(to_execute)
 
+
+    def set_table_metadata(self, cur, table_schema, table_name, metadata):
+        """
+        Given a Metadata dict, set it as the comment on the given table.
+        :param self: Postgres
+        :param cur: Pscyopg.Cursor
+        :param table_schema: String
+        :param table_name: String
+        :param metadata: Metadata Dict
+        :return: None
+        """
+
+        parsed_metadata = {}
+        parsed_metadata['key_properties'] = metadata.get('key_properties', [])
+        parsed_metadata['version'] = metadata.get('version')
+        parsed_metadata['mappings'] = metadata.get('mappings', {})
+
+        cur.execute(sql.SQL('COMMENT ON TABLE {}.{} IS {};').format(
+            sql.Identifier(table_schema),
+            sql.Identifier(table_name),
+            sql.Literal(json.dumps(parsed_metadata))))
+
+
     def create_table(self, cur, table_schema, table_name, schema, key_properties, table_version):
         create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
                 sql.Identifier(table_schema),
                 sql.Identifier(table_name))
 
-        if key_properties:
-            comment_sql = sql.SQL('COMMENT ON TABLE {}.{} IS {};').format(
-                sql.Identifier(table_schema),
-                sql.Identifier(table_name),
-                sql.Literal(json.dumps({'key_properties': key_properties, 'version': table_version})))
-        else:
-            comment_sql = sql.SQL('')
+        cur.execute(sql.SQL('{} ();').format(create_table_sql))
 
-        cur.execute(sql.SQL('{} ();{}').format(create_table_sql,
-                                               comment_sql))
+        if key_properties:
+            self.set_table_metadata(cur, table_schema, table_name,
+                                    {'key_properties': key_properties,
+                                     'version': table_version})
 
         for prop, column_json_schema in schema['properties'].items():
             self.add_column(cur, table_schema, table_name, prop, column_json_schema)
@@ -691,22 +710,27 @@ class PostgresTarget():
             sql.SQL('SELECT column_name, data_type, is_nullable FROM information_schema.columns ') +
             sql.SQL('WHERE table_schema = {} and table_name = {};').format(
                 sql.Literal(table_schema), sql.Literal(table_name)))
-        columns = cur.fetchall()
-
-        if len(columns) == 0:
-            return None
 
         properties = {}
-        for column in columns:
+        for column in cur.fetchall():
             properties[column[0]] = json_schema.from_sql(column[1], column[2] == 'YES')
 
-        schema = {'properties': properties}
+        metadata = self.get_table_metadata(cur, table_schema, table_name)
 
-        return schema
+        if metadata is None and not properties:
+            return None
+        elif metadata is None:
+            metadata = {}
+
+        metadata['name'] = table_name
+        metadata['type'] = 'TABLE_SCHEMA'
+        metadata['schema'] = {'properties': properties}
+
+        return metadata
 
     def merge_put_schemas(self, cur, table_schema, table_name, existing_schema, new_schema):
         new_properties = new_schema['properties']
-        existing_properties = existing_schema['properties']
+        existing_properties = existing_schema['schema']['properties']
         for name, schema in new_properties.items():
             if name not in existing_properties:
                 existing_properties[name] = schema
