@@ -7,10 +7,11 @@ from psycopg2 import sql
 import psycopg2.extras
 import pytest
 
-from target_postgres import TargetError, main
-from target_postgres import singer_stream
-from target_postgres import postgres
 from fixtures import CatStream, CONFIG, db_cleanup, InvalidCatStream, TEST_DB
+from target_postgres import json_schema
+from target_postgres import postgres
+from target_postgres import singer_stream
+from target_postgres import TargetError, main
 
 ## TODO: create and test more fake streams
 ## TODO: test invalid data against JSON Schema
@@ -366,14 +367,124 @@ def test_loading__column_type_change(db_cleanup):
 
 
 def test_loading__column_type_change__nullable(db_cleanup):
-    main(CONFIG, input_stream=CatStream(100))
+    cat_count = 20
+    main(CONFIG, input_stream=CatStream(cat_count))
 
-    with pytest.raises(postgres.PostgresError, match=r'Cannot handle column type change.*'):
-        stream = CatStream(20)
-        stream.schema = deepcopy(stream.schema)
-        stream.schema['schema']['properties']['name']['type'].append('null')
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_columns_sql('cats'))
+            columns = cur.fetchall()
 
-        main(CONFIG, input_stream=stream)
+            assert set(columns) == {
+                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_sequence', 'bigint', 'YES'),
+                ('_sdc_table_version', 'bigint', 'YES'),
+                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                ('adoption__was_foster', 'boolean', 'YES'),
+                ('age', 'bigint', 'YES'),
+                ('id', 'bigint', 'NO'),
+                ('name', 'text', 'NO'),
+                ('paw_size', 'bigint', 'NO'),
+                ('paw_colour', 'text', 'NO'),
+                ('flea_check_complete', 'boolean', 'NO'),
+                ('pattern', 'text', 'YES')
+            }
+
+            cur.execute(sql.SQL('SELECT {} FROM {}').format(
+                sql.Identifier('name'),
+                sql.Identifier('cats')
+            ))
+            persisted_records = cur.fetchall()
+
+            ## Assert that the original data is present
+            assert cat_count == len(persisted_records)
+            assert cat_count == len([x for x in persisted_records if x[0] is not None])
+
+    class NameNullCatStream(CatStream):
+        def generate_record(self):
+            record = CatStream.generate_record(self)
+            record['id'] = record['id'] + cat_count
+            record['name'] = None
+            return record
+
+    stream = NameNullCatStream(cat_count)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties']['name'] = json_schema.make_nullable(stream.schema['schema']['properties']['name'])
+
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_columns_sql('cats'))
+            columns = cur.fetchall()
+
+            assert set(columns) == {
+                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_sequence', 'bigint', 'YES'),
+                ('_sdc_table_version', 'bigint', 'YES'),
+                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                ('adoption__was_foster', 'boolean', 'YES'),
+                ('age', 'bigint', 'YES'),
+                ('id', 'bigint', 'NO'),
+                ('name', 'text', 'YES'),
+                ('paw_size', 'bigint', 'NO'),
+                ('paw_colour', 'text', 'NO'),
+                ('flea_check_complete', 'boolean', 'NO'),
+                ('pattern', 'text', 'YES')
+            }
+
+            cur.execute(sql.SQL('SELECT {} FROM {}').format(
+                sql.Identifier('name'),
+                sql.Identifier('cats')
+            ))
+            persisted_records = cur.fetchall()
+
+            ## Assert that the column is has migrated data
+            assert 2 * cat_count == len(persisted_records)
+            assert cat_count == len([x for x in persisted_records if x[0] is not None])
+            assert cat_count == len([x for x in persisted_records if x[0] is None])
+
+    class NameNonNullCatStream(CatStream):
+        def generate_record(self):
+            record = CatStream.generate_record(self)
+            record['id'] = record['id'] + 2 * cat_count
+            return record
+
+    main(CONFIG, input_stream=NameNonNullCatStream(cat_count))
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_columns_sql('cats'))
+            columns = cur.fetchall()
+
+            assert set(columns) == {
+                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_sequence', 'bigint', 'YES'),
+                ('_sdc_table_version', 'bigint', 'YES'),
+                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                ('adoption__was_foster', 'boolean', 'YES'),
+                ('age', 'bigint', 'YES'),
+                ('id', 'bigint', 'NO'),
+                ('name', 'text', 'YES'),
+                ('paw_size', 'bigint', 'NO'),
+                ('paw_colour', 'text', 'NO'),
+                ('flea_check_complete', 'boolean', 'NO'),
+                ('pattern', 'text', 'YES')
+            }
+
+            cur.execute(sql.SQL('SELECT {} FROM {}').format(
+                sql.Identifier('name'),
+                sql.Identifier('cats')
+            ))
+            persisted_records = cur.fetchall()
+
+            ## Assert that the column is has migrated data
+            assert 3 * cat_count == len(persisted_records)
+            assert 2 * cat_count == len([x for x in persisted_records if x[0] is not None])
+            assert cat_count == len([x for x in persisted_records if x[0] is None])
 
 
 def test_upsert(db_cleanup):
