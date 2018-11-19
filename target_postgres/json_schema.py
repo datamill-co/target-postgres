@@ -279,3 +279,32 @@ def to_sql(schema):
         sql_type += ' NOT NULL'
 
     return sql_type
+
+
+_shorthand_mapping = {
+    'null': '',
+    'string': 's',
+    'number': 'f',
+    'integer': 'i',
+    'boolean': 'b',
+}
+
+
+def _type_shorthand(type_s):
+    if isinstance(type_s, list):
+        shorthand = ''
+        for type in sorted(type_s):
+            shorthand += _type_shorthand(type)
+        return shorthand
+
+    if not type_s in _shorthand_mapping:
+        raise JSONSchemaError('Shorthand not available for type {}. Expected one of {}'.format(
+            type_s,
+            list(_shorthand_mapping.keys())
+        ))
+
+    return _shorthand_mapping[type_s]
+
+
+def sql_shorthand(schema):
+    return _type_shorthand(get_type(schema))
