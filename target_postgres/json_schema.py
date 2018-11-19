@@ -1,3 +1,4 @@
+from copy import deepcopy
 import re
 
 from jsonschema import Draft4Validator
@@ -98,6 +99,22 @@ def is_nullable(schema):
     """
 
     return 'null' in get_type(schema)
+
+
+def make_nullable(schema):
+    """
+    Given a JSON Schema dict, returns the dict but makes the `type` `null`able.
+    `is_nullable` will return true on the output.
+    :return: dict, JSON Schema
+    """
+    type = get_type(schema)
+    if 'null' in type:
+        return schema
+
+    ret_schema = deepcopy(schema)
+    type.append('null')
+    ret_schema['type'] = type
+    return ret_schema
 
 
 def _helper_simplify(root_schema, child_schema):
@@ -203,7 +220,7 @@ def validation_errors(schema):
     return errors
 
 
-def from_sql(sql_type, nullable, default):
+def from_sql(sql_type, nullable):
     _format = None
     if sql_type == 'timestamp with time zone':
         json_type = 'string'
@@ -226,9 +243,6 @@ def from_sql(sql_type, nullable, default):
     ret_json_schema = {'type': json_type}
     if _format:
         ret_json_schema['format'] = _format
-
-    if default is not None:
-        ret_json_schema['default'] = default
 
     return ret_json_schema
 

@@ -3,6 +3,7 @@ from datetime import datetime
 from unittest.mock import patch
 
 import psycopg2
+from psycopg2 import sql
 import psycopg2.extras
 import pytest
 
@@ -225,6 +226,59 @@ def test_loading__simple(db_cleanup):
             record['flea_check_complete'] = False
 
         assert_records(conn, stream.records, 'cats', 'id')
+
+
+def test_loading__new_non_null_column(db_cleanup):
+    cat_count = 50
+    main(CONFIG, input_stream=CatStream(cat_count))
+
+    class NonNullStream(CatStream):
+        def generate_record(self):
+            record = CatStream.generate_record(self)
+            record['id'] = record['id'] + cat_count
+            return record
+
+    non_null_stream = NonNullStream(cat_count)
+    non_null_stream.schema = deepcopy(non_null_stream.schema)
+    non_null_stream.schema['schema']['properties']['paw_toe_count'] = {'type': 'integer',
+                                                                       'default': 5}
+
+    main(CONFIG, input_stream=non_null_stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_columns_sql('cats'))
+            columns = cur.fetchall()
+
+            assert set(columns) == {
+                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_sequence', 'bigint', 'YES'),
+                ('_sdc_table_version', 'bigint', 'YES'),
+                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                ('adoption__was_foster', 'boolean', 'YES'),
+                ('age', 'bigint', 'YES'),
+                ('id', 'bigint', 'NO'),
+                ('name', 'text', 'NO'),
+                ('paw_size', 'bigint', 'NO'),
+                ('paw_colour', 'text', 'NO'),
+                ('paw_toe_count', 'bigint', 'YES'),
+                ('flea_check_complete', 'boolean', 'NO'),
+                ('pattern', 'text', 'YES')
+            }
+
+            cur.execute(sql.SQL('SELECT {}, {} FROM {}').format(
+                sql.Identifier('id'),
+                sql.Identifier('paw_toe_count'),
+                sql.Identifier('cats')
+            ))
+
+            persisted_records = cur.fetchall()
+
+            ## Assert that the split columns before/after new non-null data
+            assert 2 * cat_count == len(persisted_records)
+            assert cat_count == len([x for x in persisted_records if x[1] is None])
+            assert cat_count == len([x for x in persisted_records if x[1] is not None])
 
 
 def test_loading__column_type_change(db_cleanup):
