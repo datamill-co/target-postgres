@@ -663,6 +663,14 @@ class PostgresTarget():
 
         cur.execute(to_execute)
 
+    def migrate_column(self, cur, table_schema, table_name, column_name, mapped_name):
+        cur.execute(sql.SQL('UPDATE {table_schema}.{table_name} ' +
+                            'SET {mapped_name} = {column_name};').format(
+            table_schema=sql.Identifier(table_schema),
+            table_name=sql.Identifier(table_name),
+            mapped_name=sql.Identifier(mapped_name),
+            column_name=sql.Identifier(column_name)))
+
     def drop_column(self, cur, table_schema, table_name, column_name):
         cur.execute(sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
                             'DROP COLUMN {column_name};').format(
@@ -782,7 +790,7 @@ class PostgresTarget():
 
         if 'mappings' in metadata \
                 and typed_field in metadata['mappings']\
-                and field == metadata['mappings'][typed_field]:
+                and field == metadata['mappings'][typed_field]['from']:
             return typed_field
 
         return None
@@ -832,6 +840,12 @@ class PostgresTarget():
                                 table_name,
                                 existing_field_mapping,
                                 existing_properties[existing_field_mapping])
+
+                self.migrate_column(cur,
+                                    table_schema,
+                                    table_name,
+                                    name,
+                                    existing_field_mapping)
 
                 self.add_column(cur,
                                 table_schema,
