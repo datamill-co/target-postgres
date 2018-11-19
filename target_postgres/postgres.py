@@ -542,29 +542,6 @@ class PostgresTarget():
                         insert_distinct_on=insert_distinct_on,
                         insert_distinct_order_by=insert_distinct_order_by)
 
-    def serialized_value(self, field, value, default_fields, datetime_fields):
-        ## Serialize fields which are not present but have default values set
-        if field in default_fields \
-                and value is None:
-            value = default_fields[field]
-
-        ## Serialize datetime to postgres compatible format
-        if field in datetime_fields \
-                and value is not None:
-            value = self.get_postgres_datetime(value)
-
-        ## Serialize NULL default value
-        if value == RESERVED_NULL_DEFAULT:
-            self.logger.warning(
-                'Reserved {} value found in field: {}. Value will be turned into literal null'.format(
-                    RESERVED_NULL_DEFAULT,
-                    field))
-
-        if value is None:
-            value = RESERVED_NULL_DEFAULT
-
-        return value
-
     def persist_rows(self,
                      cur,
                      target_table_name,
@@ -582,36 +559,54 @@ class PostgresTarget():
         default_fields = {k: v.get('default') for k, v in target_table_json_schema['properties'].items()
                           if v.get('default') is not None}
 
-        mapped_fields = target_schema.get('mappings', {})
-        mapped_from_fields = set([v['from'] for k,v in mapped_fields.items()])
+        fields = set(headers +
+                     [v['from'] for k, v in target_schema.get('mappings', {}).items()])
 
-        rows = iter(records)
+        records_iter = iter(records)
 
         def transform():
             try:
-                row = next(rows)
+                record = next(records_iter)
+                row = {}
+
+                for field in fields:
+                    value = record.get(field, None)
+
+                    ## Serialize fields which are not present but have default values set
+                    if field in default_fields \
+                            and value is None:
+                        value = default_fields[field]
+
+                    ## Serialize datetime to postgres compatible format
+                    if field in datetime_fields \
+                            and value is not None:
+                        value = self.get_postgres_datetime(value)
+
+                    ## Serialize NULL default value
+                    if value == RESERVED_NULL_DEFAULT:
+                        self.logger.warning(
+                            'Reserved {} value found in field: {}. Value will be turned into literal null'.format(
+                                RESERVED_NULL_DEFAULT,
+                                field))
+
+                    if value is None:
+                        value = RESERVED_NULL_DEFAULT
+
+                    field_name = field
+
+                    if field in target_table_json_schema['properties']:
+                        field_name = self.get_mapping(target_schema,
+                                                      field,
+                                                      target_table_json_schema['properties'][field]) \
+                                     or field
+
+                    if not field_name in row \
+                        or row[field_name] is None \
+                        or row[field_name] == RESERVED_NULL_DEFAULT:
+
+                        row[field_name] = value
+
                 with io.StringIO() as out:
-                    for prop in headers:
-                        if prop in mapped_fields:
-                            row[prop] = RESERVED_NULL_DEFAULT
-                        else:
-                            row[prop] = self.serialized_value(prop,
-                                                              row.get(prop, None),
-                                                              default_fields,
-                                                              datetime_fields)
-
-                    for prop in mapped_from_fields:
-                        if prop in row:
-                            mapped_field = self.get_mapping(target_schema,
-                                                            prop,
-                                                            target_table_json_schema['properties'][prop])
-
-                            row[mapped_field] = self.serialized_value(prop,
-                                                                      row.get(prop, None),
-                                                                      default_fields,
-                                                                      datetime_fields)
-                            row.pop(prop, None)
-
                     writer = csv.DictWriter(out, headers)
                     writer.writerow(row)
                     return out.getvalue()
