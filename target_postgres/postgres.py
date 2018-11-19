@@ -66,23 +66,22 @@ class PostgresTarget():
                     versions.add(record_version)
                     records_all_versions.append(record)
 
-                table_metadata = self.get_table_metadata(cur,
-                                                         self.postgres_schema,
-                                                         stream_buffer.stream)
+                current_table_schema = self.get_schema(cur,
+                                                       self.postgres_schema,
+                                                       stream_buffer.stream)
 
-                if table_metadata:
-                    current_table_version = table_metadata.get('version', None)
+                current_table_version = None
+
+                if current_table_schema:
+                    current_table_version = current_table_schema.get('version', None)
 
                     if set(stream_buffer.key_properties) \
-                            != set(table_metadata.get('key_properties')):
+                            != set(current_table_schema.get('key_properties')):
                         raise PostgresError(
                             '`key_properties` change detected. Existing values are: {}. Streamed values are: {}'.format(
-                                table_metadata.get('key_properties'),
+                                current_table_schema.get('key_properties'),
                                 stream_buffer.key_properties
                             ))
-
-                else:
-                    current_table_version = None
 
                 if max_version is not None:
                     target_table_version = max_version
@@ -117,7 +116,20 @@ class PostgresTarget():
                 subtables = {}
                 key_prop_schemas = {}
                 for key in stream_buffer.key_properties:
+                    if current_table_schema \
+                            and json_schema.get_type(current_table_schema['schema']['properties'][key]) \
+                            != json_schema.get_type(root_table_schema['properties'][key]):
+                        raise PostgresError(
+                            ('`key_properties` type change detected for "{}". ' +
+                            'Existing values are: {}. ' +
+                            'Streamed values are: {}').format(
+                                key,
+                                json_schema.get_type(current_table_schema['schema']['properties'][key]),
+                                json_schema.get_type(root_table_schema['properties'][key])
+                            ))
+
                     key_prop_schemas[key] = root_table_schema['properties'][key]
+
                 self.denest_schema(root_table_name, root_table_schema, key_prop_schemas, subtables)
 
                 root_temp_table_name = self.upsert_table_schema(cur,
