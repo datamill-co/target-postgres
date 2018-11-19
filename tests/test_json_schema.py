@@ -428,3 +428,9 @@ def test_make_nullable():
             'properties': {
                 'billing_address': {'$ref': '#/definitions/address'},
                 'shipping_address': {'$ref': '#/definitions/address'}}})
+
+
+def test_sql_shorthand():
+    assert 'b' == json_schema.sql_shorthand({'type': 'boolean'})
+    assert 'b' == json_schema.sql_shorthand({'type': ['null', 'boolean']})
+    assert 's' == json_schema.sql_shorthand({'type': ['null', 'string']})
