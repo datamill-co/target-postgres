@@ -36,7 +36,7 @@ class TransformStream():
         return self.fun()
 
 class PostgresTarget():
-    NESTED_SEPARATOR = '__'
+    SEPARATOR = '__'
 
     def __init__(self, connection, logger, *args, postgres_schema='public', **kwargs):
         self.conn = connection
@@ -99,7 +99,7 @@ class PostgresTarget():
 
                 if current_table_version is not None and \
                    target_table_version > current_table_version:
-                    root_table_name = stream_buffer.stream + self.NESTED_SEPARATOR + str(target_table_version)
+                    root_table_name = stream_buffer.stream + self.SEPARATOR + str(target_table_version)
                 else:
                     root_table_name = stream_buffer.stream
 
@@ -184,7 +184,7 @@ class PostgresTarget():
                         stream_buffer.stream,
                         version))
                 else:
-                    versioned_root_table = stream_buffer.stream + self.NESTED_SEPARATOR + str(version)
+                    versioned_root_table = stream_buffer.stream + self.SEPARATOR + str(version)
 
                     cur.execute(
                         sql.SQL('''
@@ -204,7 +204,7 @@ class PostgresTarget():
                             COMMIT;''').format(
                                 table_schema=sql.Identifier(self.postgres_schema),
                                 stream_table_old=sql.Identifier(table_name +
-                                                                self.NESTED_SEPARATOR +
+                                                                self.SEPARATOR +
                                                                 'old'),
                                 stream_table=sql.Identifier(table_name),
                                 version_table=sql.Identifier(versioned_table_name)))
@@ -277,7 +277,7 @@ class PostgresTarget():
                              subtables,
                              level):
         for prop, item_json_schema in table_json_schema['properties'].items():
-            next_path = current_path + self.NESTED_SEPARATOR + prop
+            next_path = current_path + self.SEPARATOR + prop
             if json_schema.is_object(item_json_schema):
                 self.denest_schema_helper(table_name,
                                           item_json_schema,
@@ -288,7 +288,7 @@ class PostgresTarget():
                                           subtables,
                                           level)
             elif json_schema.is_iterable(item_json_schema):
-                self.create_subtable(table_name + self.NESTED_SEPARATOR + prop,
+                self.create_subtable(table_name + self.SEPARATOR + prop,
                                      item_json_schema,
                                      key_prop_schemas,
                                      subtables,
@@ -328,13 +328,13 @@ class PostgresTarget():
         new_properties = {}
         for prop, item_json_schema in table_json_schema['properties'].items():
             if current_path:
-                next_path = current_path + self.NESTED_SEPARATOR + prop
+                next_path = current_path + self.SEPARATOR + prop
             else:
                 next_path = prop
 
             if json_schema.is_object(item_json_schema):
                 not_null = 'null' not in item_json_schema['type']
-                self.denest_schema_helper(table_name + self.NESTED_SEPARATOR + next_path,
+                self.denest_schema_helper(table_name + self.SEPARATOR + next_path,
                                           item_json_schema,
                                           not_null,
                                           new_properties,
@@ -343,7 +343,7 @@ class PostgresTarget():
                                           subtables,
                                           level)
             elif json_schema.is_iterable(item_json_schema):
-                self.create_subtable(table_name + self.NESTED_SEPARATOR + next_path,
+                self.create_subtable(table_name + self.SEPARATOR + next_path,
                                      item_json_schema,
                                      key_prop_schemas,
                                      subtables,
@@ -362,11 +362,11 @@ class PostgresTarget():
                          pk_fks,
                          level):
         for prop, value in record.items():
-            next_path = current_path + self.NESTED_SEPARATOR + prop
+            next_path = current_path + self.SEPARATOR + prop
             if isinstance(value, dict):
                 self.denest_subrecord(table_name, next_path, parent_record, value, pk_fks, level)
             elif isinstance(value, list):
-                self.denest_records(table_name + self.NESTED_SEPARATOR + next_path,
+                self.denest_records(table_name + self.SEPARATOR + next_path,
                                     value,
                                     records_map,
                                     key_properties,
@@ -379,7 +379,7 @@ class PostgresTarget():
         denested_record = {}
         for prop, value in record.items():
             if current_path:
-                next_path = current_path + self.NESTED_SEPARATOR + prop
+                next_path = current_path + self.SEPARATOR + prop
             else:
                 next_path = prop
 
@@ -393,7 +393,7 @@ class PostgresTarget():
                                       pk_fks,
                                       level)
             elif isinstance(value, list):
-                self.denest_records(table_name + self.NESTED_SEPARATOR + next_path,
+                self.denest_records(table_name + self.SEPARATOR + next_path,
                                     value,
                                     records_map,
                                     key_properties,
@@ -428,29 +428,28 @@ class PostgresTarget():
     def upsert_table_schema(self, cur, table_name, schema, key_properties, table_version):
         existing_table_schema = self.get_schema(cur, self.postgres_schema, table_name)
 
-        if existing_table_schema:
-            schema = self.merge_put_schemas(cur,
-                                             self.postgres_schema,
-                                             table_name,
-                                             existing_table_schema,
-                                             schema)
-            target_table_name = self.get_temp_table_name(table_name)
+        if existing_table_schema is not None:
+            self.merge_put_schemas(cur,
+                                   self.postgres_schema,
+                                   table_name,
+                                   existing_table_schema,
+                                   schema)
         else:
-            schema = schema
             self.create_table(cur,
-                               self.postgres_schema,
-                               table_name,
-                               schema,
-                               key_properties,
-                               table_version)
-            target_table_name = self.get_temp_table_name(table_name)
+                              self.postgres_schema,
+                              table_name,
+                              schema,
+                              key_properties,
+                              table_version)
+
+        target_table_name = self.get_temp_table_name(table_name)
 
         self.create_table(cur,
-                           self.postgres_schema,
-                           target_table_name,
-                           schema,
-                           key_properties,
-                           table_version)
+                          self.postgres_schema,
+                          target_table_name,
+                          self.get_schema(cur, self.postgres_schema, table_name).get('schema'),
+                          key_properties,
+                          table_version)
 
         return target_table_name
 
@@ -550,44 +549,64 @@ class PostgresTarget():
                      target_table_json_schema,
                      key_properties,
                      records):
-        headers = list(target_table_json_schema['properties'].keys())
+        target_schema = self.get_schema(cur, self.postgres_schema, target_table_name)
+
+        headers = list(target_schema['schema']['properties'].keys())
 
         datetime_fields = [k for k,v in target_table_json_schema['properties'].items()
                            if v.get('format') == 'date-time']
 
-        default_fields = [k for k,v in target_table_json_schema['properties'].items()
-                          if v.get('default') is not None]
+        default_fields = {k: v.get('default') for k, v in target_table_json_schema['properties'].items()
+                          if v.get('default') is not None}
 
-        rows = iter(records)
+        fields = set(headers +
+                     [v['from'] for k, v in target_schema.get('mappings', {}).items()])
+
+        records_iter = iter(records)
 
         def transform():
             try:
-                row = next(rows)
+                record = next(records_iter)
+                row = {}
+
+                for field in fields:
+                    value = record.get(field, None)
+
+                    ## Serialize fields which are not present but have default values set
+                    if field in default_fields \
+                            and value is None:
+                        value = default_fields[field]
+
+                    ## Serialize datetime to postgres compatible format
+                    if field in datetime_fields \
+                            and value is not None:
+                        value = self.get_postgres_datetime(value)
+
+                    ## Serialize NULL default value
+                    if value == RESERVED_NULL_DEFAULT:
+                        self.logger.warning(
+                            'Reserved {} value found in field: {}. Value will be turned into literal null'.format(
+                                RESERVED_NULL_DEFAULT,
+                                field))
+
+                    if value is None:
+                        value = RESERVED_NULL_DEFAULT
+
+                    field_name = field
+
+                    if field in target_table_json_schema['properties']:
+                        field_name = self.get_mapping(target_schema,
+                                                      field,
+                                                      target_table_json_schema['properties'][field]) \
+                                     or field
+
+                    if not field_name in row \
+                        or row[field_name] is None \
+                        or row[field_name] == RESERVED_NULL_DEFAULT:
+
+                        row[field_name] = value
+
                 with io.StringIO() as out:
-                    for prop in headers:
-                        ## Serialize fields which are not present but have default values set
-                        if prop in default_fields \
-                                and not prop in row:
-                            row[prop] = target_table_json_schema['properties'][prop]['default']
-
-                        ## Serialize datetime to postgres compatible format
-                        if prop in datetime_fields \
-                                and prop in row:
-                            row[prop] = self.get_postgres_datetime(row[prop])
-
-                        ## Serialize NULL default value
-                        if row.get(prop, False) == RESERVED_NULL_DEFAULT:
-                            self.logger.warning(
-                                'Reserved {} value found at: {}.{}.{}. Value will be turned into literal null'.format(
-                                    RESERVED_NULL_DEFAULT,
-                                    self.postgres_schema,
-                                    target_table_name,
-                                    prop))
-
-                        if not prop in row \
-                                or row.get(prop, None) is None:
-                            row[prop] = RESERVED_NULL_DEFAULT
-
                     writer = csv.DictWriter(out, headers)
                     writer.writerow(row)
                     return out.getvalue()
@@ -639,27 +658,60 @@ class PostgresTarget():
 
         cur.execute(to_execute)
 
+    def migrate_column(self, cur, table_schema, table_name, column_name, mapped_name):
+        cur.execute(sql.SQL('UPDATE {table_schema}.{table_name} ' +
+                            'SET {mapped_name} = {column_name};').format(
+            table_schema=sql.Identifier(table_schema),
+            table_name=sql.Identifier(table_name),
+            mapped_name=sql.Identifier(mapped_name),
+            column_name=sql.Identifier(column_name)))
+
+    def drop_column(self, cur, table_schema, table_name, column_name):
+        cur.execute(sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
+                            'DROP COLUMN {column_name};').format(
+            table_schema=sql.Identifier(table_schema),
+            table_name=sql.Identifier(table_name),
+            column_name=sql.Identifier(column_name)))
+
+    def set_table_metadata(self, cur, table_schema, table_name, metadata):
+        """
+        Given a Metadata dict, set it as the comment on the given table.
+        :param self: Postgres
+        :param cur: Pscyopg.Cursor
+        :param table_schema: String
+        :param table_name: String
+        :param metadata: Metadata Dict
+        :return: None
+        """
+
+        parsed_metadata = {}
+        parsed_metadata['key_properties'] = metadata.get('key_properties', [])
+        parsed_metadata['version'] = metadata.get('version')
+        parsed_metadata['mappings'] = metadata.get('mappings', {})
+
+        cur.execute(sql.SQL('COMMENT ON TABLE {}.{} IS {};').format(
+            sql.Identifier(table_schema),
+            sql.Identifier(table_name),
+            sql.Literal(json.dumps(parsed_metadata))))
+
+
     def create_table(self, cur, table_schema, table_name, schema, key_properties, table_version):
         create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
                 sql.Identifier(table_schema),
                 sql.Identifier(table_name))
 
-        if key_properties:
-            comment_sql = sql.SQL('COMMENT ON TABLE {}.{} IS {};').format(
-                sql.Identifier(table_schema),
-                sql.Identifier(table_name),
-                sql.Literal(json.dumps({'key_properties': key_properties, 'version': table_version})))
-        else:
-            comment_sql = sql.SQL('')
+        cur.execute(sql.SQL('{} ();').format(create_table_sql))
 
-        cur.execute(sql.SQL('{} ();{}').format(create_table_sql,
-                                               comment_sql))
+        if key_properties:
+            self.set_table_metadata(cur, table_schema, table_name,
+                                    {'key_properties': key_properties,
+                                     'version': table_version})
 
         for prop, column_json_schema in schema['properties'].items():
             self.add_column(cur, table_schema, table_name, prop, column_json_schema)
 
     def get_temp_table_name(self, stream_name):
-        return stream_name + self.NESTED_SEPARATOR + str(uuid.uuid4()).replace('-', '')
+        return stream_name + self.SEPARATOR + str(uuid.uuid4()).replace('-', '')
 
     def get_table_metadata(self, cur, table_schema, table_name):
         cur.execute(
@@ -679,6 +731,22 @@ class PostgresTarget():
 
         return comment_meta
 
+
+    def add_column_mapping(self, cur, table_schema, table_name, column_name, mapped_name, mapped_schema):
+        metadata = self.get_table_metadata(cur, table_schema, table_name)
+
+        if not metadata:
+            metadata = {}
+
+        if not 'mappings' in metadata:
+            metadata['mappings'] = {}
+
+        metadata['mappings'][mapped_name] = {'type': json_schema.get_type(mapped_schema),
+                                             'from': column_name}
+
+        self.set_table_metadata(cur, table_schema, table_name, metadata)
+
+
     def is_table_empty(self, cur, table_schema, table_name):
         cur.execute(sql.SQL('SELECT COUNT(1) FROM {}.{};').format(
             sql.Identifier(table_schema),
@@ -691,24 +759,93 @@ class PostgresTarget():
             sql.SQL('SELECT column_name, data_type, is_nullable FROM information_schema.columns ') +
             sql.SQL('WHERE table_schema = {} and table_name = {};').format(
                 sql.Literal(table_schema), sql.Literal(table_name)))
-        columns = cur.fetchall()
-
-        if len(columns) == 0:
-            return None
 
         properties = {}
-        for column in columns:
+        for column in cur.fetchall():
             properties[column[0]] = json_schema.from_sql(column[1], column[2] == 'YES')
 
-        schema = {'properties': properties}
+        metadata = self.get_table_metadata(cur, table_schema, table_name)
 
-        return schema
+        if metadata is None and not properties:
+            return None
+        elif metadata is None:
+            metadata = {}
+
+        metadata['name'] = table_name
+        metadata['type'] = 'TABLE_SCHEMA'
+        metadata['schema'] = {'properties': properties}
+
+        return metadata
+
+    def mapping_name(self, field, schema):
+        return field + self.SEPARATOR + json_schema.sql_shorthand(schema)
+
+    def get_mapping(self, metadata, field, schema):
+        typed_field = self.mapping_name(field, schema)
+
+        if 'mappings' in metadata \
+                and typed_field in metadata['mappings']\
+                and field == metadata['mappings'][typed_field]['from']:
+            return typed_field
+
+        return None
+
+    def split_column(self, cur, table_schema, table_name, column_name, column_schema, existing_properties):
+        ## column_name -> column_name__<current-type>, column_name__<new-type>
+        existing_column_mapping = self.mapping_name(column_name, existing_properties[column_name])
+        new_column_mapping = self.mapping_name(column_name, column_schema)
+
+        ## Update existing properties
+        existing_properties[existing_column_mapping] = json_schema.make_nullable(existing_properties[column_name])
+        existing_properties[new_column_mapping] = json_schema.make_nullable(column_schema)
+
+        ## Add new columns
+        ### NOTE: all migrated columns will be nullable and remain that way
+
+        #### Table Metadata
+        self.add_column_mapping(cur, table_schema, table_name, column_name,
+                                existing_column_mapping,
+                                existing_properties[existing_column_mapping])
+        self.add_column_mapping(cur, table_schema, table_name, column_name,
+                                new_column_mapping,
+                                existing_properties[new_column_mapping])
+
+        #### Columns
+        self.add_column(cur,
+                        table_schema,
+                        table_name,
+                        existing_column_mapping,
+                        existing_properties[existing_column_mapping])
+
+        self.add_column(cur,
+                        table_schema,
+                        table_name,
+                        new_column_mapping,
+                        existing_properties[new_column_mapping])
+
+        ## Migrate existing data
+        self.migrate_column(cur,
+                            table_schema,
+                            table_name,
+                            column_name,
+                            existing_column_mapping)
+
+        ## Drop existing column
+        self.drop_column(cur,
+                         table_schema,
+                         table_name,
+                         column_name)
+
+        ## Remove column (field) from existing_properties
+        del existing_properties[column_name]
 
     def merge_put_schemas(self, cur, table_schema, table_name, existing_schema, new_schema):
         new_properties = new_schema['properties']
-        existing_properties = existing_schema['properties']
+        existing_properties = existing_schema['schema']['properties']
         for name, schema in new_properties.items():
-            if name not in existing_properties:
+            if self.get_mapping(existing_schema, name, schema) is not None:
+                pass
+            elif name not in existing_properties:
                 existing_properties[name] = schema
                 self.add_column(cur,
                                 table_schema,
@@ -716,15 +853,31 @@ class PostgresTarget():
                                 name,
                                 schema)
             elif json_schema.to_sql(schema) \
-                    != json_schema.to_sql(existing_properties[name]):
-                raise PostgresError('Column type change detected for: {}.{}.{}. Expected {} ({}), got {} ({})'.format(
-                    table_schema,
-                    table_name,
-                    name,
-                    json_schema.get_type(schema),
-                    json_schema.to_sql(schema),
-                    json_schema.get_type(existing_properties[name]),
-                    json_schema.to_sql(existing_properties[name])
-                ))
+                    == json_schema.to_sql(existing_properties[name]):
+                pass
+            elif self.mapping_name(name, schema) \
+                    == self.mapping_name(name, existing_properties[name]):
+                raise PostgresError(
+                    'Cannot handle column type change for: {}.{}.{}. Issue with nullable constraints.'.format(
+                        table_schema,
+                        table_name,
+                        name
+                    ))
+            elif self.mapping_name(name, schema) not in existing_properties \
+                and self.mapping_name(name, existing_properties[name]) not in existing_properties:
 
-        return existing_schema
+                self.split_column(cur,
+                                  table_schema,
+                                  table_name,
+                                  name,
+                                  schema,
+                                  existing_properties)
+
+            else:
+                raise PostgresError(
+                    'Cannot handle column type change for: {}.{} columns {} and {}. Name collision likely.'.format(
+                        table_schema,
+                        table_name,
+                        name,
+                        self.mapping_name(name, schema)
+                    ))
