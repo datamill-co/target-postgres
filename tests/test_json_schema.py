@@ -386,3 +386,45 @@ def test_validation_errors__invalid_draft_version():
     draft_7 = json_schema.validation_errors({'$schema': 'http://json-schema.org/draft-07/schema#'})
     assert draft_7
     assert not _non_string_elements(draft_7)
+
+
+def test_make_nullable():
+    assert {'type': ['boolean', 'null']} \
+           == json_schema.make_nullable({'type': 'boolean'})
+    assert {'type': ['null', 'boolean']} \
+           == json_schema.make_nullable({'type': ['null', 'boolean']})
+    assert {'type': ['null', 'string']} \
+           == json_schema.make_nullable({'type': ['null', 'string']})
+    assert {
+               'definitions': {
+                   'address': {
+                       'type': 'object',
+                       'properties': {
+                           'street_address': {'type': 'string'},
+                           'city': {'type': 'string'},
+                           'state': {'type': 'string'}
+                       },
+                       'required': ['street_address', 'city', 'state']
+                   }
+               },
+               'type': ['object', 'null'],
+               'properties': {
+                   'billing_address': {'$ref': '#/definitions/address'},
+                   'shipping_address': {'$ref': '#/definitions/address'}}} \
+           == json_schema.make_nullable(
+        {
+            'definitions': {
+                'address': {
+                    'type': 'object',
+                    'properties': {
+                        'street_address': {'type': 'string'},
+                        'city': {'type': 'string'},
+                        'state': {'type': 'string'}
+                    },
+                    'required': ['street_address', 'city', 'state']
+                }
+            },
+            'type': 'object',
+            'properties': {
+                'billing_address': {'$ref': '#/definitions/address'},
+                'shipping_address': {'$ref': '#/definitions/address'}}})
