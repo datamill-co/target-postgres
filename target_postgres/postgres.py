@@ -795,6 +795,55 @@ class PostgresTarget():
 
         return None
 
+    def split_column(self, cur, table_schema, table_name, column_name, column_schema, existing_properties):
+        ## column_name -> column_name__<current-type>, column_name__<new-type>
+        existing_column_mapping = self.mapping_name(column_name, existing_properties[column_name])
+        new_column_mapping = self.mapping_name(column_name, column_schema)
+
+        ## Update existing properties
+        existing_properties[existing_column_mapping] = json_schema.make_nullable(existing_properties[column_name])
+        existing_properties[new_column_mapping] = json_schema.make_nullable(column_schema)
+
+        ## Add new columns
+        ### NOTE: all migrated columns will be nullable and remain that way
+
+        #### Table Metadata
+        self.add_column_mapping(cur, table_schema, table_name, column_name,
+                                existing_column_mapping,
+                                existing_properties[existing_column_mapping])
+        self.add_column_mapping(cur, table_schema, table_name, column_name,
+                                new_column_mapping,
+                                existing_properties[new_column_mapping])
+
+        #### Columns
+        self.add_column(cur,
+                        table_schema,
+                        table_name,
+                        existing_column_mapping,
+                        existing_properties[existing_column_mapping])
+
+        self.add_column(cur,
+                        table_schema,
+                        table_name,
+                        new_column_mapping,
+                        existing_properties[new_column_mapping])
+
+        ## Migrate existing data
+        self.migrate_column(cur,
+                            table_schema,
+                            table_name,
+                            column_name,
+                            existing_column_mapping)
+
+        ## Drop existing column
+        self.drop_column(cur,
+                         table_schema,
+                         table_name,
+                         column_name)
+
+        ## Remove column (field) from existing_properties
+        del existing_properties[column_name]
+
     def merge_put_schemas(self, cur, table_schema, table_name, existing_schema, new_schema):
         new_properties = new_schema['properties']
         existing_properties = existing_schema['schema']['properties']
@@ -821,44 +870,13 @@ class PostgresTarget():
                     ))
             elif self.mapping_name(name, schema) not in existing_properties \
                 and self.mapping_name(name, existing_properties[name]) not in existing_properties:
-                existing_field_mapping = self.mapping_name(name, existing_properties[name])
-                field_mapping = self.mapping_name(name, schema)
 
-                existing_properties[existing_field_mapping] = json_schema.make_nullable(existing_properties[name])
-                existing_properties[field_mapping] = json_schema.make_nullable(schema)
-
-                self.add_column_mapping(cur, table_schema, table_name, name,
-                                        existing_field_mapping,
-                                        existing_properties[existing_field_mapping])
-                self.add_column_mapping(cur, table_schema, table_name, name,
-                                        field_mapping,
-                                        existing_properties[field_mapping])
-
-                ## NOTE: all migrated columns will be nullable and remain that way
-                self.add_column(cur,
-                                table_schema,
-                                table_name,
-                                existing_field_mapping,
-                                existing_properties[existing_field_mapping])
-
-                self.migrate_column(cur,
-                                    table_schema,
-                                    table_name,
-                                    name,
-                                    existing_field_mapping)
-
-                self.add_column(cur,
-                                table_schema,
-                                table_name,
-                                field_mapping,
-                                existing_properties[field_mapping])
-
-                self.drop_column(cur,
-                                 table_schema,
-                                 table_name,
-                                 name)
-
-                del existing_properties[name]
+                self.split_column(cur,
+                                  table_schema,
+                                  table_name,
+                                  name,
+                                  schema,
+                                  existing_properties)
 
             else:
                 raise PostgresError(
