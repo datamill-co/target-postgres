@@ -395,6 +395,14 @@ def test_make_nullable():
            == json_schema.make_nullable({'type': ['null', 'boolean']})
     assert {'type': ['null', 'string']} \
            == json_schema.make_nullable({'type': ['null', 'string']})
+
+    ## Make sure we're not modifying the original
+    schema = {'type': ['string']}
+    assert json_schema.get_type(schema) == ['string']
+    assert {'type': ['string', 'null']} \
+           == json_schema.make_nullable(schema)
+    assert json_schema.get_type(schema) == ['string']
+
     assert {
                'definitions': {
                    'address': {
