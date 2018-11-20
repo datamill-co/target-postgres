@@ -111,59 +111,58 @@ class PostgresTarget(RDBMSInterface):
                 table_schemas = self.parse_table_schemas(stream_buffer, root_table_name)
                 for table_schema in table_schemas:
                     if table_schema['level'] is None:
-                        root_table_schema = table_schema['schema']
-
                         for key in stream_buffer.key_properties:
                             if current_table_schema \
                                     and json_schema.get_type(current_table_schema['schema']['properties'][key]) \
-                                    != json_schema.get_type(root_table_schema['properties'][key]):
+                                    != json_schema.get_type(table_schema['schema']['properties'][key]):
                                 raise PostgresError(
                                     ('`key_properties` type change detected for "{}". ' +
                                      'Existing values are: {}. ' +
                                      'Streamed values are: {}').format(
                                         key,
                                         json_schema.get_type(current_table_schema['schema']['properties'][key]),
-                                        json_schema.get_type(root_table_schema['properties'][key])
+                                        json_schema.get_type(table_schema['schema']['properties'][key])
                                     ))
 
-                root_temp_table_name = self.upsert_table_schema(cur,
-                                                                root_table_name,
-                                                                root_table_schema,
-                                                                stream_buffer.key_properties,
-                                                                target_table_version)
+                        self.upsert_table_schema(cur,
+                                                 table_schema['name'],
+                                                 table_schema['schema'],
+                                                 table_schema['key_properties'],
+                                                 target_table_version)
+                    else:
+                        self.upsert_table_schema(cur,
+                                                 table_schema['name'],
+                                                 table_schema['schema'],
+                                                 None,
+                                                 None)
 
-                nested_upsert_tables = []
-                for table_schema in table_schemas:
-                    if table_schema['level'] is not None:
-                        temp_table_name = self.upsert_table_schema(cur,
-                                                                   table_schema['name'],
-                                                                   table_schema['schema'],
-                                                                   None,
-                                                                   None)
-                        nested_upsert_tables.append({
-                            'table_name': table_schema['name'],
-                            'json_schema': table_schema['schema'],
-                            'temp_table_name': temp_table_name
-                        })
+                ##updated_table_schemas = self.update_schema(cur, stream_buffer, root_table_name)
 
                 records_map = {}
-                self.denest_records(root_table_name, records, records_map, stream_buffer.key_properties)
-                self.persist_rows(cur,
-                                  root_table_name,
-                                  root_temp_table_name,
-                                  root_table_schema,
-                                  stream_buffer.key_properties,
-                                  records_map[root_table_name])
-                for nested_upsert_table in nested_upsert_tables:
-                    key_properties = []
-                    for key in stream_buffer.key_properties:
-                        key_properties.append(SINGER_SOURCE_PK_PREFIX + key)
+                self.denest_records(root_table_name,
+                                    records,
+                                    records_map,
+                                    stream_buffer.key_properties)
+
+                for table_schema in table_schemas:
+                    table_version = None
+                    if table_schema['level'] is None:
+                        table_version = target_table_version
+
+                    target_table_name = self.get_temp_table_name(table_schema['name'])
+
+                    self.create_table(cur,
+                                      target_table_name,
+                                      self.get_table_schema(cur, table_schema['name']).get('schema'),
+                                      table_schema['key_properties'],
+                                      table_version)
+
                     self.persist_rows(cur,
-                                      nested_upsert_table['table_name'],
-                                      nested_upsert_table['temp_table_name'],
-                                      nested_upsert_table['json_schema'],
-                                      key_properties,
-                                      records_map[nested_upsert_table['table_name']])
+                                      table_schema['name'],
+                                      target_table_name,
+                                      table_schema['schema'],
+                                      table_schema['key_properties'],
+                                      records_map[table_schema['name']])
 
                 cur.execute('COMMIT;')
             except Exception as ex:
@@ -330,17 +329,6 @@ class PostgresTarget(RDBMSInterface):
                               schema,
                               key_properties,
                               table_version)
-
-        target_table_name = self.get_temp_table_name(table_name)
-
-        self.create_table(cur,
-                          self.postgres_schema,
-                          target_table_name,
-                          self.get_schema(cur, self.postgres_schema, table_name).get('schema'),
-                          key_properties,
-                          table_version)
-
-        return target_table_name
 
     def get_update_sql(self, target_table_name, temp_table_name, key_properties, subkeys):
         full_table_name = sql.SQL('{}.{}').format(
