@@ -67,9 +67,8 @@ class PostgresTarget(RDBMSInterface):
                     versions.add(record_version)
                     records_all_versions.append(record)
 
-                current_table_schema = self.get_schema(cur,
-                                                       self.postgres_schema,
-                                                       stream_buffer.stream)
+                current_table_schema = self.get_table_schema(cur,
+                                                             stream_buffer.stream)
 
                 current_table_version = None
 
@@ -181,7 +180,6 @@ class PostgresTarget(RDBMSInterface):
                 cur.execute('BEGIN;')
 
                 table_metadata = self.get_table_metadata(cur,
-                                                         self.postgres_schema,
                                                          stream_buffer.stream)
 
                 if not table_metadata:
@@ -319,17 +317,15 @@ class PostgresTarget(RDBMSInterface):
             self.denest_record(table_name, None, record, records_map, key_properties, record_pk_fks, level)
 
     def upsert_table_schema(self, cur, table_name, schema, key_properties, table_version):
-        existing_table_schema = self.get_schema(cur, self.postgres_schema, table_name)
+        existing_table_schema = self.get_table_schema(cur, table_name)
 
         if existing_table_schema is not None:
             self.merge_put_schemas(cur,
-                                   self.postgres_schema,
                                    table_name,
                                    existing_table_schema,
                                    schema)
         else:
             self.create_table(cur,
-                              self.postgres_schema,
                               table_name,
                               schema,
                               key_properties,
@@ -442,7 +438,7 @@ class PostgresTarget(RDBMSInterface):
                      target_table_json_schema,
                      key_properties,
                      records):
-        target_schema = self.get_schema(cur, self.postgres_schema, target_table_name)
+        target_schema = self.get_table_schema(cur, target_table_name)
 
         headers = list(target_schema['schema']['properties'].keys())
 
@@ -531,54 +527,53 @@ class PostgresTarget(RDBMSInterface):
             parsed_datetime = arrow.get() # defaults to UTC now
         return parsed_datetime.format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
 
-    def add_column(self, cur, table_schema, table_name, column_name, column_schema):
+    def add_column(self, cur, table_name, column_name, column_schema):
         data_type = json_schema.to_sql(column_schema)
 
         if not json_schema.is_nullable(column_schema) \
-                and not self.is_table_empty(cur, table_schema, table_name):
+                and not self.is_table_empty(cur, table_name):
             self.logger.warning('Forcing new column `{}.{}.{}` to be nullable due to table not empty.'.format(
-                table_schema,
+                self.postgres_schema,
                 table_name,
                 column_name))
             data_type = json_schema.to_sql(json_schema.make_nullable(column_schema))
 
         to_execute = sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
                              'ADD COLUMN {column_name} {data_type};').format(
-            table_schema=sql.Identifier(table_schema),
+            table_schema=sql.Identifier(self.postgres_schema),
             table_name=sql.Identifier(table_name),
             column_name=sql.Identifier(column_name),
             data_type=sql.SQL(data_type))
 
         cur.execute(to_execute)
 
-    def migrate_column(self, cur, table_schema, table_name, column_name, mapped_name):
+    def migrate_column(self, cur, table_name, column_name, mapped_name):
         cur.execute(sql.SQL('UPDATE {table_schema}.{table_name} ' +
                             'SET {mapped_name} = {column_name};').format(
-            table_schema=sql.Identifier(table_schema),
+            table_schema=sql.Identifier(self.postgres_schema),
             table_name=sql.Identifier(table_name),
             mapped_name=sql.Identifier(mapped_name),
             column_name=sql.Identifier(column_name)))
 
-    def drop_column(self, cur, table_schema, table_name, column_name):
+    def drop_column(self, cur, table_name, column_name):
         cur.execute(sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
                             'DROP COLUMN {column_name};').format(
-            table_schema=sql.Identifier(table_schema),
+            table_schema=sql.Identifier(self.postgres_schema),
             table_name=sql.Identifier(table_name),
             column_name=sql.Identifier(column_name)))
 
-    def make_column_nullable(self, cur, table_schema, table_name, column_name):
+    def make_column_nullable(self, cur, table_name, column_name):
         cur.execute(sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
                             'ALTER COLUMN {column_name} DROP NOT NULL;').format(
-            table_schema=sql.Identifier(table_schema),
+            table_schema=sql.Identifier(self.postgres_schema),
             table_name=sql.Identifier(table_name),
             column_name=sql.Identifier(column_name)))
 
-    def set_table_metadata(self, cur, table_schema, table_name, metadata):
+    def set_table_metadata(self, cur, table_name, metadata):
         """
         Given a Metadata dict, set it as the comment on the given table.
         :param self: Postgres
         :param cur: Pscyopg.Cursor
-        :param table_schema: String
         :param table_name: String
         :param metadata: Metadata Dict
         :return: None
@@ -590,33 +585,33 @@ class PostgresTarget(RDBMSInterface):
         parsed_metadata['mappings'] = metadata.get('mappings', {})
 
         cur.execute(sql.SQL('COMMENT ON TABLE {}.{} IS {};').format(
-            sql.Identifier(table_schema),
+            sql.Identifier(self.postgres_schema),
             sql.Identifier(table_name),
             sql.Literal(json.dumps(parsed_metadata))))
 
 
-    def create_table(self, cur, table_schema, table_name, schema, key_properties, table_version):
+    def create_table(self, cur, table_name, schema, key_properties, table_version):
         create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
-                sql.Identifier(table_schema),
+                sql.Identifier(self.postgres_schema),
                 sql.Identifier(table_name))
 
         cur.execute(sql.SQL('{} ();').format(create_table_sql))
 
         if key_properties:
-            self.set_table_metadata(cur, table_schema, table_name,
+            self.set_table_metadata(cur, table_name,
                                     {'key_properties': key_properties,
                                      'version': table_version})
 
         for prop, column_json_schema in schema['properties'].items():
-            self.add_column(cur, table_schema, table_name, prop, column_json_schema)
+            self.add_column(cur, table_name, prop, column_json_schema)
 
     def get_temp_table_name(self, stream_name):
         return stream_name + self.SEPARATOR + str(uuid.uuid4()).replace('-', '')
 
-    def get_table_metadata(self, cur, table_schema, table_name):
+    def get_table_metadata(self, cur, table_name):
         cur.execute(
             sql.SQL('SELECT obj_description(to_regclass({}));').format(
-                sql.Literal('{}.{}'.format(table_schema, table_name))))
+                sql.Literal('{}.{}'.format(self.postgres_schema, table_name))))
         comment = cur.fetchone()[0]
 
         if comment:
@@ -632,8 +627,8 @@ class PostgresTarget(RDBMSInterface):
         return comment_meta
 
 
-    def add_column_mapping(self, cur, table_schema, table_name, column_name, mapped_name, mapped_schema):
-        metadata = self.get_table_metadata(cur, table_schema, table_name)
+    def add_column_mapping(self, cur, table_name, column_name, mapped_name, mapped_schema):
+        metadata = self.get_table_metadata(cur, table_name)
 
         if not metadata:
             metadata = {}
@@ -644,27 +639,27 @@ class PostgresTarget(RDBMSInterface):
         metadata['mappings'][mapped_name] = {'type': json_schema.get_type(mapped_schema),
                                              'from': column_name}
 
-        self.set_table_metadata(cur, table_schema, table_name, metadata)
+        self.set_table_metadata(cur, table_name, metadata)
 
 
-    def is_table_empty(self, cur, table_schema, table_name):
+    def is_table_empty(self, cur, table_name):
         cur.execute(sql.SQL('SELECT COUNT(1) FROM {}.{};').format(
-            sql.Identifier(table_schema),
+            sql.Identifier(self.postgres_schema),
             sql.Identifier(table_name)))
 
         return cur.fetchall()[0][0] == 0
 
-    def get_schema(self, cur, table_schema, table_name):
+    def get_table_schema(self, cur, table_name):
         cur.execute(
             sql.SQL('SELECT column_name, data_type, is_nullable FROM information_schema.columns ') +
             sql.SQL('WHERE table_schema = {} and table_name = {};').format(
-                sql.Literal(table_schema), sql.Literal(table_name)))
+                sql.Literal(self.postgres_schema), sql.Literal(table_name)))
 
         properties = {}
         for column in cur.fetchall():
             properties[column[0]] = json_schema.from_sql(column[1], column[2] == 'YES')
 
-        metadata = self.get_table_metadata(cur, table_schema, table_name)
+        metadata = self.get_table_metadata(cur, table_name)
 
         if metadata is None and not properties:
             return None
@@ -690,7 +685,7 @@ class PostgresTarget(RDBMSInterface):
 
         return None
 
-    def split_column(self, cur, table_schema, table_name, column_name, column_schema, existing_properties):
+    def split_column(self, cur, table_name, column_name, column_schema, existing_properties):
         ## column_name -> column_name__<current-type>, column_name__<new-type>
         existing_column_mapping = self.mapping_name(column_name, existing_properties[column_name])
         new_column_mapping = self.mapping_name(column_name, column_schema)
@@ -703,43 +698,39 @@ class PostgresTarget(RDBMSInterface):
         ### NOTE: all migrated columns will be nullable and remain that way
 
         #### Table Metadata
-        self.add_column_mapping(cur, table_schema, table_name, column_name,
+        self.add_column_mapping(cur, table_name, column_name,
                                 existing_column_mapping,
                                 existing_properties[existing_column_mapping])
-        self.add_column_mapping(cur, table_schema, table_name, column_name,
+        self.add_column_mapping(cur, table_name, column_name,
                                 new_column_mapping,
                                 existing_properties[new_column_mapping])
 
         #### Columns
         self.add_column(cur,
-                        table_schema,
                         table_name,
                         existing_column_mapping,
                         existing_properties[existing_column_mapping])
 
         self.add_column(cur,
-                        table_schema,
                         table_name,
                         new_column_mapping,
                         existing_properties[new_column_mapping])
 
         ## Migrate existing data
         self.migrate_column(cur,
-                            table_schema,
                             table_name,
                             column_name,
                             existing_column_mapping)
 
         ## Drop existing column
         self.drop_column(cur,
-                         table_schema,
                          table_name,
                          column_name)
 
         ## Remove column (field) from existing_properties
         del existing_properties[column_name]
 
-    def merge_put_schemas(self, cur, table_schema, table_name, existing_schema, new_schema):
+    def merge_put_schemas(self, cur, table_name, existing_schema, new_schema):
         new_properties = new_schema['properties']
         existing_properties = existing_schema['schema']['properties']
         for name, schema in new_properties.items():
@@ -752,7 +743,6 @@ class PostgresTarget(RDBMSInterface):
 
                 existing_properties[name] = schema
                 self.add_column(cur,
-                                table_schema,
                                 table_name,
                                 name,
                                 schema)
@@ -764,7 +754,6 @@ class PostgresTarget(RDBMSInterface):
 
                 existing_properties[name] = json_schema.make_nullable(existing_properties[name])
                 self.make_column_nullable(cur,
-                                          table_schema,
                                           table_name,
                                           name)
 
@@ -778,7 +767,6 @@ class PostgresTarget(RDBMSInterface):
                 and self.mapping_name(name, existing_properties[name]) not in existing_properties:
 
                 self.split_column(cur,
-                                  table_schema,
                                   table_name,
                                   name,
                                   schema,
@@ -788,7 +776,7 @@ class PostgresTarget(RDBMSInterface):
             else:
                 raise PostgresError(
                     'Cannot handle column type change for: {}.{} columns {} and {}. Name collision likely.'.format(
-                        table_schema,
+                        self.postgres_schema,
                         table_name,
                         name,
                         self.mapping_name(name, schema)
