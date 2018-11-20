@@ -14,7 +14,11 @@
 
 from target_postgres import json_schema
 from target_postgres.singer_stream import (
+    SINGER_RECEIVED_AT,
+    SINGER_BATCHED_AT,
     SINGER_SEQUENCE,
+    SINGER_TABLE_VERSION,
+    SINGER_PK,
     SINGER_SOURCE_PK_PREFIX,
     SINGER_LEVEL
 )
@@ -36,6 +40,37 @@ def to_table_schema(name, level, keys, properties):
             'schema': {'type': 'object',
                        'additionalProperties': False,
                        'properties': properties}}
+
+
+def _add_singer_columns(schema, key_properties):
+    properties = schema['properties']
+
+    if SINGER_RECEIVED_AT not in properties:
+        properties[SINGER_RECEIVED_AT] = {
+            'type': ['null', 'string'],
+            'format': 'date-time'
+        }
+
+    if SINGER_SEQUENCE not in properties:
+        properties[SINGER_SEQUENCE] = {
+            'type': ['null', 'integer']
+        }
+
+    if SINGER_TABLE_VERSION not in properties:
+        properties[SINGER_TABLE_VERSION] = {
+            'type': ['null', 'integer']
+        }
+
+    if SINGER_BATCHED_AT not in properties:
+        properties[SINGER_BATCHED_AT] = {
+            'type': ['null', 'string'],
+            'format': 'date-time'
+        }
+
+    if len(key_properties) == 0:
+        properties[SINGER_PK] = {
+            'type': ['string']
+        }
 
 
 def _denest_schema_helper(table_name,
@@ -130,12 +165,12 @@ def _denest_schema(table_name, table_json_schema, key_prop_schemas, subtables, c
     table_json_schema['properties'] = new_properties
 
 
-def _flatten_schema(stream_buffer, schema):
+def _flatten_schema(stream_buffer, root_table_name, schema):
     subtables = {}
     key_prop_schemas = {}
     for key in stream_buffer.key_properties:
         key_prop_schemas[key] = schema['properties'][key]
-    _denest_schema(stream_buffer.stream, schema, key_prop_schemas, subtables)
+    _denest_schema(root_table_name, schema, key_prop_schemas, subtables)
 
     ret = []
     for name, schema in subtables.items():
@@ -154,12 +189,14 @@ class RDBMSInterface():
     given target.
     """
 
-    def parse_table_schemas(self, stream_buffer):
+    def parse_table_schemas(self, stream_buffer, root_table_name):
         """"""
         root_table_schema = json_schema.simplify(stream_buffer.schema)
 
-        return [to_table_schema(stream_buffer.stream, None, stream_buffer.key_properties, root_table_schema['properties'])] \
-               + _flatten_schema(stream_buffer, root_table_schema)
+        _add_singer_columns(root_table_schema, stream_buffer.key_properties)
+
+        return _flatten_schema(stream_buffer, root_table_name, root_table_schema) \
+               + [to_table_schema(root_table_name, None, stream_buffer.key_properties, root_table_schema['properties'])]
 
     def get_table_schema(self, name):
         """"""

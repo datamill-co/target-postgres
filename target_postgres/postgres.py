@@ -109,31 +109,23 @@ class PostgresTarget(RDBMSInterface):
                 else:
                     records = records_all_versions
 
-                root_table_schema = json_schema.simplify(stream_buffer.schema)
+                table_schemas = self.parse_table_schemas(stream_buffer, root_table_name)
+                for table_schema in table_schemas:
+                    if table_schema['level'] is None:
+                        root_table_schema = table_schema['schema']
 
-                ## Add singer columns to root table
-                self.add_singer_columns(root_table_schema, stream_buffer.key_properties)
-
-                subtables = {}
-                key_prop_schemas = {}
-                for key in stream_buffer.key_properties:
-                    if current_table_schema \
-                            and json_schema.get_type(current_table_schema['schema']['properties'][key]) \
-                            != json_schema.get_type(root_table_schema['properties'][key]):
-                        raise PostgresError(
-                            ('`key_properties` type change detected for "{}". ' +
-                            'Existing values are: {}. ' +
-                            'Streamed values are: {}').format(
-                                key,
-                                json_schema.get_type(current_table_schema['schema']['properties'][key]),
-                                json_schema.get_type(root_table_schema['properties'][key])
-                            ))
-
-                    key_prop_schemas[key] = root_table_schema['properties'][key]
-
-                self.denest_schema(root_table_name, root_table_schema, key_prop_schemas, subtables)
-
-                self.parse_table_schemas(stream_buffer)
+                        for key in stream_buffer.key_properties:
+                            if current_table_schema \
+                                    and json_schema.get_type(current_table_schema['schema']['properties'][key]) \
+                                    != json_schema.get_type(root_table_schema['properties'][key]):
+                                raise PostgresError(
+                                    ('`key_properties` type change detected for "{}". ' +
+                                     'Existing values are: {}. ' +
+                                     'Streamed values are: {}').format(
+                                        key,
+                                        json_schema.get_type(current_table_schema['schema']['properties'][key]),
+                                        json_schema.get_type(root_table_schema['properties'][key])
+                                    ))
 
                 root_temp_table_name = self.upsert_table_schema(cur,
                                                                 root_table_name,
@@ -142,17 +134,18 @@ class PostgresTarget(RDBMSInterface):
                                                                 target_table_version)
 
                 nested_upsert_tables = []
-                for table_name, subtable_json_schema in subtables.items():
-                    temp_table_name = self.upsert_table_schema(cur,
-                                                               table_name,
-                                                               subtable_json_schema,
-                                                               None,
-                                                               None)
-                    nested_upsert_tables.append({
-                        'table_name': table_name,
-                        'json_schema': subtable_json_schema,
-                        'temp_table_name': temp_table_name
-                    })
+                for table_schema in table_schemas:
+                    if table_schema['level'] is not None:
+                        temp_table_name = self.upsert_table_schema(cur,
+                                                                   table_schema['name'],
+                                                                   table_schema['schema'],
+                                                                   None,
+                                                                   None)
+                        nested_upsert_tables.append({
+                            'table_name': table_schema['name'],
+                            'json_schema': table_schema['schema'],
+                            'temp_table_name': temp_table_name
+                        })
 
                 records_map = {}
                 self.denest_records(root_table_name, records, records_map, stream_buffer.key_properties)
@@ -231,36 +224,6 @@ class PostgresTarget(RDBMSInterface):
                 self.logger.exception(message)
                 raise PostgresError(message, ex)
 
-    def add_singer_columns(self, schema, key_properties):
-        properties = schema['properties']
-
-        if SINGER_RECEIVED_AT not in properties:
-            properties[SINGER_RECEIVED_AT] = {
-                'type': ['null', 'string'],
-                'format': 'date-time'
-            }
-
-        if SINGER_SEQUENCE not in properties:
-            properties[SINGER_SEQUENCE] = {
-                'type': ['null', 'integer']
-            }
-
-        if SINGER_TABLE_VERSION not in properties:
-            properties[SINGER_TABLE_VERSION] = {
-                'type': ['null', 'integer']
-            }
-
-        if SINGER_BATCHED_AT not in properties:
-            properties[SINGER_BATCHED_AT] = {
-                'type': ['null', 'string'],
-                'format': 'date-time'
-            }
-
-        if len(key_properties) == 0:
-            properties[SINGER_PK] = {
-                'type': ['string']
-            }
-
     def process_record_message(self, use_uuid_pk, batched_at, record_message):
         record = record_message['record']
 
@@ -281,91 +244,6 @@ class PostgresTarget(RDBMSInterface):
             record[SINGER_SEQUENCE] = arrow.get().timestamp
 
         return record
-
-    def denest_schema_helper(self,
-                             table_name,
-                             table_json_schema,
-                             not_null,
-                             top_level_schema,
-                             current_path,
-                             key_prop_schemas,
-                             subtables,
-                             level):
-        for prop, item_json_schema in table_json_schema['properties'].items():
-            next_path = current_path + self.SEPARATOR + prop
-            if json_schema.is_object(item_json_schema):
-                self.denest_schema_helper(table_name,
-                                          item_json_schema,
-                                          not_null,
-                                          top_level_schema,
-                                          next_path,
-                                          key_prop_schemas,
-                                          subtables,
-                                          level)
-            elif json_schema.is_iterable(item_json_schema):
-                self.create_subtable(table_name + self.SEPARATOR + prop,
-                                     item_json_schema,
-                                     key_prop_schemas,
-                                     subtables,
-                                     level + 1)
-            else:
-                if not_null and json_schema.is_nullable(item_json_schema):
-                    item_json_schema['type'].remove('null')
-                elif not json_schema.is_nullable(item_json_schema):
-                    item_json_schema['type'].append('null')
-                top_level_schema[next_path] = item_json_schema
-
-    def create_subtable(self, table_name, table_json_schema, key_prop_schemas, subtables, level):
-        if json_schema.is_object(table_json_schema['items']):
-            new_properties = table_json_schema['items']['properties']
-        else:
-            new_properties = {'value': table_json_schema['items']}
-
-        for pk, item_json_schema in key_prop_schemas.items():
-            new_properties[SINGER_SOURCE_PK_PREFIX + pk] = item_json_schema
-
-        new_properties[SINGER_SEQUENCE] = {
-            'type': ['null', 'integer']
-        }
-
-        for i in range(0, level + 1):
-            new_properties[SINGER_LEVEL.format(i)] = {
-                'type': ['integer']
-            }
-
-        new_schema = {'type': ['object'], 'properties': new_properties}
-
-        self.denest_schema(table_name, new_schema, key_prop_schemas, subtables, level=level)
-
-        subtables[table_name] = new_schema
-
-    def denest_schema(self, table_name, table_json_schema, key_prop_schemas, subtables, current_path=None, level=-1):
-        new_properties = {}
-        for prop, item_json_schema in table_json_schema['properties'].items():
-            if current_path:
-                next_path = current_path + self.SEPARATOR + prop
-            else:
-                next_path = prop
-
-            if json_schema.is_object(item_json_schema):
-                not_null = 'null' not in item_json_schema['type']
-                self.denest_schema_helper(table_name + self.SEPARATOR + next_path,
-                                          item_json_schema,
-                                          not_null,
-                                          new_properties,
-                                          next_path,
-                                          key_prop_schemas,
-                                          subtables,
-                                          level)
-            elif json_schema.is_iterable(item_json_schema):
-                self.create_subtable(table_name + self.SEPARATOR + next_path,
-                                     item_json_schema,
-                                     key_prop_schemas,
-                                     subtables,
-                                     level + 1)
-            else:
-                new_properties[prop] = item_json_schema
-        table_json_schema['properties'] = new_properties
 
     def denest_subrecord(self,
                          table_name,
