@@ -10,6 +10,7 @@ import arrow
 from psycopg2 import sql
 
 from target_postgres import json_schema
+from target_postgres.rdbms_base import RDBMSInterface
 from target_postgres.singer_stream import (
     SINGER_RECEIVED_AT,
     SINGER_BATCHED_AT,
@@ -35,7 +36,7 @@ class TransformStream():
     def read(self, *args, **kwargs):
         return self.fun()
 
-class PostgresTarget():
+class PostgresTarget(RDBMSInterface):
     SEPARATOR = '__'
 
     def __init__(self, connection, logger, *args, postgres_schema='public', **kwargs):
@@ -131,6 +132,8 @@ class PostgresTarget():
                     key_prop_schemas[key] = root_table_schema['properties'][key]
 
                 self.denest_schema(root_table_name, root_table_schema, key_prop_schemas, subtables)
+
+                self.parse_table_schemas(stream_buffer)
 
                 root_temp_table_name = self.upsert_table_schema(cur,
                                                                 root_table_name,
