@@ -10,7 +10,7 @@ import arrow
 from psycopg2 import sql
 
 from target_postgres import json_schema
-from target_postgres.rdbms_base import RDBMSInterface
+from target_postgres.rdbms_base import RDBMSInterface, SEPARATOR
 from target_postgres.singer_stream import (
     SINGER_RECEIVED_AT,
     SINGER_BATCHED_AT,
@@ -37,8 +37,6 @@ class TransformStream():
         return self.fun()
 
 class PostgresTarget(RDBMSInterface):
-    SEPARATOR = '__'
-
     def __init__(self, connection, logger, *args, postgres_schema='public', **kwargs):
         self.conn = connection
         self.logger = logger
@@ -98,7 +96,7 @@ class PostgresTarget(RDBMSInterface):
 
                 if current_table_version is not None and \
                    target_table_version > current_table_version:
-                    root_table_name = stream_buffer.stream + self.SEPARATOR + str(target_table_version)
+                    root_table_name = stream_buffer.stream + SEPARATOR + str(target_table_version)
                 else:
                     root_table_name = stream_buffer.stream
 
@@ -179,7 +177,7 @@ class PostgresTarget(RDBMSInterface):
                         stream_buffer.stream,
                         version))
                 else:
-                    versioned_root_table = stream_buffer.stream + self.SEPARATOR + str(version)
+                    versioned_root_table = stream_buffer.stream + SEPARATOR + str(version)
 
                     cur.execute(
                         sql.SQL('''
@@ -199,7 +197,7 @@ class PostgresTarget(RDBMSInterface):
                             COMMIT;''').format(
                                 table_schema=sql.Identifier(self.postgres_schema),
                                 stream_table_old=sql.Identifier(table_name +
-                                                                self.SEPARATOR +
+                                                                SEPARATOR +
                                                                 'old'),
                                 stream_table=sql.Identifier(table_name),
                                 version_table=sql.Identifier(versioned_table_name)))
@@ -242,11 +240,11 @@ class PostgresTarget(RDBMSInterface):
                          pk_fks,
                          level):
         for prop, value in record.items():
-            next_path = current_path + self.SEPARATOR + prop
+            next_path = current_path + SEPARATOR + prop
             if isinstance(value, dict):
                 self.denest_subrecord(table_name, next_path, parent_record, value, pk_fks, level)
             elif isinstance(value, list):
-                self.denest_records(table_name + self.SEPARATOR + next_path,
+                self.denest_records(table_name + SEPARATOR + next_path,
                                     value,
                                     records_map,
                                     key_properties,
@@ -259,7 +257,7 @@ class PostgresTarget(RDBMSInterface):
         denested_record = {}
         for prop, value in record.items():
             if current_path:
-                next_path = current_path + self.SEPARATOR + prop
+                next_path = current_path + SEPARATOR + prop
             else:
                 next_path = prop
 
@@ -273,7 +271,7 @@ class PostgresTarget(RDBMSInterface):
                                       pk_fks,
                                       level)
             elif isinstance(value, list):
-                self.denest_records(table_name + self.SEPARATOR + next_path,
+                self.denest_records(table_name + SEPARATOR + next_path,
                                     value,
                                     records_map,
                                     key_properties,
@@ -556,10 +554,9 @@ class PostgresTarget(RDBMSInterface):
         :return: None
         """
 
-        parsed_metadata = {}
-        parsed_metadata['key_properties'] = metadata.get('key_properties', [])
-        parsed_metadata['version'] = metadata.get('version')
-        parsed_metadata['mappings'] = metadata.get('mappings', {})
+        parsed_metadata = {'key_properties': metadata.get('key_properties', []),
+                           'version': metadata.get('version'),
+                           'mappings': metadata.get('mappings', {})}
 
         cur.execute(sql.SQL('COMMENT ON TABLE {}.{} IS {};').format(
             sql.Identifier(self.postgres_schema),
@@ -583,7 +580,7 @@ class PostgresTarget(RDBMSInterface):
             self.add_column(cur, table_name, prop, column_json_schema)
 
     def get_temp_table_name(self, stream_name):
-        return stream_name + self.SEPARATOR + str(uuid.uuid4()).replace('-', '')
+        return stream_name + SEPARATOR + str(uuid.uuid4()).replace('-', '')
 
     def get_table_metadata(self, cur, table_name):
         cur.execute(
@@ -650,7 +647,7 @@ class PostgresTarget(RDBMSInterface):
         return metadata
 
     def mapping_name(self, field, schema):
-        return field + self.SEPARATOR + json_schema.sql_shorthand(schema)
+        return field + SEPARATOR + json_schema.sql_shorthand(schema)
 
     def get_mapping(self, metadata, field, schema):
         typed_field = self.mapping_name(field, schema)
