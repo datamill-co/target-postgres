@@ -178,7 +178,14 @@ def _flatten_schema(stream_buffer, root_table_name, schema):
     return ret
 
 
-class RDBMSInterface():
+class RDBMSNotImplementedError(NotImplementedError):
+    """
+    Raise when a RDBMS method has been left unimplmented which _must_ be overridden
+    in order for the interface to work correctly.
+    """
+
+
+class RDBMSInterface:
     """
     Generic interface for handling RDBMS in Singer.
 
@@ -190,7 +197,13 @@ class RDBMSInterface():
     """
 
     def parse_table_schemas(self, stream_buffer, root_table_name):
-        """"""
+        """
+        Given a `stream_buffer` return the denested/flattened TABLE_SCHEMA of
+        the root table and each sub table.
+        :param stream_buffer: SingerStreamBuffer
+        :param root_table_name: string
+        :return: [TABLE_SCHEMA(denested_streamed_schema_0), ...]
+        """
         root_table_schema = json_schema.simplify(stream_buffer.schema)
 
         _add_singer_columns(root_table_schema, stream_buffer.key_properties)
@@ -199,17 +212,35 @@ class RDBMSInterface():
                + [to_table_schema(root_table_name, None, stream_buffer.key_properties, root_table_schema['properties'])]
 
     def get_table_schema(self, connection, name):
-        """"""
-        return to_table_schema(name, 0, [], {})
+        """
+        :param connection: remote connection, type left to be determined by implementing class
+        :param name: string
+        :return: TABLE_SCHEMA(remote)
+        """
+        raise RDBMSNotImplementedError('`get_table_schema` not implemented.')
 
     def update_table_schema(self, connection, remote_table_json_schema, table_json_schema, metadata):
-        """"""
-        return remote_table_json_schema
+        """
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param remote_table_json_schema: get_table_schema
+        :param table_json_schema: updates for get_table_schema
+        :param metadata: additional metadata needed to implementing class
+        :return: updated_remote_table_json_schema
+        """
+        raise RDBMSNotImplementedError('`update_table_schema` not implemented.')
 
     def update_schema(self, connection, stream_buffer, root_table_name, metadata):
         """
-        Update the remote schema based on the stream_buffer.schema provided on init.
-        :return: Updated table_schemas.
+        Update the remote schema based on the `stream_buffer.schema`.
+        :param connection: remote connection, type left to be determined by implementing class
+        :param stream_buffer: SingerStreamBuffer
+        :param root_table_name: string
+        :param metadata: additional data for downstream calls
+        :return: [{'streamed_schema': TABLE_SCHEMA(denested_streamed_schema_0),
+                   'remote_schema': TABLE_SCHEMA(remote),
+                   'updated_remote_schema': TABLE_SCHEMA(remote)},
+                  ...]
         """
         table_schemas = []
         for table_json_schema in self.parse_table_schemas(stream_buffer, root_table_name):
@@ -225,15 +256,18 @@ class RDBMSInterface():
 
     def write_batch(self, stream_buffer):
         """
-        Persist stream_buffer.records to remote.
+        Persist `stream_buffer.records` to remote.
+        :param stream_buffer: SingerStreamBuffer
         :return: {'records_persisted': int,
                   'rows_persisted': int}
         """
-        return {'records_persisted': 0, 'rows_persisted': 0}
+        raise RDBMSNotImplementedError('`write_batch` not implemented.')
 
     def activate_version(self, stream_buffer, version):
         """
-        Activate the given stream_buffer to version
+        Activate the given `stream_buffer`'s remote to `version`
+        :param stream_buffer: SingerStreamBuffer
+        :param version: integer
         :return: boolean
         """
-        return False
+        raise RDBMSNotImplementedError('`activate_version` not implemented.')
