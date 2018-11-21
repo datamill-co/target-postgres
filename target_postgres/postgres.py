@@ -673,6 +673,13 @@ class PostgresTarget():
             table_name=sql.Identifier(table_name),
             column_name=sql.Identifier(column_name)))
 
+    def make_column_nullable(self, cur, table_schema, table_name, column_name):
+        cur.execute(sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
+                            'ALTER COLUMN {column_name} DROP NOT NULL;').format(
+            table_schema=sql.Identifier(table_schema),
+            table_name=sql.Identifier(table_name),
+            column_name=sql.Identifier(column_name)))
+
     def set_table_metadata(self, cur, table_schema, table_name, metadata):
         """
         Given a Metadata dict, set it as the comment on the given table.
@@ -843,26 +850,37 @@ class PostgresTarget():
         new_properties = new_schema['properties']
         existing_properties = existing_schema['schema']['properties']
         for name, schema in new_properties.items():
+            ## Mapping exists
             if self.get_mapping(existing_schema, name, schema) is not None:
                 pass
+
+            ## New column
             elif name not in existing_properties:
+
                 existing_properties[name] = schema
                 self.add_column(cur,
                                 table_schema,
                                 table_name,
                                 name,
                                 schema)
-            elif json_schema.to_sql(schema) \
-                    == json_schema.to_sql(existing_properties[name]):
+
+            ## Existing column non-nullable, new column is nullable
+            elif not json_schema.is_nullable(existing_properties[name]) \
+                    and json_schema.get_type(schema) \
+                    == json_schema.get_type(json_schema.make_nullable(existing_properties[name])):
+
+                existing_properties[name] = json_schema.make_nullable(existing_properties[name])
+                self.make_column_nullable(cur,
+                                          table_schema,
+                                          table_name,
+                                          name)
+
+            ## Existing column, types compatible
+            elif json_schema.to_sql(json_schema.make_nullable(schema)) \
+                    == json_schema.to_sql(json_schema.make_nullable(existing_properties[name])):
                 pass
-            elif self.mapping_name(name, schema) \
-                    == self.mapping_name(name, existing_properties[name]):
-                raise PostgresError(
-                    'Cannot handle column type change for: {}.{}.{}. Issue with nullable constraints.'.format(
-                        table_schema,
-                        table_name,
-                        name
-                    ))
+
+            ## Column type change
             elif self.mapping_name(name, schema) not in existing_properties \
                 and self.mapping_name(name, existing_properties[name]) not in existing_properties:
 
@@ -873,6 +891,7 @@ class PostgresTarget():
                                   schema,
                                   existing_properties)
 
+            ## Error
             else:
                 raise PostgresError(
                     'Cannot handle column type change for: {}.{} columns {} and {}. Name collision likely.'.format(
