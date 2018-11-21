@@ -108,35 +108,23 @@ class PostgresTarget(RDBMSInterface):
                 else:
                     records = records_all_versions
 
-                table_schemas = self.parse_table_schemas(stream_buffer, root_table_name)
-                for table_schema in table_schemas:
-                    if table_schema['level'] is None:
-                        for key in stream_buffer.key_properties:
-                            if current_table_schema \
-                                    and json_schema.get_type(current_table_schema['schema']['properties'][key]) \
-                                    != json_schema.get_type(table_schema['schema']['properties'][key]):
-                                raise PostgresError(
-                                    ('`key_properties` type change detected for "{}". ' +
-                                     'Existing values are: {}. ' +
-                                     'Streamed values are: {}').format(
-                                        key,
-                                        json_schema.get_type(current_table_schema['schema']['properties'][key]),
-                                        json_schema.get_type(table_schema['schema']['properties'][key])
-                                    ))
+                for key in stream_buffer.key_properties:
+                    if current_table_schema \
+                            and json_schema.get_type(current_table_schema['schema']['properties'][key]) \
+                            != json_schema.get_type(stream_buffer.schema['properties'][key]):
+                        raise PostgresError(
+                            ('`key_properties` type change detected for "{}". ' +
+                             'Existing values are: {}. ' +
+                             'Streamed values are: {}').format(
+                                key,
+                                json_schema.get_type(current_table_schema['schema']['properties'][key]),
+                                json_schema.get_type(stream_buffer.schema['properties'][key])
+                            ))
 
-                        self.upsert_table_schema(cur,
-                                                 table_schema['name'],
-                                                 table_schema['schema'],
-                                                 table_schema['key_properties'],
-                                                 target_table_version)
-                    else:
-                        self.upsert_table_schema(cur,
-                                                 table_schema['name'],
-                                                 table_schema['schema'],
-                                                 None,
-                                                 None)
-
-                ##updated_table_schemas = self.update_schema(cur, stream_buffer, root_table_name)
+                table_schemas = self.update_schema(cur,
+                                                   stream_buffer,
+                                                   root_table_name,
+                                                   {'version': target_table_version})
 
                 records_map = {}
                 self.denest_records(root_table_name,
@@ -145,24 +133,26 @@ class PostgresTarget(RDBMSInterface):
                                     stream_buffer.key_properties)
 
                 for table_schema in table_schemas:
-                    table_version = None
-                    if table_schema['level'] is None:
-                        table_version = target_table_version
+                    streamed_schema = table_schema['streamed_schema']
+                    remote_schema = table_schema['updated_remote_schema']
 
-                    target_table_name = self.get_temp_table_name(table_schema['name'])
+                    table_version = streamed_schema.get('metadata', {}).get('version', None)
+
+                    target_table_name = self.get_temp_table_name(remote_schema['name'])
 
                     self.create_table(cur,
                                       target_table_name,
-                                      self.get_table_schema(cur, table_schema['name']).get('schema'),
-                                      table_schema['key_properties'],
+                                      remote_schema['schema'],
+                                      remote_schema['key_properties'],
                                       table_version)
 
                     self.persist_rows(cur,
-                                      table_schema['name'],
+                                      remote_schema['name'],
                                       target_table_name,
-                                      table_schema['schema'],
-                                      table_schema['key_properties'],
-                                      records_map[table_schema['name']])
+                                      remote_schema,
+                                      streamed_schema,
+                                      remote_schema['key_properties'],
+                                      records_map[remote_schema['name']])
 
                 cur.execute('COMMIT;')
             except Exception as ex:
@@ -315,20 +305,20 @@ class PostgresTarget(RDBMSInterface):
                     record_pk_fks[SINGER_SEQUENCE] = record[SINGER_SEQUENCE]
             self.denest_record(table_name, None, record, records_map, key_properties, record_pk_fks, level)
 
-    def upsert_table_schema(self, cur, table_name, schema, key_properties, table_version):
-        existing_table_schema = self.get_table_schema(cur, table_name)
-
-        if existing_table_schema is not None:
+    def update_table_schema(self, cur, remote_table_json_schema, table_json_schema, metadata):
+        if remote_table_json_schema is not None:
             self.merge_put_schemas(cur,
-                                   table_name,
-                                   existing_table_schema,
-                                   schema)
+                                   remote_table_json_schema['name'],
+                                   remote_table_json_schema,
+                                   table_json_schema)
         else:
             self.create_table(cur,
-                              table_name,
-                              schema,
-                              key_properties,
-                              table_version)
+                              table_json_schema['name'],
+                              table_json_schema['schema'],
+                              table_json_schema['key_properties'],
+                              metadata.get('version', None))
+
+        return self.get_table_schema(cur, table_json_schema['name'])
 
     def get_update_sql(self, target_table_name, temp_table_name, key_properties, subkeys):
         full_table_name = sql.SQL('{}.{}').format(
@@ -423,21 +413,20 @@ class PostgresTarget(RDBMSInterface):
                      cur,
                      target_table_name,
                      temp_table_name,
-                     target_table_json_schema,
+                     remote_schema,
+                     streamed_json_schema,
                      key_properties,
                      records):
-        target_schema = self.get_table_schema(cur, target_table_name)
+        headers = list(remote_schema['schema']['properties'].keys())
 
-        headers = list(target_schema['schema']['properties'].keys())
-
-        datetime_fields = [k for k,v in target_table_json_schema['properties'].items()
+        datetime_fields = [k for k,v in streamed_json_schema['schema']['properties'].items()
                            if v.get('format') == 'date-time']
 
-        default_fields = {k: v.get('default') for k, v in target_table_json_schema['properties'].items()
+        default_fields = {k: v.get('default') for k, v in streamed_json_schema['schema']['properties'].items()
                           if v.get('default') is not None}
 
         fields = set(headers +
-                     [v['from'] for k, v in target_schema.get('mappings', {}).items()])
+                     [v['from'] for k, v in remote_schema.get('mappings', {}).items()])
 
         records_iter = iter(records)
 
@@ -471,10 +460,10 @@ class PostgresTarget(RDBMSInterface):
 
                     field_name = field
 
-                    if field in target_table_json_schema['properties']:
-                        field_name = self.get_mapping(target_schema,
+                    if field in streamed_json_schema['schema']['properties']:
+                        field_name = self.get_mapping(remote_schema,
                                                       field,
-                                                      target_table_json_schema['properties'][field]) \
+                                                      streamed_json_schema['schema']['properties'][field]) \
                                      or field
 
                     if not field_name in row \
@@ -719,7 +708,7 @@ class PostgresTarget(RDBMSInterface):
         del existing_properties[column_name]
 
     def merge_put_schemas(self, cur, table_name, existing_schema, new_schema):
-        new_properties = new_schema['properties']
+        new_properties = new_schema['schema']['properties']
         existing_properties = existing_schema['schema']['properties']
         for name, schema in new_properties.items():
             ## Mapping exists

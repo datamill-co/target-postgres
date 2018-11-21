@@ -198,23 +198,28 @@ class RDBMSInterface():
         return _flatten_schema(stream_buffer, root_table_name, root_table_schema) \
                + [to_table_schema(root_table_name, None, stream_buffer.key_properties, root_table_schema['properties'])]
 
-    def get_table_schema(self, name):
+    def get_table_schema(self, connection, name):
         """"""
         return to_table_schema(name, 0, [], {})
 
-    def update_table_schema(self, table_json_schema):
+    def update_table_schema(self, connection, remote_table_json_schema, table_json_schema, metadata):
         """"""
-        remote_json_schema = self.get_table_schema(table_json_schema['name'])
-        return remote_json_schema
+        return remote_table_json_schema
 
-    def update_schema(self, stream_buffer):
+    def update_schema(self, connection, stream_buffer, root_table_name, metadata):
         """
         Update the remote schema based on the stream_buffer.schema provided on init.
         :return: Updated table_schemas.
         """
-        table_schemas = {}
-        for table_json_schema in self.parse_table_schemas(stream_buffer):
-            table_schemas[table_json_schema['name']] = self.update_table_schema(table_json_schema)
+        table_schemas = []
+        for table_json_schema in self.parse_table_schemas(stream_buffer, root_table_name):
+            remote_schema = self.get_table_schema(connection, table_json_schema['name'])
+            table_schemas.append({'streamed_schema': table_json_schema,
+                                  'remote_schema': remote_schema,
+                                  'updated_remote_schema': self.update_table_schema(connection,
+                                                                                    remote_schema,
+                                                                                    table_json_schema,
+                                                                                    metadata)})
 
         return table_schemas
 
