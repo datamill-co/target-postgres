@@ -487,6 +487,34 @@ def test_loading__column_type_change__nullable(db_cleanup):
             assert cat_count == len([x for x in persisted_records if x[0] is None])
 
 
+def test_loading__invalid__column_type_change__pks():
+    main(CONFIG, input_stream=CatStream(20))
+
+    class StringIdCatStream(CatStream):
+        def generate_record(self):
+            record = CatStream.generate_record(self)
+            record['id'] = str(record['id'])
+            return record
+
+    stream = StringIdCatStream(20)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties']['id'] = {'type': 'string'}
+
+    with pytest.raises(postgres.PostgresError, match=r'.*key_properties. type change detected'):
+        main(CONFIG, input_stream=stream)
+
+
+def test_loading__invalid__column_type_change__pks__nullable():
+    main(CONFIG, input_stream=CatStream(20))
+
+    stream = CatStream(20)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties']['id'] = json_schema.make_nullable(stream.schema['schema']['properties']['id'])
+
+    with pytest.raises(postgres.PostgresError, match=r'.*key_properties. type change detected'):
+        main(CONFIG, input_stream=stream)
+
+
 def test_upsert(db_cleanup):
     stream = CatStream(100)
     main(CONFIG, input_stream=stream)
