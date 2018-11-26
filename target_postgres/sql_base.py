@@ -165,19 +165,6 @@ def _denest_schema(table_name, table_json_schema, key_prop_schemas, subtables, c
     table_json_schema['properties'] = new_properties
 
 
-def _flatten_schema(root_table_name, schema, key_properties):
-    subtables = {}
-    key_prop_schemas = {}
-    for key in key_properties:
-        key_prop_schemas[key] = schema['properties'][key]
-    _denest_schema(root_table_name, schema, key_prop_schemas, subtables)
-
-    ret = []
-    for name, schema in subtables.items():
-        ret.append(to_table_schema(name, schema['level'], schema['key_properties'], schema['properties']))
-    return ret
-
-
 def _denest_subrecord(table_name,
                       current_path,
                       parent_record,
@@ -320,8 +307,17 @@ class SQLInterface:
 
         _add_singer_columns(root_table_schema, key_properties)
 
-        return _flatten_schema(root_table_name, root_table_schema, key_properties) \
-               + [to_table_schema(root_table_name, None, key_properties, root_table_schema['properties'])]
+        subtables = {}
+        key_prop_schemas = {}
+        for key in key_properties:
+            key_prop_schemas[key] = schema['properties'][key]
+        _denest_schema(root_table_name, root_table_schema, key_prop_schemas, subtables)
+
+        ret = [to_table_schema(root_table_name, None, key_properties, root_table_schema['properties'])]
+        for name, schema in subtables.items():
+            ret.append(to_table_schema(name, schema['level'], schema['key_properties'], schema['properties']))
+
+        return ret
 
     def get_table_schema(self, connection, name):
         """
