@@ -178,13 +178,6 @@ def _flatten_schema(stream_buffer, root_table_name, schema):
     return ret
 
 
-class RDBMSNotImplementedError(NotImplementedError):
-    """
-    Raise when a RDBMS method has been left unimplmented which _must_ be overridden
-    in order for the interface to work correctly.
-    """
-
-
 class RDBMSInterface:
     """
     Generic interface for handling RDBMS in Singer.
@@ -217,7 +210,7 @@ class RDBMSInterface:
         :param name: string
         :return: TABLE_SCHEMA(remote)
         """
-        raise RDBMSNotImplementedError('`get_table_schema` not implemented.')
+        raise NotImplementedError('`get_table_schema` not implemented.')
 
     def update_table_schema(self, connection, remote_table_json_schema, table_json_schema, metadata):
         """
@@ -228,7 +221,7 @@ class RDBMSInterface:
         :param metadata: additional metadata needed to implementing class
         :return: updated_remote_table_json_schema
         """
-        raise RDBMSNotImplementedError('`update_table_schema` not implemented.')
+        raise NotImplementedError('`update_table_schema` not implemented.')
 
     def update_schema(self, connection, stream_buffer, root_table_name, metadata):
         """
@@ -261,7 +254,7 @@ class RDBMSInterface:
         :return: {'records_persisted': int,
                   'rows_persisted': int}
         """
-        raise RDBMSNotImplementedError('`write_batch` not implemented.')
+        raise NotImplementedError('`write_batch` not implemented.')
 
     def activate_version(self, stream_buffer, version):
         """
@@ -270,4 +263,4 @@ class RDBMSInterface:
         :param version: integer
         :return: boolean
         """
-        raise RDBMSNotImplementedError('`activate_version` not implemented.')
+        raise NotImplementedError('`activate_version` not implemented.')
