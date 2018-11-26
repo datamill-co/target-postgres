@@ -4,7 +4,6 @@ import csv
 import uuid
 import json
 from functools import partial
-from copy import deepcopy
 
 import arrow
 from psycopg2 import sql
@@ -17,7 +16,6 @@ from target_postgres.singer_stream import (
     SINGER_SEQUENCE,
     SINGER_TABLE_VERSION,
     SINGER_PK,
-    SINGER_SOURCE_PK_PREFIX,
     SINGER_LEVEL
 )
 
@@ -29,7 +27,7 @@ class PostgresError(Exception):
     Raise this when there is an error with regards to Postgres streaming
     """
 
-class TransformStream():
+class TransformStream:
     def __init__(self, fun):
         self.fun = fun
 
@@ -86,7 +84,7 @@ class PostgresTarget(SQLInterface):
 
                 if current_table_version is not None and \
                         min(versions) < current_table_version:
-                    self.logger.warning('{} - Records from an earlier table vesion detected.'
+                    self.logger.warning('{} - Records from an earlier table version detected.'
                                         .format(stream_buffer.stream))
                 if len(versions) > 1:
                     self.logger.warning('{} - Multiple table versions in stream, only using the latest.'
