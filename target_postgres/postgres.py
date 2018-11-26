@@ -117,42 +117,23 @@ class PostgresTarget(SQLInterface):
                                 json_schema.get_type(stream_buffer.schema['properties'][key])
                             ))
 
-                for writeable_batch in self.get_writeable_batches(cur,
-                                                                  root_table_name,
-                                                                  stream_buffer.schema,
-                                                                  stream_buffer.key_properties,
-                                                                  records):
-                    streamed_schema = writeable_batch['streamed_schema']
-
-                    remote_schema = self.update_table_schema(cur,
-                                                             writeable_batch['remote_schema'],
-                                                             streamed_schema,
-                                                             {'version': target_table_version})
-
-                    target_table_name = self.get_temp_table_name(remote_schema['name'])
-
-                    self.create_table(cur,
-                                      target_table_name,
-                                      remote_schema['schema'],
-                                      remote_schema['key_properties'],
-                                      target_table_version)
-
-                    self.persist_rows(cur,
-                                      remote_schema['name'],
-                                      target_table_name,
-                                      remote_schema,
-                                      streamed_schema,
-                                      remote_schema['key_properties'],
-                                      writeable_batch['records'])
+                written_batches_details = self.write_table_batches(cur,
+                                                                   root_table_name,
+                                                                   stream_buffer.schema,
+                                                                   stream_buffer.key_properties,
+                                                                   records,
+                                                                   {'version': target_table_version})
 
                 cur.execute('COMMIT;')
+
+                stream_buffer.flush_buffer()
+
+                return written_batches_details
             except Exception as ex:
                 cur.execute('ROLLBACK;')
                 message = 'Exception writing records'
                 self.logger.exception(message)
                 raise PostgresError(message, ex)
-
-        stream_buffer.flush_buffer()
 
     def activate_version(self, stream_buffer, version):
         with self.conn.cursor() as cur:
@@ -327,71 +308,37 @@ class PostgresTarget(SQLInterface):
                         insert_distinct_on=insert_distinct_on,
                         insert_distinct_order_by=insert_distinct_order_by)
 
+    def parse_table_record_serialize_field_name(self, remote_schema, streamed_schema, field, value):
+        if field in streamed_schema['schema']['properties']:
+            return self.get_mapping(remote_schema,
+                                    field,
+                                    streamed_schema['schema']['properties'][field]) \
+                   or field
+        return field
+
+    def parse_table_record_serialize_null_value(self, remote_schema, streamed_schema, field, value):
+        if value is None:
+            return RESERVED_NULL_DEFAULT
+        return value
+
+    def parse_table_record_serialize_datetime_value(self, remote_schema, streamed_schema, field, value):
+        return self.get_postgres_datetime(value)
+
     def persist_rows(self,
                      cur,
-                     target_table_name,
-                     temp_table_name,
                      remote_schema,
-                     streamed_json_schema,
-                     key_properties,
+                     temp_table_name,
                      records):
-        headers = list(remote_schema['schema']['properties'].keys())
+        headers = records[0].keys()
 
-        datetime_fields = [k for k,v in streamed_json_schema['schema']['properties'].items()
-                           if v.get('format') == 'date-time']
-
-        default_fields = {k: v.get('default') for k, v in streamed_json_schema['schema']['properties'].items()
-                          if v.get('default') is not None}
-
-        fields = set(headers +
-                     [v['from'] for k, v in remote_schema.get('mappings', {}).items()])
-
-        records_iter = iter(records)
+        rows_iter = iter(records)
 
         def transform():
             try:
-                record = next(records_iter)
-                row = {}
-
-                for field in fields:
-                    value = record.get(field, None)
-
-                    ## Serialize fields which are not present but have default values set
-                    if field in default_fields \
-                            and value is None:
-                        value = default_fields[field]
-
-                    ## Serialize datetime to postgres compatible format
-                    if field in datetime_fields \
-                            and value is not None:
-                        value = self.get_postgres_datetime(value)
-
-                    ## Serialize NULL default value
-                    if value == RESERVED_NULL_DEFAULT:
-                        self.logger.warning(
-                            'Reserved {} value found in field: {}. Value will be turned into literal null'.format(
-                                RESERVED_NULL_DEFAULT,
-                                field))
-
-                    if value is None:
-                        value = RESERVED_NULL_DEFAULT
-
-                    field_name = field
-
-                    if field in streamed_json_schema['schema']['properties']:
-                        field_name = self.get_mapping(remote_schema,
-                                                      field,
-                                                      streamed_json_schema['schema']['properties'][field]) \
-                                     or field
-
-                    if not field_name in row \
-                        or row[field_name] is None \
-                        or row[field_name] == RESERVED_NULL_DEFAULT:
-
-                        row[field_name] = value
+                row = next(rows_iter)
 
                 with io.StringIO() as out:
-                    writer = csv.DictWriter(out, headers)
+                    writer = csv.DictWriter(out, row.keys())
                     writer.writerow(row)
                     return out.getvalue()
             except StopIteration:
@@ -409,11 +356,31 @@ class PostgresTarget(SQLInterface):
         pattern = re.compile(SINGER_LEVEL.format('[0-9]+'))
         subkeys = list(filter(lambda header: re.match(pattern, header) is not None, headers))
 
-        update_sql = self.get_update_sql(target_table_name,
+        update_sql = self.get_update_sql(remote_schema['name'],
                                          temp_table_name,
-                                         key_properties,
+                                         remote_schema['key_properties'],
                                          subkeys)
         cur.execute(update_sql)
+
+    def write_table_batch(self, cur, table_batch, metadata):
+        writeable_batch = SQLInterface.write_table_batch(self, cur, table_batch, metadata)
+
+        remote_schema = writeable_batch['remote_schema']
+
+        target_table_name = self.get_temp_table_name(remote_schema['name'])
+
+        self.create_table(cur,
+                          target_table_name,
+                          remote_schema['schema'],
+                          remote_schema['key_properties'],
+                          remote_schema['version'])
+
+        self.persist_rows(cur,
+                          remote_schema,
+                          target_table_name,
+                          writeable_batch['records'])
+
+        return writeable_batch
 
     def get_postgres_datetime(self, *args):
         if len(args) > 0:
@@ -558,7 +525,7 @@ class PostgresTarget(SQLInterface):
         if metadata is None and not properties:
             return None
         elif metadata is None:
-            metadata = {}
+            metadata = {'version': None}
 
         metadata['name'] = table_name
         metadata['type'] = 'TABLE_SCHEMA'

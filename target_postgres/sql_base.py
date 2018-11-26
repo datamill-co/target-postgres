@@ -370,6 +370,64 @@ class SQLInterface:
 
         return table_schemas
 
+    def parse_table_record_serialize_field_name(self, remote_schema, streamed_schema, field, value):
+        raise NotImplementedError('`parse_table_record_serialize_field_name` not implmented.')
+
+    def parse_table_record_serialize_null_value(self, remote_schema, streamed_schema, field, value):
+        raise NotImplementedError('`parse_table_record_serialize_null_value` not implmented.')
+
+    def parse_table_record_serialize_datetime_value(self, remote_schema, streamed_schema, field, value):
+        raise NotImplementedError('`parse_table_record_serialize_datetime_value` not implmented.')
+
+    def flesh_out_rows(self,
+                       remote_schema,
+                       streamed_schema,
+                       records):
+        headers = list(remote_schema['schema']['properties'].keys())
+
+        datetime_fields = [k for k, v in streamed_schema['schema']['properties'].items()
+                           if v.get('format') == 'date-time']
+
+        default_fields = {k: v.get('default') for k, v in streamed_schema['schema']['properties'].items()
+                          if v.get('default') is not None}
+
+        fields = set(headers +
+                     [v['from'] for k, v in remote_schema.get('mappings', {}).items()])
+
+        ## Get the default NULL value so we can assign row values when value is _not_ NULL
+        NULL_DEFAULT = self.parse_table_record_serialize_null_value(remote_schema, streamed_schema, None, None)
+
+        fleshed_out_rows = []
+
+        for record in records:
+            row = {}
+
+            for field in fields:
+                value = record.get(field, None)
+
+                ## Serialize fields which are not present but have default values set
+                if field in default_fields \
+                        and value is None:
+                    value = default_fields[field]
+
+                ## Serialize datetime to compatible format
+                if field in datetime_fields \
+                        and value is not None:
+                    value = self.parse_table_record_serialize_datetime_value(remote_schema, streamed_schema, field, value)
+
+                ## Serialize NULL default value
+                value = self.parse_table_record_serialize_null_value(remote_schema, streamed_schema, field, value)
+
+                field_name = self.parse_table_record_serialize_field_name(remote_schema, streamed_schema, field, value)
+
+                if not field_name in row \
+                        or row[field_name] == NULL_DEFAULT:
+                    row[field_name] = value
+
+            fleshed_out_rows.append(row)
+
+        return fleshed_out_rows
+
     def parse_table_records(self, root_table_name, key_properties, records):
         """"""
 
@@ -380,7 +438,7 @@ class SQLInterface:
                         key_properties)
         return records_map
 
-    def get_writeable_batches(self, connection, root_table_name, schema, key_properties, records):
+    def get_table_batches(self, connection, root_table_name, schema, key_properties, records):
         """"""
 
         table_schemas = self.parse_table_schemas(root_table_name,
@@ -399,6 +457,29 @@ class SQLInterface:
 
         return writeable_batches
 
+    def write_table_batch(self, connection, table_batch, metadata):
+        remote_schema = self.update_table_schema(connection,
+                                                 table_batch['remote_schema'],
+                                                 table_batch['streamed_schema'],
+                                                 metadata)
+
+        return {
+            'remote_schema': remote_schema,
+            'records': self.flesh_out_rows(remote_schema, table_batch['streamed_schema'], table_batch['records'])
+        }
+
+    def write_table_batches(self, connection, root_table_name, schema, key_properties, records, metadata):
+        records_persisted = len(records)
+        rows_persisted = 0
+        for table_batch in self.get_table_batches(connection, root_table_name, schema, key_properties, records):
+            written_batch = self.write_table_batch(connection, table_batch, metadata)
+            rows_persisted += len(written_batch['records'])
+
+        return {
+            'records_persisted': records_persisted,
+            'rows_persisted': rows_persisted
+        }
+
     def write_batch(self, stream_buffer):
         """
         Persist `stream_buffer.records` to remote.
@@ -406,10 +487,6 @@ class SQLInterface:
         :return: {'records_persisted': int,
                   'rows_persisted': int}
         """
-        # self.update_schema()
-        # self.parse_table_records()
-        ## for table_schema -> (assoc table_schema :records table_records[table_schema['name']])
-
         raise NotImplementedError('`write_batch` not implemented.')
 
     def activate_version(self, stream_buffer, version):
