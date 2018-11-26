@@ -10,7 +10,7 @@ import arrow
 from psycopg2 import sql
 
 from target_postgres import json_schema
-from target_postgres.rdbms_base import RDBMSInterface, SEPARATOR
+from target_postgres.sql_base import SQLInterface, SEPARATOR
 from target_postgres.singer_stream import (
     SINGER_RECEIVED_AT,
     SINGER_BATCHED_AT,
@@ -36,7 +36,7 @@ class TransformStream():
     def read(self, *args, **kwargs):
         return self.fun()
 
-class PostgresTarget(RDBMSInterface):
+class PostgresTarget(SQLInterface):
     def __init__(self, connection, logger, *args, postgres_schema='public', **kwargs):
         self.conn = connection
         self.logger = logger

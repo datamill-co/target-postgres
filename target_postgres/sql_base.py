@@ -1,14 +1,14 @@
-# RDBMS Base
-## This module is the base implementation for Singer RDBMS target support.
+# SQL Base
+## This module is the base implementation for Singer SQL target support.
 ## Expected usage of this module is to create a class representing your given
-## RDBMS Target which overrides RDBMSInterface.
+## SQL Target which overrides SQLInterface.
 #
 # Transition
 ## The given implementation here is in transition as we expand and add various
 ## targets. As such, there are many private helper functions which are providing
 ## the real support.
 ##
-## The expectation is that these functions will be added to RDBMSInterface as we
+## The expectation is that these functions will be added to SQLInterface as we
 ## better understand how to make adding new targets simpler.
 #
 
@@ -178,9 +178,9 @@ def _flatten_schema(stream_buffer, root_table_name, schema):
     return ret
 
 
-class RDBMSInterface:
+class SQLInterface:
     """
-    Generic interface for handling RDBMS in Singer.
+    Generic interface for handling SQL Targets in Singer.
 
     Provides reasonable defaults for:
     - nested schemas -> traditional SQL Tables and Columns
