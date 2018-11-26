@@ -50,20 +50,18 @@ class PostgresTarget(SQLInterface):
             try:
                 cur.execute('BEGIN;')
 
-                processed_records = map(partial(self.process_record_message,
-                                                stream_buffer.use_uuid_pk,
-                                                self.get_postgres_datetime()),
-                                        stream_buffer.peek_buffer())
+                processed_records = list(map(partial(self.process_record_message,
+                                                     stream_buffer.use_uuid_pk,
+                                                     self.get_postgres_datetime()),
+                                             stream_buffer.peek_buffer()))
                 versions = set()
                 max_version = None
-                records_all_versions = []
                 for record in processed_records:
                     record_version = record.get(SINGER_TABLE_VERSION)
                     if record_version is not None and \
                        (max_version is None or record_version > max_version):
                         max_version = record_version
                     versions.add(record_version)
-                    records_all_versions.append(record)
 
                 current_table_schema = self.get_table_schema(cur,
                                                              stream_buffer.stream)
@@ -101,10 +99,10 @@ class PostgresTarget(SQLInterface):
                     root_table_name = stream_buffer.stream
 
                 if target_table_version is not None:
-                    records = filter(lambda x: x.get(SINGER_TABLE_VERSION) == target_table_version,
-                                     records_all_versions)
+                    records = list(filter(lambda x: x.get(SINGER_TABLE_VERSION) == target_table_version,
+                                          processed_records))
                 else:
-                    records = records_all_versions
+                    records = processed_records
 
                 for key in stream_buffer.key_properties:
                     if current_table_schema \
