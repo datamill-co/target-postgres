@@ -206,6 +206,7 @@ class SQLInterface:
 
     def get_table_schema(self, connection, name):
         """
+        Fetch the `table_schema` for `name`.
         :param connection: remote connection, type left to be determined by implementing class
         :param name: string
         :return: TABLE_SCHEMA(remote)
@@ -214,7 +215,8 @@ class SQLInterface:
 
     def update_table_schema(self, connection, remote_table_json_schema, table_json_schema, metadata):
         """
-
+        Update the remote table schema based on the merged difference between
+        `remote_table_json_schema` and `table_json_schema`.
         :param connection: remote connection, type left to be determined by implementing class
         :param remote_table_json_schema: get_table_schema
         :param table_json_schema: updates for get_table_schema
