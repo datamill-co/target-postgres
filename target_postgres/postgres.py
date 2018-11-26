@@ -322,37 +322,22 @@ class PostgresTarget(SQLInterface):
     def parse_table_record_serialize_datetime_value(self, remote_schema, streamed_schema, field, value):
         return self.get_postgres_datetime(value)
 
-    def persist_rows(self,
-                     cur,
-                     remote_schema,
-                     temp_table_name,
-                     records):
-        headers = records[0].keys()
-
-        rows_iter = iter(records)
-
-        def transform():
-            try:
-                row = next(rows_iter)
-
-                with io.StringIO() as out:
-                    writer = csv.DictWriter(out, row.keys())
-                    writer.writerow(row)
-                    return out.getvalue()
-            except StopIteration:
-                return ''
-
-        csv_rows = TransformStream(transform)
+    def persist_csv_rows(self,
+                         cur,
+                         remote_schema,
+                         temp_table_name,
+                         columns,
+                         csv_rows):
 
         copy = sql.SQL('COPY {}.{} ({}) FROM STDIN WITH (FORMAT CSV, NULL {})').format(
             sql.Identifier(self.postgres_schema),
             sql.Identifier(temp_table_name),
-            sql.SQL(', ').join(map(sql.Identifier, headers)),
+            sql.SQL(', ').join(map(sql.Identifier, columns)),
             sql.Literal(RESERVED_NULL_DEFAULT))
         cur.copy_expert(copy, csv_rows)
 
         pattern = re.compile(SINGER_LEVEL.format('[0-9]+'))
-        subkeys = list(filter(lambda header: re.match(pattern, header) is not None, headers))
+        subkeys = list(filter(lambda header: re.match(pattern, header) is not None, columns))
 
         update_sql = self.get_update_sql(remote_schema['name'],
                                          temp_table_name,
@@ -367,16 +352,36 @@ class PostgresTarget(SQLInterface):
 
         target_table_name = self.get_temp_table_name(remote_schema['name'])
 
+        ## Create temp table to upload new data to
         self.create_table(cur,
                           target_table_name,
                           remote_schema['schema'],
                           remote_schema['key_properties'],
                           remote_schema['version'])
 
-        self.persist_rows(cur,
-                          remote_schema,
-                          target_table_name,
-                          writeable_batch['records'])
+        ## Make streamable CSV records
+        csv_headers = writeable_batch['records'][0].keys()
+        rows_iter = iter(writeable_batch['records'])
+
+        def transform():
+            try:
+                row = next(rows_iter)
+
+                with io.StringIO() as out:
+                    writer = csv.DictWriter(out, row.keys())
+                    writer.writerow(row)
+                    return out.getvalue()
+            except StopIteration:
+                return ''
+
+        csv_rows = TransformStream(transform)
+
+        ## Persist csv rows
+        self.persist_csv_rows(cur,
+                              remote_schema,
+                              target_table_name,
+                              csv_headers,
+                              csv_rows)
 
         return writeable_batch
 
