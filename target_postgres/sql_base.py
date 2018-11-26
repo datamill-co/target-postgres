@@ -165,10 +165,10 @@ def _denest_schema(table_name, table_json_schema, key_prop_schemas, subtables, c
     table_json_schema['properties'] = new_properties
 
 
-def _flatten_schema(stream_buffer, root_table_name, schema):
+def _flatten_schema(root_table_name, schema, key_properties):
     subtables = {}
     key_prop_schemas = {}
-    for key in stream_buffer.key_properties:
+    for key in key_properties:
         key_prop_schemas[key] = schema['properties'][key]
     _denest_schema(root_table_name, schema, key_prop_schemas, subtables)
 
@@ -176,6 +176,124 @@ def _flatten_schema(stream_buffer, root_table_name, schema):
     for name, schema in subtables.items():
         ret.append(to_table_schema(name, schema['level'], schema['key_properties'], schema['properties']))
     return ret
+
+
+def _denest_subrecord(table_name,
+                      current_path,
+                      parent_record,
+                      record,
+                      records_map,
+                      key_properties,
+                      pk_fks,
+                      level):
+    """"""
+    """
+    {...}
+    """
+    for prop, value in record.items():
+        """
+        str : {...} | [...] | ???None??? | <literal>
+        """
+        next_path = current_path + SEPARATOR + prop
+        if isinstance(value, dict):
+            """
+            {...}
+            """
+            # TODO: Throws exception due to wrong number of args.
+            _denest_subrecord(table_name, next_path, parent_record, value, pk_fks, level)
+        elif isinstance(value, list):
+            """
+            [...]
+            """
+            _denest_records(table_name + SEPARATOR + next_path,
+                            value,
+                            records_map,
+                            key_properties,
+                            pk_fks=pk_fks,
+                            level=level + 1)
+        else:
+            """
+            None | <literal>
+            """
+            parent_record[next_path] = value
+
+
+def _denest_record(table_name, current_path, record, records_map, key_properties, pk_fks, level):
+    """"""
+    """
+    {...}
+    """
+    denested_record = {}
+    for prop, value in record.items():
+        """
+        str : {...} | [...] | None | <literal>
+        """
+        if current_path:
+            next_path = current_path + SEPARATOR + prop
+        else:
+            next_path = prop
+
+        if isinstance(value, dict):
+            """
+            {...}
+            """
+            _denest_subrecord(table_name,
+                              next_path,
+                              denested_record,
+                              value,
+                              records_map,
+                              key_properties,
+                              pk_fks,
+                              level)
+        elif isinstance(value, list):
+            """
+            [...]
+            """
+            _denest_records(table_name + SEPARATOR + next_path,
+                            value,
+                            records_map,
+                            key_properties,
+                            pk_fks=pk_fks,
+                            level=level + 1)
+        elif value is None:  ## nulls mess up nested objects
+            """
+            None
+            """
+            continue
+        else:
+            """
+            <literal>
+            """
+            denested_record[next_path] = value
+
+    if table_name not in records_map:
+        records_map[table_name] = []
+    records_map[table_name].append(denested_record)
+
+
+def _denest_records(table_name, records, records_map, key_properties, pk_fks=None, level=-1):
+    row_index = 0
+    """
+    [{...} ...]
+    """
+    for record in records:
+        if pk_fks:
+            record_pk_fks = pk_fks.copy()
+            record_pk_fks[SINGER_LEVEL.format(level)] = row_index
+            for key, value in record_pk_fks.items():
+                record[key] = value
+            row_index += 1
+        else:  ## top level
+            record_pk_fks = {}
+            for key in key_properties:
+                record_pk_fks[SINGER_SOURCE_PK_PREFIX + key] = record[key]
+            if SINGER_SEQUENCE in record:
+                record_pk_fks[SINGER_SEQUENCE] = record[SINGER_SEQUENCE]
+
+        """
+        {...}
+        """
+        _denest_record(table_name, None, record, records_map, key_properties, record_pk_fks, level)
 
 
 class SQLInterface:
@@ -189,20 +307,21 @@ class SQLInterface:
     given target.
     """
 
-    def parse_table_schemas(self, stream_buffer, root_table_name):
+    def parse_table_schemas(self, root_table_name, schema, key_properties):
         """
-        Given a `stream_buffer` return the denested/flattened TABLE_SCHEMA of
+        Given a `schema` and `key_properties` return the denested/flattened TABLE_SCHEMA of
         the root table and each sub table.
-        :param stream_buffer: SingerStreamBuffer
         :param root_table_name: string
+        :param schema: SingerStreamSchema
+        :param key_properties: [String, ...]
         :return: [TABLE_SCHEMA(denested_streamed_schema_0), ...]
         """
-        root_table_schema = json_schema.simplify(stream_buffer.schema)
+        root_table_schema = json_schema.simplify(schema)
 
-        _add_singer_columns(root_table_schema, stream_buffer.key_properties)
+        _add_singer_columns(root_table_schema, key_properties)
 
-        return _flatten_schema(stream_buffer, root_table_name, root_table_schema) \
-               + [to_table_schema(root_table_name, None, stream_buffer.key_properties, root_table_schema['properties'])]
+        return _flatten_schema(root_table_name, root_table_schema, key_properties) \
+               + [to_table_schema(root_table_name, None, key_properties, root_table_schema['properties'])]
 
     def get_table_schema(self, connection, name):
         """
@@ -238,7 +357,9 @@ class SQLInterface:
                   ...]
         """
         table_schemas = []
-        for table_json_schema in self.parse_table_schemas(stream_buffer, root_table_name):
+        for table_json_schema in self.parse_table_schemas(root_table_name,
+                                                          stream_buffer.schema,
+                                                          stream_buffer.key_properties):
             remote_schema = self.get_table_schema(connection, table_json_schema['name'])
             table_schemas.append({'streamed_schema': table_json_schema,
                                   'remote_schema': remote_schema,
@@ -249,6 +370,35 @@ class SQLInterface:
 
         return table_schemas
 
+    def parse_table_records(self, root_table_name, key_properties, records):
+        """"""
+
+        records_map = {}
+        _denest_records(root_table_name,
+                        records,
+                        records_map,
+                        key_properties)
+        return records_map
+
+    def get_writeable_batches(self, connection, root_table_name, schema, key_properties, records):
+        """"""
+
+        table_schemas = self.parse_table_schemas(root_table_name,
+                                                 schema,
+                                                 key_properties)
+
+        table_records = self.parse_table_records(root_table_name,
+                                                 key_properties,
+                                                 records)
+        writeable_batches = []
+        for table_json_schema in table_schemas:
+            remote_schema = self.get_table_schema(connection, table_json_schema['name'])
+            writeable_batches.append({'streamed_schema': table_json_schema,
+                                      'remote_schema': remote_schema,
+                                      'records': table_records.get(table_json_schema['name'], [])})
+
+        return writeable_batches
+
     def write_batch(self, stream_buffer):
         """
         Persist `stream_buffer.records` to remote.
@@ -256,6 +406,10 @@ class SQLInterface:
         :return: {'records_persisted': int,
                   'rows_persisted': int}
         """
+        # self.update_schema()
+        # self.parse_table_records()
+        ## for table_schema -> (assoc table_schema :records table_records[table_schema['name']])
+
         raise NotImplementedError('`write_batch` not implemented.')
 
     def activate_version(self, stream_buffer, version):

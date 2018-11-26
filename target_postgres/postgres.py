@@ -117,22 +117,17 @@ class PostgresTarget(SQLInterface):
                                 json_schema.get_type(stream_buffer.schema['properties'][key])
                             ))
 
-                table_schemas = self.update_schema(cur,
-                                                   stream_buffer,
-                                                   root_table_name,
-                                                   {'version': target_table_version})
+                for writeable_batch in self.get_writeable_batches(cur,
+                                                                  root_table_name,
+                                                                  stream_buffer.schema,
+                                                                  stream_buffer.key_properties,
+                                                                  records):
+                    streamed_schema = writeable_batch['streamed_schema']
 
-                records_map = {}
-                self.denest_records(root_table_name,
-                                    records,
-                                    records_map,
-                                    stream_buffer.key_properties)
-
-                for table_schema in table_schemas:
-                    streamed_schema = table_schema['streamed_schema']
-                    remote_schema = table_schema['updated_remote_schema']
-
-                    table_version = streamed_schema.get('metadata', {}).get('version', None)
+                    remote_schema = self.update_table_schema(cur,
+                                                             writeable_batch['remote_schema'],
+                                                             streamed_schema,
+                                                             {'version': target_table_version})
 
                     target_table_name = self.get_temp_table_name(remote_schema['name'])
 
@@ -140,7 +135,7 @@ class PostgresTarget(SQLInterface):
                                       target_table_name,
                                       remote_schema['schema'],
                                       remote_schema['key_properties'],
-                                      table_version)
+                                      target_table_version)
 
                     self.persist_rows(cur,
                                       remote_schema['name'],
@@ -148,7 +143,7 @@ class PostgresTarget(SQLInterface):
                                       remote_schema,
                                       streamed_schema,
                                       remote_schema['key_properties'],
-                                      records_map[remote_schema['name']])
+                                      writeable_batch['records'])
 
                 cur.execute('COMMIT;')
             except Exception as ex:
@@ -227,79 +222,6 @@ class PostgresTarget(SQLInterface):
             record[SINGER_SEQUENCE] = arrow.get().timestamp
 
         return record
-
-    def denest_subrecord(self,
-                         table_name,
-                         current_path,
-                         parent_record,
-                         record,
-                         records_map,
-                         key_properties,
-                         pk_fks,
-                         level):
-        for prop, value in record.items():
-            next_path = current_path + SEPARATOR + prop
-            if isinstance(value, dict):
-                self.denest_subrecord(table_name, next_path, parent_record, value, pk_fks, level)
-            elif isinstance(value, list):
-                self.denest_records(table_name + SEPARATOR + next_path,
-                                    value,
-                                    records_map,
-                                    key_properties,
-                                    pk_fks=pk_fks,
-                                    level=level + 1)
-            else:
-                parent_record[next_path] = value
-
-    def denest_record(self, table_name, current_path, record, records_map, key_properties, pk_fks, level):
-        denested_record = {}
-        for prop, value in record.items():
-            if current_path:
-                next_path = current_path + SEPARATOR + prop
-            else:
-                next_path = prop
-
-            if isinstance(value, dict):
-                self.denest_subrecord(table_name,
-                                      next_path,
-                                      denested_record,
-                                      value,
-                                      records_map,
-                                      key_properties,
-                                      pk_fks,
-                                      level)
-            elif isinstance(value, list):
-                self.denest_records(table_name + SEPARATOR + next_path,
-                                    value,
-                                    records_map,
-                                    key_properties,
-                                    pk_fks=pk_fks,
-                                    level=level + 1)
-            elif value is None: ## nulls mess up nested objects
-                continue
-            else:
-                denested_record[next_path] = value
-
-        if table_name not in records_map:
-            records_map[table_name] = []
-        records_map[table_name].append(denested_record)
-
-    def denest_records(self, table_name, records, records_map, key_properties, pk_fks=None, level=-1):
-        row_index = 0
-        for record in records:
-            if pk_fks:
-                record_pk_fks = pk_fks.copy()
-                record_pk_fks[SINGER_LEVEL.format(level)] = row_index
-                for key, value in record_pk_fks.items():
-                    record[key] = value
-                row_index += 1
-            else: ## top level
-                record_pk_fks = {}
-                for key in key_properties:
-                    record_pk_fks[SINGER_SOURCE_PK_PREFIX + key] = record[key]
-                if SINGER_SEQUENCE in record:
-                    record_pk_fks[SINGER_SEQUENCE] = record[SINGER_SEQUENCE]
-            self.denest_record(table_name, None, record, records_map, key_properties, record_pk_fks, level)
 
     def update_table_schema(self, cur, remote_table_json_schema, table_json_schema, metadata):
         if remote_table_json_schema is not None:
