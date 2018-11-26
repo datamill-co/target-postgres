@@ -313,7 +313,7 @@ class SQLInterface:
         the root table and each sub table.
         :param root_table_name: string
         :param schema: SingerStreamSchema
-        :param key_properties: [String, ...]
+        :param key_properties: [string, ...]
         :return: [TABLE_SCHEMA(denested_streamed_schema_0), ...]
         """
         root_table_schema = json_schema.simplify(schema)
@@ -339,50 +339,107 @@ class SQLInterface:
         :param connection: remote connection, type left to be determined by implementing class
         :param remote_table_json_schema: get_table_schema
         :param table_json_schema: updates for get_table_schema
-        :param metadata: additional metadata needed to implementing class
+        :param metadata: additional metadata needed by implementing class
         :return: updated_remote_table_json_schema
         """
         raise NotImplementedError('`update_table_schema` not implemented.')
 
-    def update_schema(self, connection, stream_buffer, root_table_name, metadata):
+    def parse_table_records(self, root_table_name, key_properties, records):
         """
-        Update the remote schema based on the `stream_buffer.schema`.
-        :param connection: remote connection, type left to be determined by implementing class
-        :param stream_buffer: SingerStreamBuffer
+        Given `records` for the `root_table_name` and `key_properties`, flatten
+        into `table_records`.
         :param root_table_name: string
-        :param metadata: additional data for downstream calls
-        :return: [{'streamed_schema': TABLE_SCHEMA(denested_streamed_schema_0),
-                   'remote_schema': TABLE_SCHEMA(remote),
-                   'updated_remote_schema': TABLE_SCHEMA(remote)},
-                  ...]
+        :param key_properties: [string, ...]
+        :param records: [{...}, ...]
+        :return: {TableName string: [{...}, ...],
+                  ...}
         """
-        table_schemas = []
-        for table_json_schema in self.parse_table_schemas(root_table_name,
-                                                          stream_buffer.schema,
-                                                          stream_buffer.key_properties):
+
+        records_map = {}
+        _denest_records(root_table_name,
+                        records,
+                        records_map,
+                        key_properties)
+        return records_map
+
+    def get_table_batches(self, connection, root_table_name, schema, key_properties, records):
+        """
+        Given the streamed schema, and records, get all table schemas and records and prep them
+        in a `table_batch`.
+        :param connection: remote connection, type left to be determined by implementing class
+        :param root_table_name: string
+        :param schema: SingerStreamSchema
+        :param key_properties: [string, ...]
+        :param records: [{...}, ...]
+        :return: [{'streamed_schema': TABLE_SCHEMA(local),
+                   'remote_schema': TABLE_SCHEMA(remote),
+                   'records': [{...}, ...]
+        """
+
+        table_schemas = self.parse_table_schemas(root_table_name,
+                                                 schema,
+                                                 key_properties)
+
+        table_records = self.parse_table_records(root_table_name,
+                                                 key_properties,
+                                                 records)
+        writeable_batches = []
+        for table_json_schema in table_schemas:
             remote_schema = self.get_table_schema(connection, table_json_schema['name'])
-            table_schemas.append({'streamed_schema': table_json_schema,
-                                  'remote_schema': remote_schema,
-                                  'updated_remote_schema': self.update_table_schema(connection,
-                                                                                    remote_schema,
-                                                                                    table_json_schema,
-                                                                                    metadata)})
+            writeable_batches.append({'streamed_schema': table_json_schema,
+                                      'remote_schema': remote_schema,
+                                      'records': table_records.get(table_json_schema['name'], [])})
 
-        return table_schemas
+        return writeable_batches
 
-    def parse_table_record_serialize_field_name(self, remote_schema, streamed_schema, field, value):
+    def parse_table_record_serialize_field_name(
+            self, remote_schema, streamed_schema, field, value):
+        """
+        Returns the appropriate remote field (column) name for `field`.
+        :param remote_schema: TABLE_SCHEMA(remote)
+        :param streamed_schema: TABLE_SCHEMA(local)
+        :param field: string
+        :param value: literal
+        :return: string
+        """
         raise NotImplementedError('`parse_table_record_serialize_field_name` not implmented.')
 
-    def parse_table_record_serialize_null_value(self, remote_schema, streamed_schema, field, value):
+    def parse_table_record_serialize_null_value(
+            self, remote_schema, streamed_schema, field, value):
+        """
+        Returns the serialized version of `value` which is appropriate for the target's null
+        implementation.
+        :param remote_schema: TABLE_SCHEMA(remote)
+        :param streamed_schema: TABLE_SCHEMA(local)
+        :param field: string
+        :param value: literal
+        :return: literal
+        """
         raise NotImplementedError('`parse_table_record_serialize_null_value` not implmented.')
 
-    def parse_table_record_serialize_datetime_value(self, remote_schema, streamed_schema, field, value):
+    def parse_table_record_serialize_datetime_value(
+            self, remote_schema, streamed_schema, field, value):
+        """
+        Returns the serialized version of `value` which is appropriate  for the target's datetime
+        implementation.
+        :param remote_schema: TABLE_SCHEMA(remote)
+        :param streamed_schema: TABLE_SCHEMA(local)
+        :param field: string
+        :param value: literal
+        :return: literal
+        """
+
         raise NotImplementedError('`parse_table_record_serialize_datetime_value` not implmented.')
 
-    def flesh_out_rows(self,
-                       remote_schema,
-                       streamed_schema,
-                       records):
+    def parse_table_records_serialize_for_remote(
+            self, remote_schema, streamed_schema, records):
+        """
+        Parse the given table's `records` in preparation for persistence to the remote target.
+        :param remote_schema: TABLE_SCHEMA(remote)
+        :param streamed_schema: TABLE_SCHEMA(local)
+        :param records: [{...}, ...]
+        :return: [{...}, ...]
+        """
         headers = list(remote_schema['schema']['properties'].keys())
 
         datetime_fields = [k for k, v in streamed_schema['schema']['properties'].items()
@@ -413,7 +470,8 @@ class SQLInterface:
                 ## Serialize datetime to compatible format
                 if field in datetime_fields \
                         and value is not None:
-                    value = self.parse_table_record_serialize_datetime_value(remote_schema, streamed_schema, field, value)
+                    value = self.parse_table_record_serialize_datetime_value(remote_schema, streamed_schema, field,
+                                                                             value)
 
                 ## Serialize NULL default value
                 value = self.parse_table_record_serialize_null_value(remote_schema, streamed_schema, field, value)
@@ -428,36 +486,18 @@ class SQLInterface:
 
         return fleshed_out_rows
 
-    def parse_table_records(self, root_table_name, key_properties, records):
-        """"""
-
-        records_map = {}
-        _denest_records(root_table_name,
-                        records,
-                        records_map,
-                        key_properties)
-        return records_map
-
-    def get_table_batches(self, connection, root_table_name, schema, key_properties, records):
-        """"""
-
-        table_schemas = self.parse_table_schemas(root_table_name,
-                                                 schema,
-                                                 key_properties)
-
-        table_records = self.parse_table_records(root_table_name,
-                                                 key_properties,
-                                                 records)
-        writeable_batches = []
-        for table_json_schema in table_schemas:
-            remote_schema = self.get_table_schema(connection, table_json_schema['name'])
-            writeable_batches.append({'streamed_schema': table_json_schema,
-                                      'remote_schema': remote_schema,
-                                      'records': table_records.get(table_json_schema['name'], [])})
-
-        return writeable_batches
-
     def write_table_batch(self, connection, table_batch, metadata):
+        """
+        Update the remote for given table's schema, and prep records to be serialized.
+        Leaves actual writing/persistence to implementing class.
+        :param connection: remote connection, type left to be determined by implementing class
+        :param table_batch: {'remote_schema': TABLE_SCHEMA(remote),
+                             'streamed_schema': TABLE_SCHEMA(local),
+                             'records': [{...}, ...]}
+        :param metadata: additional metadata needed by implementing class
+        :return: {'remote_schema': TABLE_SCHEMA(remote),
+                  'records': [{...}, ...]}
+        """
         remote_schema = self.update_table_schema(connection,
                                                  table_batch['remote_schema'],
                                                  table_batch['streamed_schema'],
@@ -465,10 +505,22 @@ class SQLInterface:
 
         return {
             'remote_schema': remote_schema,
-            'records': self.flesh_out_rows(remote_schema, table_batch['streamed_schema'], table_batch['records'])
+            'records': self.parse_table_records_serialize_for_remote(remote_schema, table_batch['streamed_schema'],
+                                                                     table_batch['records'])
         }
 
     def write_table_batches(self, connection, root_table_name, schema, key_properties, records, metadata):
+        """
+        Write all `table_batch`s associated with the given `schema` and `records` to remote.
+        :param connection: remote connection, type left to be determined by implementing class
+        :param root_table_name: string
+        :param schema: SingerStreamSchema
+        :param key_properties: [string, ...]
+        :param records: [{...}, ...]
+        :param metadata: additional metadata needed by implementing class
+        :return: {'records_persisted': int,
+                  'rows_persisted': int}
+        """
         records_persisted = len(records)
         rows_persisted = 0
         for table_batch in self.get_table_batches(connection, root_table_name, schema, key_properties, records):
