@@ -112,8 +112,7 @@ def make_nullable(schema):
         return schema
 
     ret_schema = deepcopy(schema)
-    type.append('null')
-    ret_schema['type'] = type
+    ret_schema['type'] = type + ['null']
     return ret_schema
 
 
