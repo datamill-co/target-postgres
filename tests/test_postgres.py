@@ -487,6 +487,54 @@ def test_loading__column_type_change__nullable(db_cleanup):
             assert cat_count == len([x for x in persisted_records if x[0] is None])
 
 
+def test_loading__invalid__table_name(db_cleanup):
+    non_alphanumeric_stream = CatStream(100)
+    non_alphanumeric_stream.stream = '!!!invalid_name'
+    non_alphanumeric_stream.schema = deepcopy(non_alphanumeric_stream.schema)
+    non_alphanumeric_stream.schema['stream'] = '!!!invalid_name'
+
+    with pytest.raises(postgres.PostgresError):
+        main(CONFIG, input_stream=non_alphanumeric_stream)
+
+    non_lowercase_stream = CatStream(100)
+    non_lowercase_stream.stream = 'INVALID_name'
+    non_lowercase_stream.schema = deepcopy(non_lowercase_stream.schema)
+    non_lowercase_stream.schema['stream'] = 'INVALID_name'
+
+    with pytest.raises(postgres.PostgresError):
+        main(CONFIG, input_stream=non_lowercase_stream)
+
+    name_too_long_stream = CatStream(100)
+    name_too_long_stream.stream = 'x' * 1000
+    name_too_long_stream.schema = deepcopy(name_too_long_stream.schema)
+    name_too_long_stream.schema['stream'] = 'x' * 1000
+
+    with pytest.raises(postgres.PostgresError):
+        main(CONFIG, input_stream=name_too_long_stream)
+
+def test_loading__invalid__column_name(db_cleanup):
+    non_alphanumeric_stream = CatStream(100)
+    non_alphanumeric_stream.schema = deepcopy(non_alphanumeric_stream.schema)
+    non_alphanumeric_stream.schema['schema']['properties']['!!!invalid_name'] = non_alphanumeric_stream.schema['schema']['properties']['age']
+
+    with pytest.raises(postgres.PostgresError):
+        main(CONFIG, input_stream=non_alphanumeric_stream)
+
+    non_lowercase_stream = CatStream(100)
+    non_lowercase_stream.schema = deepcopy(non_lowercase_stream.schema)
+    non_lowercase_stream.schema['schema']['properties']['INVALID_name'] = non_lowercase_stream.schema['schema']['properties']['age']
+
+    with pytest.raises(postgres.PostgresError):
+        main(CONFIG, input_stream=non_lowercase_stream)
+
+    name_too_long_stream = CatStream(100)
+    name_too_long_stream.schema = deepcopy(name_too_long_stream.schema)
+    name_too_long_stream.schema['schema']['properties']['x' * 1000] = name_too_long_stream.schema['schema']['properties']['age']
+
+    with pytest.raises(postgres.PostgresError):
+        main(CONFIG, input_stream=name_too_long_stream)
+
+
 def test_loading__invalid__column_type_change__pks():
     main(CONFIG, input_stream=CatStream(20))
 
