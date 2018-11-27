@@ -202,7 +202,21 @@ class PostgresTarget(SQLInterface):
 
         return record
 
+    def _validate_identifier(self, identifier):
+        ## NAMEDATALEN _defaults_ to 64 in PostgreSQL. The maxmimum length for an identifier is
+        ## NAMEDATALEN - 1.
+        # TODO: Figure out way to `SELECT` value from commands
+        NAMEDATALEN = 63
+
+        if not re.match(r'^[a-z_][a-z0-9_$]*', identifier):
+            raise PostgresError()
+
+        if NAMEDATALEN < len(identifier):
+            raise PostgresError()
+
     def update_table_schema(self, cur, remote_table_json_schema, table_json_schema, metadata):
+        self._validate_identifier(table_json_schema['name'])
+
         if remote_table_json_schema is not None:
             self.merge_put_schemas(cur,
                                    remote_table_json_schema['name'],
@@ -391,6 +405,8 @@ class PostgresTarget(SQLInterface):
         return parsed_datetime.format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
 
     def add_column(self, cur, table_name, column_name, column_schema):
+        self._validate_identifier(column_name)
+
         data_type = json_schema.to_sql(column_schema)
 
         if not json_schema.is_nullable(column_schema) \
