@@ -202,17 +202,28 @@ class PostgresTarget(SQLInterface):
 
         return record
 
-    def _validate_identifier(self, identifier):
+    def _is_valid_identifier(self, identifier):
         ## NAMEDATALEN _defaults_ to 64 in PostgreSQL. The maxmimum length for an identifier is
         ## NAMEDATALEN - 1.
         # TODO: Figure out way to `SELECT` value from commands
         NAMEDATALEN = 63
 
         if not re.match(r'^[a-z_][a-z0-9_$]*', identifier):
-            raise PostgresError()
+            return False
 
         if NAMEDATALEN < len(identifier):
+            return False
+
+        return True
+
+    def _validate_identifier(self, identifier):
+        if not self._is_valid_identifier(identifier):
             raise PostgresError()
+
+    def canonicalize_identifier(self, identifier):
+        new_idenfitier = re.sub(r'[^\w\d_$]', '_', identifier.lower())
+        self._validate_identifier(new_idenfitier)
+        return new_idenfitier
 
     def update_table_schema(self, cur, remote_table_json_schema, table_json_schema, metadata):
         self._validate_identifier(table_json_schema['name'])
@@ -405,7 +416,10 @@ class PostgresTarget(SQLInterface):
         return parsed_datetime.format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
 
     def add_column(self, cur, table_name, column_name, column_schema):
-        self._validate_identifier(column_name)
+        canonicalized_name = self.canonicalize_identifier(column_name)
+
+        if canonicalized_name != column_name:
+            self.add_column_mapping(cur, table_name, column_name, canonicalized_name, column_schema)
 
         data_type = json_schema.to_sql(column_schema)
 
@@ -414,17 +428,29 @@ class PostgresTarget(SQLInterface):
             self.logger.warning('Forcing new column `{}.{}.{}` to be nullable due to table not empty.'.format(
                 self.postgres_schema,
                 table_name,
-                column_name))
+                canonicalized_name))
             data_type = json_schema.to_sql(json_schema.make_nullable(column_schema))
 
         to_execute = sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
                              'ADD COLUMN {column_name} {data_type};').format(
             table_schema=sql.Identifier(self.postgres_schema),
             table_name=sql.Identifier(table_name),
-            column_name=sql.Identifier(column_name),
+            column_name=sql.Identifier(canonicalized_name),
             data_type=sql.SQL(data_type))
 
-        cur.execute(to_execute)
+        try:
+            cur.execute(to_execute)
+        except Exception as ex:
+            ## Name collision with non mapped, non canonicalized name
+            if column_name != canonicalized_name:
+                raise PostgresError(
+                    'Cannot add canonicalized column `{}` as `{}` to table `{}`. Name collision likely'.format(
+                        column_name,
+                        canonicalized_name,
+                        table_name
+                    ))
+            else:
+                raise ex
 
     def migrate_column(self, cur, table_name, column_name, mapped_name):
         cur.execute(sql.SQL('UPDATE {table_schema}.{table_name} ' +
@@ -553,12 +579,23 @@ class PostgresTarget(SQLInterface):
     def mapping_name(self, field, schema):
         return field + SEPARATOR + json_schema.sql_shorthand(schema)
 
-    def get_mapping(self, metadata, field, schema):
+    def get_mapping(self, existing_schema, field, schema):
+        canonicalized_field = self.canonicalize_identifier(field)
+
+        if 'mappings' in existing_schema \
+                and canonicalized_field in existing_schema['mappings']\
+                and field == existing_schema['mappings'][canonicalized_field]['from']\
+                and json_schema.get_type(schema) == existing_schema['mappings'][canonicalized_field]['type']:
+            return canonicalized_field
+        elif canonicalized_field != field:
+            ## Short-circuit to avoid unintentional functionality
+            return None
+
         typed_field = self.mapping_name(field, schema)
 
-        if 'mappings' in metadata \
-                and typed_field in metadata['mappings']\
-                and field == metadata['mappings'][typed_field]['from']:
+        if 'mappings' in existing_schema \
+                and typed_field in existing_schema['mappings']\
+                and field == existing_schema['mappings'][typed_field]['from']:
             return typed_field
 
         return None
