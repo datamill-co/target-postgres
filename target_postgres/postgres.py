@@ -4,7 +4,6 @@ import csv
 import uuid
 import json
 from functools import partial
-from copy import deepcopy
 
 import arrow
 from psycopg2 import sql
@@ -17,7 +16,6 @@ from target_postgres.singer_stream import (
     SINGER_SEQUENCE,
     SINGER_TABLE_VERSION,
     SINGER_PK,
-    SINGER_SOURCE_PK_PREFIX,
     SINGER_LEVEL
 )
 
@@ -29,7 +27,7 @@ class PostgresError(Exception):
     Raise this when there is an error with regards to Postgres streaming
     """
 
-class TransformStream():
+class TransformStream:
     def __init__(self, fun):
         self.fun = fun
 
@@ -50,20 +48,18 @@ class PostgresTarget(SQLInterface):
             try:
                 cur.execute('BEGIN;')
 
-                processed_records = map(partial(self.process_record_message,
-                                                stream_buffer.use_uuid_pk,
-                                                self.get_postgres_datetime()),
-                                        stream_buffer.peek_buffer())
+                processed_records = list(map(partial(self.process_record_message,
+                                                     stream_buffer.use_uuid_pk,
+                                                     self.get_postgres_datetime()),
+                                             stream_buffer.peek_buffer()))
                 versions = set()
                 max_version = None
-                records_all_versions = []
                 for record in processed_records:
                     record_version = record.get(SINGER_TABLE_VERSION)
                     if record_version is not None and \
                        (max_version is None or record_version > max_version):
                         max_version = record_version
                     versions.add(record_version)
-                    records_all_versions.append(record)
 
                 current_table_schema = self.get_table_schema(cur,
                                                              stream_buffer.stream)
@@ -88,7 +84,7 @@ class PostgresTarget(SQLInterface):
 
                 if current_table_version is not None and \
                         min(versions) < current_table_version:
-                    self.logger.warning('{} - Records from an earlier table vesion detected.'
+                    self.logger.warning('{} - Records from an earlier table version detected.'
                                         .format(stream_buffer.stream))
                 if len(versions) > 1:
                     self.logger.warning('{} - Multiple table versions in stream, only using the latest.'
@@ -101,10 +97,10 @@ class PostgresTarget(SQLInterface):
                     root_table_name = stream_buffer.stream
 
                 if target_table_version is not None:
-                    records = filter(lambda x: x.get(SINGER_TABLE_VERSION) == target_table_version,
-                                     records_all_versions)
+                    records = list(filter(lambda x: x.get(SINGER_TABLE_VERSION) == target_table_version,
+                                          processed_records))
                 else:
-                    records = records_all_versions
+                    records = processed_records
 
                 for key in stream_buffer.key_properties:
                     if current_table_schema \
@@ -119,47 +115,23 @@ class PostgresTarget(SQLInterface):
                                 json_schema.get_type(stream_buffer.schema['properties'][key])
                             ))
 
-                table_schemas = self.update_schema(cur,
-                                                   stream_buffer,
-                                                   root_table_name,
-                                                   {'version': target_table_version})
-
-                records_map = {}
-                self.denest_records(root_table_name,
-                                    records,
-                                    records_map,
-                                    stream_buffer.key_properties)
-
-                for table_schema in table_schemas:
-                    streamed_schema = table_schema['streamed_schema']
-                    remote_schema = table_schema['updated_remote_schema']
-
-                    table_version = streamed_schema.get('metadata', {}).get('version', None)
-
-                    target_table_name = self.get_temp_table_name(remote_schema['name'])
-
-                    self.create_table(cur,
-                                      target_table_name,
-                                      remote_schema['schema'],
-                                      remote_schema['key_properties'],
-                                      table_version)
-
-                    self.persist_rows(cur,
-                                      remote_schema['name'],
-                                      target_table_name,
-                                      remote_schema,
-                                      streamed_schema,
-                                      remote_schema['key_properties'],
-                                      records_map[remote_schema['name']])
+                written_batches_details = self.write_batch_helper(cur,
+                                                                  root_table_name,
+                                                                  stream_buffer.schema,
+                                                                  stream_buffer.key_properties,
+                                                                  records,
+                                                                  {'version': target_table_version})
 
                 cur.execute('COMMIT;')
+
+                stream_buffer.flush_buffer()
+
+                return written_batches_details
             except Exception as ex:
                 cur.execute('ROLLBACK;')
                 message = 'Exception writing records'
                 self.logger.exception(message)
                 raise PostgresError(message, ex)
-
-        stream_buffer.flush_buffer()
 
     def activate_version(self, stream_buffer, version):
         with self.conn.cursor() as cur:
@@ -229,79 +201,6 @@ class PostgresTarget(SQLInterface):
             record[SINGER_SEQUENCE] = arrow.get().timestamp
 
         return record
-
-    def denest_subrecord(self,
-                         table_name,
-                         current_path,
-                         parent_record,
-                         record,
-                         records_map,
-                         key_properties,
-                         pk_fks,
-                         level):
-        for prop, value in record.items():
-            next_path = current_path + SEPARATOR + prop
-            if isinstance(value, dict):
-                self.denest_subrecord(table_name, next_path, parent_record, value, pk_fks, level)
-            elif isinstance(value, list):
-                self.denest_records(table_name + SEPARATOR + next_path,
-                                    value,
-                                    records_map,
-                                    key_properties,
-                                    pk_fks=pk_fks,
-                                    level=level + 1)
-            else:
-                parent_record[next_path] = value
-
-    def denest_record(self, table_name, current_path, record, records_map, key_properties, pk_fks, level):
-        denested_record = {}
-        for prop, value in record.items():
-            if current_path:
-                next_path = current_path + SEPARATOR + prop
-            else:
-                next_path = prop
-
-            if isinstance(value, dict):
-                self.denest_subrecord(table_name,
-                                      next_path,
-                                      denested_record,
-                                      value,
-                                      records_map,
-                                      key_properties,
-                                      pk_fks,
-                                      level)
-            elif isinstance(value, list):
-                self.denest_records(table_name + SEPARATOR + next_path,
-                                    value,
-                                    records_map,
-                                    key_properties,
-                                    pk_fks=pk_fks,
-                                    level=level + 1)
-            elif value is None: ## nulls mess up nested objects
-                continue
-            else:
-                denested_record[next_path] = value
-
-        if table_name not in records_map:
-            records_map[table_name] = []
-        records_map[table_name].append(denested_record)
-
-    def denest_records(self, table_name, records, records_map, key_properties, pk_fks=None, level=-1):
-        row_index = 0
-        for record in records:
-            if pk_fks:
-                record_pk_fks = pk_fks.copy()
-                record_pk_fks[SINGER_LEVEL.format(level)] = row_index
-                for key, value in record_pk_fks.items():
-                    record[key] = value
-                row_index += 1
-            else: ## top level
-                record_pk_fks = {}
-                for key in key_properties:
-                    record_pk_fks[SINGER_SOURCE_PK_PREFIX + key] = record[key]
-                if SINGER_SEQUENCE in record:
-                    record_pk_fks[SINGER_SEQUENCE] = record[SINGER_SEQUENCE]
-            self.denest_record(table_name, None, record, records_map, key_properties, record_pk_fks, level)
 
     def update_table_schema(self, cur, remote_table_json_schema, table_json_schema, metadata):
         if remote_table_json_schema is not None:
@@ -407,71 +306,67 @@ class PostgresTarget(SQLInterface):
                         insert_distinct_on=insert_distinct_on,
                         insert_distinct_order_by=insert_distinct_order_by)
 
-    def persist_rows(self,
-                     cur,
-                     target_table_name,
-                     temp_table_name,
-                     remote_schema,
-                     streamed_json_schema,
-                     key_properties,
-                     records):
-        headers = list(remote_schema['schema']['properties'].keys())
+    def serialize_table_record_field_name(self, remote_schema, streamed_schema, field, value):
+        if field in streamed_schema['schema']['properties']:
+            return self.get_mapping(remote_schema,
+                                    field,
+                                    streamed_schema['schema']['properties'][field]) \
+                   or field
+        return field
 
-        datetime_fields = [k for k,v in streamed_json_schema['schema']['properties'].items()
-                           if v.get('format') == 'date-time']
+    def serialize_table_record_null_value(self, remote_schema, streamed_schema, field, value):
+        if value is None:
+            return RESERVED_NULL_DEFAULT
+        return value
 
-        default_fields = {k: v.get('default') for k, v in streamed_json_schema['schema']['properties'].items()
-                          if v.get('default') is not None}
+    def serialize_table_record_datetime_value(self, remote_schema, streamed_schema, field, value):
+        return self.get_postgres_datetime(value)
 
-        fields = set(headers +
-                     [v['from'] for k, v in remote_schema.get('mappings', {}).items()])
+    def persist_csv_rows(self,
+                         cur,
+                         remote_schema,
+                         temp_table_name,
+                         columns,
+                         csv_rows):
 
-        records_iter = iter(records)
+        copy = sql.SQL('COPY {}.{} ({}) FROM STDIN WITH (FORMAT CSV, NULL {})').format(
+            sql.Identifier(self.postgres_schema),
+            sql.Identifier(temp_table_name),
+            sql.SQL(', ').join(map(sql.Identifier, columns)),
+            sql.Literal(RESERVED_NULL_DEFAULT))
+        cur.copy_expert(copy, csv_rows)
+
+        pattern = re.compile(SINGER_LEVEL.format('[0-9]+'))
+        subkeys = list(filter(lambda header: re.match(pattern, header) is not None, columns))
+
+        update_sql = self.get_update_sql(remote_schema['name'],
+                                         temp_table_name,
+                                         remote_schema['key_properties'],
+                                         subkeys)
+        cur.execute(update_sql)
+
+    def write_table_batch(self, cur, table_batch, metadata):
+        remote_schema = table_batch['remote_schema']
+
+        target_table_name = self.get_temp_table_name(remote_schema['name'])
+
+        ## Create temp table to upload new data to
+        self.create_table(cur,
+                          target_table_name,
+                          remote_schema['schema'],
+                          remote_schema['key_properties'],
+                          remote_schema['version'])
+
+        ## Make streamable CSV records
+        csv_headers = list(remote_schema['schema']['properties'].keys())
+        rows_iter = iter(table_batch['records'])
 
         def transform():
             try:
-                record = next(records_iter)
-                row = {}
-
-                for field in fields:
-                    value = record.get(field, None)
-
-                    ## Serialize fields which are not present but have default values set
-                    if field in default_fields \
-                            and value is None:
-                        value = default_fields[field]
-
-                    ## Serialize datetime to postgres compatible format
-                    if field in datetime_fields \
-                            and value is not None:
-                        value = self.get_postgres_datetime(value)
-
-                    ## Serialize NULL default value
-                    if value == RESERVED_NULL_DEFAULT:
-                        self.logger.warning(
-                            'Reserved {} value found in field: {}. Value will be turned into literal null'.format(
-                                RESERVED_NULL_DEFAULT,
-                                field))
-
-                    if value is None:
-                        value = RESERVED_NULL_DEFAULT
-
-                    field_name = field
-
-                    if field in streamed_json_schema['schema']['properties']:
-                        field_name = self.get_mapping(remote_schema,
-                                                      field,
-                                                      streamed_json_schema['schema']['properties'][field]) \
-                                     or field
-
-                    if not field_name in row \
-                        or row[field_name] is None \
-                        or row[field_name] == RESERVED_NULL_DEFAULT:
-
-                        row[field_name] = value
+                row = next(rows_iter)
 
                 with io.StringIO() as out:
-                    writer = csv.DictWriter(out, headers)
+                    writer = csv.DictWriter(out, csv_headers)
                     writer.writerow(row)
                     return out.getvalue()
             except StopIteration:
@@ -479,21 +374,14 @@ class PostgresTarget(SQLInterface):
 
         csv_rows = TransformStream(transform)
 
-        copy = sql.SQL('COPY {}.{} ({}) FROM STDIN WITH (FORMAT CSV, NULL {})').format(
-            sql.Identifier(self.postgres_schema),
-            sql.Identifier(temp_table_name),
-            sql.SQL(', ').join(map(sql.Identifier, headers)),
-            sql.Literal(RESERVED_NULL_DEFAULT))
-        cur.copy_expert(copy, csv_rows)
+        ## Persist csv rows
+        self.persist_csv_rows(cur,
+                              remote_schema,
+                              target_table_name,
+                              csv_headers,
+                              csv_rows)
 
-        pattern = re.compile(SINGER_LEVEL.format('[0-9]+'))
-        subkeys = list(filter(lambda header: re.match(pattern, header) is not None, headers))
-
-        update_sql = self.get_update_sql(target_table_name,
-                                         temp_table_name,
-                                         key_properties,
-                                         subkeys)
-        cur.execute(update_sql)
+        return len(table_batch['records'])
 
     def get_postgres_datetime(self, *args):
         if len(args) > 0:
@@ -638,7 +526,7 @@ class PostgresTarget(SQLInterface):
         if metadata is None and not properties:
             return None
         elif metadata is None:
-            metadata = {}
+            metadata = {'version': None}
 
         metadata['name'] = table_name
         metadata['type'] = 'TABLE_SCHEMA'
