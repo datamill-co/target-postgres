@@ -115,12 +115,12 @@ class PostgresTarget(SQLInterface):
                                 json_schema.get_type(stream_buffer.schema['properties'][key])
                             ))
 
-                written_batches_details = self.write_table_batches(cur,
-                                                                   root_table_name,
-                                                                   stream_buffer.schema,
-                                                                   stream_buffer.key_properties,
-                                                                   records,
-                                                                   {'version': target_table_version})
+                written_batches_details = self.write_batch_helper(cur,
+                                                                  root_table_name,
+                                                                  stream_buffer.schema,
+                                                                  stream_buffer.key_properties,
+                                                                  records,
+                                                                  {'version': target_table_version})
 
                 cur.execute('COMMIT;')
 
@@ -306,7 +306,7 @@ class PostgresTarget(SQLInterface):
                         insert_distinct_on=insert_distinct_on,
                         insert_distinct_order_by=insert_distinct_order_by)
 
-    def parse_table_record_serialize_field_name(self, remote_schema, streamed_schema, field, value):
+    def serialize_table_record_field_name(self, remote_schema, streamed_schema, field, value):
         if field in streamed_schema['schema']['properties']:
             return self.get_mapping(remote_schema,
                                     field,
@@ -314,12 +314,12 @@ class PostgresTarget(SQLInterface):
                    or field
         return field
 
-    def parse_table_record_serialize_null_value(self, remote_schema, streamed_schema, field, value):
+    def serialize_table_record_null_value(self, remote_schema, streamed_schema, field, value):
         if value is None:
             return RESERVED_NULL_DEFAULT
         return value
 
-    def parse_table_record_serialize_datetime_value(self, remote_schema, streamed_schema, field, value):
+    def serialize_table_record_datetime_value(self, remote_schema, streamed_schema, field, value):
         return self.get_postgres_datetime(value)
 
     def persist_csv_rows(self,
@@ -346,9 +346,7 @@ class PostgresTarget(SQLInterface):
         cur.execute(update_sql)
 
     def write_table_batch(self, cur, table_batch, metadata):
-        writeable_batch = SQLInterface.write_table_batch(self, cur, table_batch, metadata)
-
-        remote_schema = writeable_batch['remote_schema']
+        remote_schema = table_batch['remote_schema']
 
         target_table_name = self.get_temp_table_name(remote_schema['name'])
 
@@ -361,7 +359,7 @@ class PostgresTarget(SQLInterface):
 
         ## Make streamable CSV records
         csv_headers = list(remote_schema['schema']['properties'].keys())
-        rows_iter = iter(writeable_batch['records'])
+        rows_iter = iter(table_batch['records'])
 
         def transform():
             try:
@@ -383,7 +381,7 @@ class PostgresTarget(SQLInterface):
                               csv_headers,
                               csv_rows)
 
-        return writeable_batch
+        return len(table_batch['records'])
 
     def get_postgres_datetime(self, *args):
         if len(args) > 0:

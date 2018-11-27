@@ -291,12 +291,18 @@ class SQLInterface:
 
     Provides reasonable defaults for:
     - nested schemas -> traditional SQL Tables and Columns
+    - nested records -> traditional SQL Table rows
 
-    Expected usage is to override necessary functions for your
-    given target.
+    Expected usage for use with your given target is to:
+    - override all public _non-helper_ functions
+    - use all public _helper_ functions inside of your _non-helper_ functions
+
+    Function Syntax:
+    - `_...` prefix : Private function
+    - `..._helper` suffix : Helper function
     """
 
-    def parse_table_schemas(self, root_table_name, schema, key_properties):
+    def _get_streamed_table_schemas(self, root_table_name, schema, key_properties):
         """
         Given a `schema` and `key_properties` return the denested/flattened TABLE_SCHEMA of
         the root table and each sub table.
@@ -342,7 +348,7 @@ class SQLInterface:
         """
         raise NotImplementedError('`update_table_schema` not implemented.')
 
-    def parse_table_records(self, root_table_name, key_properties, records):
+    def _get_streamed_table_records(self, root_table_name, key_properties, records):
         """
         Given `records` for the `root_table_name` and `key_properties`, flatten
         into `table_records`.
@@ -360,7 +366,7 @@ class SQLInterface:
                         key_properties)
         return records_map
 
-    def get_table_batches(self, connection, root_table_name, schema, key_properties, records):
+    def _get_table_batches(self, connection, root_table_name, schema, key_properties, records):
         """
         Given the streamed schema, and records, get all table schemas and records and prep them
         in a `table_batch`.
@@ -374,13 +380,13 @@ class SQLInterface:
                    'records': [{...}, ...]
         """
 
-        table_schemas = self.parse_table_schemas(root_table_name,
-                                                 schema,
-                                                 key_properties)
+        table_schemas = self._get_streamed_table_schemas(root_table_name,
+                                                         schema,
+                                                         key_properties)
 
-        table_records = self.parse_table_records(root_table_name,
-                                                 key_properties,
-                                                 records)
+        table_records = self._get_streamed_table_records(root_table_name,
+                                                         key_properties,
+                                                         records)
         writeable_batches = []
         for table_json_schema in table_schemas:
             remote_schema = self.get_table_schema(connection, table_json_schema['name'])
@@ -390,7 +396,7 @@ class SQLInterface:
 
         return writeable_batches
 
-    def parse_table_record_serialize_field_name(
+    def serialize_table_record_field_name(
             self, remote_schema, streamed_schema, field, value):
         """
         Returns the appropriate remote field (column) name for `field`.
@@ -402,7 +408,7 @@ class SQLInterface:
         """
         raise NotImplementedError('`parse_table_record_serialize_field_name` not implemented.')
 
-    def parse_table_record_serialize_null_value(
+    def serialize_table_record_null_value(
             self, remote_schema, streamed_schema, field, value):
         """
         Returns the serialized version of `value` which is appropriate for the target's null
@@ -415,7 +421,7 @@ class SQLInterface:
         """
         raise NotImplementedError('`parse_table_record_serialize_null_value` not implemented.')
 
-    def parse_table_record_serialize_datetime_value(
+    def serialize_table_record_datetime_value(
             self, remote_schema, streamed_schema, field, value):
         """
         Returns the serialized version of `value` which is appropriate  for the target's datetime
@@ -429,7 +435,7 @@ class SQLInterface:
 
         raise NotImplementedError('`parse_table_record_serialize_datetime_value` not implemented.')
 
-    def parse_table_records_serialize_for_remote(
+    def _serialize_table_records(
             self, remote_schema, streamed_schema, records):
         """
         Parse the given table's `records` in preparation for persistence to the remote target.
@@ -457,7 +463,7 @@ class SQLInterface:
         fields = remote_fields.union(set(streamed_schema['schema']['properties'].keys()))
 
         ## Get the default NULL value so we can assign row values when value is _not_ NULL
-        NULL_DEFAULT = self.parse_table_record_serialize_null_value(remote_schema, streamed_schema, None, None)
+        NULL_DEFAULT = self.serialize_table_record_null_value(remote_schema, streamed_schema, None, None)
 
         serialized_rows = []
         default_row = dict([(field, NULL_DEFAULT) for field in remote_fields])
@@ -476,13 +482,13 @@ class SQLInterface:
                 ## Serialize datetime to compatible format
                 if field in datetime_fields \
                         and value is not None:
-                    value = self.parse_table_record_serialize_datetime_value(remote_schema, streamed_schema, field,
-                                                                             value)
+                    value = self.serialize_table_record_datetime_value(remote_schema, streamed_schema, field,
+                                                                       value)
 
                 ## Serialize NULL default value
-                value = self.parse_table_record_serialize_null_value(remote_schema, streamed_schema, field, value)
+                value = self.serialize_table_record_null_value(remote_schema, streamed_schema, field, value)
 
-                field_name = self.parse_table_record_serialize_field_name(remote_schema, streamed_schema, field, value)
+                field_name = self.serialize_table_record_field_name(remote_schema, streamed_schema, field, value)
 
                 if field_name in remote_fields \
                         and not field_name in row \
@@ -495,30 +501,21 @@ class SQLInterface:
 
     def write_table_batch(self, connection, table_batch, metadata):
         """
-        Update the remote for given table's schema, and prep records to be serialized.
-        Leaves actual writing/persistence to implementing class.
+        Update the remote for given table's schema, and write records. Returns the number of
+        records persisted.
+
         :param connection: remote connection, type left to be determined by implementing class
         :param table_batch: {'remote_schema': TABLE_SCHEMA(remote),
-                             'streamed_schema': TABLE_SCHEMA(local),
                              'records': [{...}, ...]}
         :param metadata: additional metadata needed by implementing class
-        :return: {'remote_schema': TABLE_SCHEMA(remote),
-                  'records': [{...}, ...]}
+        :return: integer
         """
-        remote_schema = self.update_table_schema(connection,
-                                                 table_batch['remote_schema'],
-                                                 table_batch['streamed_schema'],
-                                                 metadata)
+        raise NotImplementedError('`write_table_batch` not implemented.')
 
-        return {
-            'remote_schema': remote_schema,
-            'records': self.parse_table_records_serialize_for_remote(remote_schema, table_batch['streamed_schema'],
-                                                                     table_batch['records'])
-        }
-
-    def write_table_batches(self, connection, root_table_name, schema, key_properties, records, metadata):
+    def write_batch_helper(self, connection, root_table_name, schema, key_properties, records, metadata):
         """
         Write all `table_batch`s associated with the given `schema` and `records` to remote.
+
         :param connection: remote connection, type left to be determined by implementing class
         :param root_table_name: string
         :param schema: SingerStreamSchema
@@ -530,9 +527,18 @@ class SQLInterface:
         """
         records_persisted = len(records)
         rows_persisted = 0
-        for table_batch in self.get_table_batches(connection, root_table_name, schema, key_properties, records):
-            written_batch = self.write_table_batch(connection, table_batch, metadata)
-            rows_persisted += len(written_batch['records'])
+        for table_batch in self._get_table_batches(connection, root_table_name, schema, key_properties, records):
+            remote_schema = self.update_table_schema(connection,
+                                                     table_batch['remote_schema'],
+                                                     table_batch['streamed_schema'],
+                                                     metadata)
+            rows_persisted += self.write_table_batch(
+                connection,
+                {'remote_schema': remote_schema,
+                 'records': self._serialize_table_records(remote_schema,
+                                                          table_batch['streamed_schema'],
+                                                          table_batch['records'])},
+                metadata)
 
         return {
             'records_persisted': records_persisted,
