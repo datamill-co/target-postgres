@@ -517,22 +517,34 @@ def test_loading__invalid__column_name(db_cleanup):
     non_alphanumeric_stream.schema = deepcopy(non_alphanumeric_stream.schema)
     non_alphanumeric_stream.schema['schema']['properties']['!!!invalid_name'] = non_alphanumeric_stream.schema['schema']['properties']['age']
 
-    with pytest.raises(postgres.PostgresError):
-        main(CONFIG, input_stream=non_alphanumeric_stream)
+    main(CONFIG, input_stream=non_alphanumeric_stream)
 
     non_lowercase_stream = CatStream(100)
     non_lowercase_stream.schema = deepcopy(non_lowercase_stream.schema)
     non_lowercase_stream.schema['schema']['properties']['INVALID_name'] = non_lowercase_stream.schema['schema']['properties']['age']
 
-    with pytest.raises(postgres.PostgresError):
-        main(CONFIG, input_stream=non_lowercase_stream)
+    main(CONFIG, input_stream=non_lowercase_stream)
 
+def test_loading__invalid__column_name__non_canonicalizable(db_cleanup):
     name_too_long_stream = CatStream(100)
     name_too_long_stream.schema = deepcopy(name_too_long_stream.schema)
     name_too_long_stream.schema['schema']['properties']['x' * 1000] = name_too_long_stream.schema['schema']['properties']['age']
 
     with pytest.raises(postgres.PostgresError):
         main(CONFIG, input_stream=name_too_long_stream)
+
+    non_lowercase_stream = CatStream(100)
+    non_lowercase_stream.schema = deepcopy(non_lowercase_stream.schema)
+    non_lowercase_stream.schema['schema']['properties']['INVALID_name'] = non_lowercase_stream.schema['schema']['properties']['age']
+
+    main(CONFIG, input_stream=non_lowercase_stream)
+
+    duplicate_canonicalization_stream = CatStream(100)
+    duplicate_canonicalization_stream.schema = deepcopy(duplicate_canonicalization_stream.schema)
+    duplicate_canonicalization_stream.schema['schema']['properties']['invalid!NAME'] = duplicate_canonicalization_stream.schema['schema']['properties']['age']
+
+    with pytest.raises(postgres.PostgresError):
+        main(CONFIG, input_stream=duplicate_canonicalization_stream)
 
 
 def test_loading__invalid__column_type_change__pks():
