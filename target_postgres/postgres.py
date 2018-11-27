@@ -444,10 +444,11 @@ class PostgresTarget(SQLInterface):
             ## Name collision with non mapped, non canonicalized name
             if column_name != canonicalized_name:
                 raise PostgresError(
-                    'Cannot add canonicalized column `{}` as `{}` to table `{}`. Name collision likely'.format(
+                    'Cannot add canonicalized column `{}` as `{}` to table `{}` with schema {}. Name collision likely'.format(
                         column_name,
                         canonicalized_name,
-                        table_name
+                        table_name,
+                        str(column_schema)
                     ))
             else:
                 raise ex
@@ -546,6 +547,20 @@ class PostgresTarget(SQLInterface):
         self.set_table_metadata(cur, table_name, metadata)
 
 
+    def remove_column_mapping(self, cur, table_name, mapped_name):
+        metadata = self.get_table_metadata(cur, table_name)
+
+        if not metadata:
+            metadata = {}
+
+        if not 'mappings' in metadata:
+            metadata['mappings'] = {}
+
+        metadata['mappings'].pop(mapped_name, None)
+
+        self.set_table_metadata(cur, table_name, metadata)
+
+
     def is_table_empty(self, cur, table_name):
         cur.execute(sql.SQL('SELECT COUNT(1) FROM {}.{};').format(
             sql.Identifier(self.postgres_schema),
@@ -581,26 +596,32 @@ class PostgresTarget(SQLInterface):
 
     def get_mapping(self, existing_schema, field, schema):
         canonicalized_field = self.canonicalize_identifier(field)
+        typed_field = self.mapping_name(canonicalized_field, schema)
 
-        if 'mappings' in existing_schema \
-                and canonicalized_field in existing_schema['mappings']\
-                and field == existing_schema['mappings'][canonicalized_field]['from']\
-                and json_schema.get_type(schema) == existing_schema['mappings'][canonicalized_field]['type']:
-            return canonicalized_field
-        elif canonicalized_field != field:
-            ## Short-circuit to avoid unintentional functionality
+        if 'mappings' not in existing_schema:
             return None
 
-        typed_field = self.mapping_name(field, schema)
+        if canonicalized_field in existing_schema['mappings'] \
+                and field == existing_schema['mappings'][canonicalized_field]['from'] \
+                and json_schema.get_type(json_schema.make_nullable(schema)) \
+                == json_schema.get_type(json_schema.make_nullable(existing_schema['mappings'][canonicalized_field])):
 
-        if 'mappings' in existing_schema \
-                and typed_field in existing_schema['mappings']\
+            return canonicalized_field
+
+        if typed_field in existing_schema['mappings'] \
                 and field == existing_schema['mappings'][typed_field]['from']:
+
             return typed_field
 
         return None
 
-    def split_column(self, cur, table_name, column_name, column_schema, existing_properties):
+    def split_column(self, cur, table_name, raw_column_name, column_schema, existing_schema):
+        existing_properties = existing_schema['schema']['properties']
+        column_name = self.canonicalize_identifier(raw_column_name)
+
+        if self.get_mapping(existing_schema, raw_column_name, existing_properties[column_name]):
+            self.remove_column_mapping(cur, table_name, column_name)
+
         ## column_name -> column_name__<current-type>, column_name__<new-type>
         existing_column_mapping = self.mapping_name(column_name, existing_properties[column_name])
         new_column_mapping = self.mapping_name(column_name, column_schema)
@@ -613,10 +634,10 @@ class PostgresTarget(SQLInterface):
         ### NOTE: all migrated columns will be nullable and remain that way
 
         #### Table Metadata
-        self.add_column_mapping(cur, table_name, column_name,
+        self.add_column_mapping(cur, table_name, raw_column_name,
                                 existing_column_mapping,
                                 existing_properties[existing_column_mapping])
-        self.add_column_mapping(cur, table_name, column_name,
+        self.add_column_mapping(cur, table_name, raw_column_name,
                                 new_column_mapping,
                                 existing_properties[new_column_mapping])
 
@@ -648,29 +669,31 @@ class PostgresTarget(SQLInterface):
     def merge_put_schemas(self, cur, table_name, existing_schema, new_schema):
         new_properties = new_schema['schema']['properties']
         existing_properties = existing_schema['schema']['properties']
-        for name, schema in new_properties.items():
+        for raw_name, schema in new_properties.items():
+            name = self.canonicalize_identifier(raw_name)
+
             ## Mapping exists
-            if self.get_mapping(existing_schema, name, schema) is not None:
+            if self.get_mapping(existing_schema, raw_name, schema) is not None:
                 pass
 
             ## New column
             elif name not in existing_properties:
 
-                existing_properties[name] = schema
                 self.add_column(cur,
                                 table_name,
-                                name,
+                                raw_name,
                                 schema)
+                existing_properties[name] = schema
 
             ## Existing column non-nullable, new column is nullable
             elif not json_schema.is_nullable(existing_properties[name]) \
                     and json_schema.get_type(schema) \
                     == json_schema.get_type(json_schema.make_nullable(existing_properties[name])):
 
-                existing_properties[name] = json_schema.make_nullable(existing_properties[name])
                 self.make_column_nullable(cur,
                                           table_name,
                                           name)
+                existing_properties[name] = json_schema.make_nullable(existing_properties[name])
 
             ## Existing column, types compatible
             elif json_schema.to_sql(json_schema.make_nullable(schema)) \
@@ -683,9 +706,9 @@ class PostgresTarget(SQLInterface):
 
                 self.split_column(cur,
                                   table_name,
-                                  name,
+                                  raw_name,
                                   schema,
-                                  existing_properties)
+                                  existing_schema)
 
             ## Error
             else:
