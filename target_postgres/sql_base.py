@@ -12,6 +12,8 @@
 ## better understand how to make adding new targets simpler.
 #
 
+from copy import deepcopy
+
 from target_postgres import json_schema
 from target_postgres.singer_stream import (
     SINGER_RECEIVED_AT,
@@ -431,12 +433,15 @@ class SQLInterface:
             self, remote_schema, streamed_schema, records):
         """
         Parse the given table's `records` in preparation for persistence to the remote target.
+
+        Base implementation returns a list of dictionaries, where _every_ dictionary has the
+        same keys as `remote_schema`'s properties.
+
         :param remote_schema: TABLE_SCHEMA(remote)
         :param streamed_schema: TABLE_SCHEMA(local)
         :param records: [{...}, ...]
         :return: [{...}, ...]
         """
-        headers = list(remote_schema['schema']['properties'].keys())
 
         datetime_fields = [k for k, v in streamed_schema['schema']['properties'].items()
                            if v.get('format') == 'date-time']
@@ -444,16 +449,21 @@ class SQLInterface:
         default_fields = {k: v.get('default') for k, v in streamed_schema['schema']['properties'].items()
                           if v.get('default') is not None}
 
-        fields = set(headers +
-                     [v['from'] for k, v in remote_schema.get('mappings', {}).items()])
+        ## Get remote fields and streamed fields.
+        ### `remote_fields` determine which keys are allowed to be serialized into `serialized_rows`
+        ### but the `streamed_schema` might have fields which are not present in remote due to
+        ### `parse_table_record_serialize_field_name`
+        remote_fields = set(remote_schema['schema']['properties'].keys())
+        fields = remote_fields.union(set(streamed_schema['schema']['properties'].keys()))
 
         ## Get the default NULL value so we can assign row values when value is _not_ NULL
         NULL_DEFAULT = self.parse_table_record_serialize_null_value(remote_schema, streamed_schema, None, None)
 
-        fleshed_out_rows = []
+        serialized_rows = []
+        default_row = dict([(field, NULL_DEFAULT) for field in remote_fields])
 
         for record in records:
-            row = {}
+            row = deepcopy(default_row)
 
             for field in fields:
                 value = record.get(field, None)
@@ -474,13 +484,14 @@ class SQLInterface:
 
                 field_name = self.parse_table_record_serialize_field_name(remote_schema, streamed_schema, field, value)
 
-                if not field_name in row \
+                if field_name in remote_fields \
+                        and not field_name in row \
                         or row[field_name] == NULL_DEFAULT:
                     row[field_name] = value
 
-            fleshed_out_rows.append(row)
+            serialized_rows.append(row)
 
-        return fleshed_out_rows
+        return serialized_rows
 
     def write_table_batch(self, connection, table_batch, metadata):
         """

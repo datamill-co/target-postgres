@@ -360,7 +360,7 @@ class PostgresTarget(SQLInterface):
                           remote_schema['version'])
 
         ## Make streamable CSV records
-        csv_headers = writeable_batch['records'][0].keys()
+        csv_headers = list(remote_schema['schema']['properties'].keys())
         rows_iter = iter(writeable_batch['records'])
 
         def transform():
@@ -368,7 +368,7 @@ class PostgresTarget(SQLInterface):
                 row = next(rows_iter)
 
                 with io.StringIO() as out:
-                    writer = csv.DictWriter(out, row.keys())
+                    writer = csv.DictWriter(out, csv_headers)
                     writer.writerow(row)
                     return out.getvalue()
             except StopIteration:
