@@ -400,7 +400,7 @@ class SQLInterface:
         :param value: literal
         :return: string
         """
-        raise NotImplementedError('`parse_table_record_serialize_field_name` not implmented.')
+        raise NotImplementedError('`parse_table_record_serialize_field_name` not implemented.')
 
     def parse_table_record_serialize_null_value(
             self, remote_schema, streamed_schema, field, value):
@@ -411,9 +411,9 @@ class SQLInterface:
         :param streamed_schema: TABLE_SCHEMA(local)
         :param field: string
         :param value: literal
-        :return: literal
+        :return: literalg
         """
-        raise NotImplementedError('`parse_table_record_serialize_null_value` not implmented.')
+        raise NotImplementedError('`parse_table_record_serialize_null_value` not implemented.')
 
     def parse_table_record_serialize_datetime_value(
             self, remote_schema, streamed_schema, field, value):
@@ -427,7 +427,7 @@ class SQLInterface:
         :return: literal
         """
 
-        raise NotImplementedError('`parse_table_record_serialize_datetime_value` not implmented.')
+        raise NotImplementedError('`parse_table_record_serialize_datetime_value` not implemented.')
 
     def parse_table_records_serialize_for_remote(
             self, remote_schema, streamed_schema, records):
