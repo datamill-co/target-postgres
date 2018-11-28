@@ -236,8 +236,7 @@ class PostgresTarget(SQLInterface):
         else:
             self.create_table(cur,
                               table_json_schema['name'],
-                              table_json_schema['schema'],
-                              table_json_schema['key_properties'],
+                              table_json_schema,
                               metadata.get('version', None))
 
         return self.get_table_schema(cur, table_json_schema['name'])
@@ -378,8 +377,7 @@ class PostgresTarget(SQLInterface):
         ## Create temp table to upload new data to
         self.create_table(cur,
                           target_table_name,
-                          remote_schema['schema'],
-                          remote_schema['key_properties'],
+                          remote_schema,
                           remote_schema['version'])
 
         ## Make streamable CSV records
@@ -495,20 +493,24 @@ class PostgresTarget(SQLInterface):
             sql.Literal(json.dumps(parsed_metadata))))
 
 
-    def create_table(self, cur, table_name, schema, key_properties, table_version):
+    def create_table(self, cur, table_name, schema, table_version):
         create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
                 sql.Identifier(self.postgres_schema),
                 sql.Identifier(table_name))
 
         cur.execute(sql.SQL('{} ();').format(create_table_sql))
 
-        if key_properties:
+        if 'key_properties' in schema:
             self.set_table_metadata(cur, table_name,
-                                    {'key_properties': key_properties,
+                                    {'key_properties': schema['key_properties'],
                                      'version': table_version})
 
-        for prop, column_json_schema in schema['properties'].items():
-            self.add_column(cur, table_name, prop, column_json_schema)
+        remote_table_json_schema = self.get_table_schema(cur, table_name)
+
+        self.merge_put_schemas(cur,
+                               remote_table_json_schema['name'],
+                               remote_table_json_schema,
+                               schema)
 
     def get_temp_table_name(self, stream_name):
         return stream_name + SEPARATOR + str(uuid.uuid4()).replace('-', '')
