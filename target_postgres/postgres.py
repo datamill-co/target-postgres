@@ -674,9 +674,36 @@ class PostgresTarget(SQLInterface):
         for raw_name, schema in new_properties.items():
             name = self.canonicalize_identifier(raw_name)
 
-            ## Mapping exists
+            ## Mapping for this column exists
             if self.get_mapping(existing_schema, raw_name, schema) is not None:
                 pass
+
+            ## Mapping for similarly named column exists
+            ### (ie, columns which have already been split due to type)
+            elif 'mappings' in existing_schema \
+                    and raw_name in [v['from'] for v in existing_schema['mappings'].values()]:
+
+                existing_properties = existing_schema['schema']['properties']
+
+                ## column_name -> column_name__<new-type>
+                new_column_mapping = self.mapping_name(name, schema)
+
+                ## Update existing properties
+                existing_properties[new_column_mapping] = json_schema.make_nullable(schema)
+
+                ## Add new column
+                ### NOTE: all migrated columns will be nullable and remain that way
+
+                #### Table Metadata
+                self.add_column_mapping(cur, table_name, raw_name,
+                                        new_column_mapping,
+                                        existing_properties[new_column_mapping])
+
+                #### Columns
+                self.add_column(cur,
+                                table_name,
+                                new_column_mapping,
+                                existing_properties[new_column_mapping])
 
             ## New column
             elif name not in existing_properties:
