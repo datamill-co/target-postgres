@@ -49,7 +49,7 @@ class PostgresTarget(SQLInterface):
             try:
                 cur.execute('BEGIN;')
 
-                processed_records = list(map(partial(self.process_record_message,
+                processed_records = list(map(partial(self._process_record_message,
                                                      stream_buffer.use_uuid_pk,
                                                      self.get_postgres_datetime()),
                                              stream_buffer.peek_buffer()))
@@ -139,8 +139,8 @@ class PostgresTarget(SQLInterface):
             try:
                 cur.execute('BEGIN;')
 
-                table_metadata = self.get_table_metadata(cur,
-                                                         stream_buffer.stream)
+                table_metadata = self._get_table_metadata(cur,
+                                                          stream_buffer.stream)
 
                 if not table_metadata:
                     self.logger.error('{} - Table for stream does not exist'.format(
@@ -182,7 +182,7 @@ class PostgresTarget(SQLInterface):
                 self.logger.exception(message)
                 raise PostgresError(message, ex)
 
-    def process_record_message(self, use_uuid_pk, batched_at, record_message):
+    def _process_record_message(self, use_uuid_pk, batched_at, record_message):
         record = record_message['record']
 
         if 'version' in record_message:
@@ -237,8 +237,8 @@ class PostgresTarget(SQLInterface):
             cur.execute(sql.SQL('{} ();').format(create_table_sql))
 
             if 'key_properties' in table_json_schema:
-                self.set_table_metadata(cur, table_json_schema['name'],
-                                        {'key_properties': table_json_schema['key_properties'],
+                self._set_table_metadata(cur, table_json_schema['name'],
+                                         {'key_properties': table_json_schema['key_properties'],
                                          'version': metadata.get('version', None)})
 
         return self.upsert_table_helper(cur,
@@ -378,7 +378,7 @@ class PostgresTarget(SQLInterface):
     def write_table_batch(self, cur, table_batch, metadata):
         remote_schema = table_batch['remote_schema']
 
-        target_table_name = self.get_temp_table_name()
+        target_table_name = 'tmp_' + str(uuid.uuid4()).replace('-', '_')
 
         ## Create temp table to upload new data to
         target_schema = deepcopy(remote_schema)
@@ -477,7 +477,7 @@ class PostgresTarget(SQLInterface):
             table_name=sql.Identifier(table_name),
             column_name=sql.Identifier(column_name)))
 
-    def set_table_metadata(self, cur, table_name, metadata):
+    def _set_table_metadata(self, cur, table_name, metadata):
         """
         Given a Metadata dict, set it as the comment on the given table.
         :param self: Postgres
@@ -496,10 +496,7 @@ class PostgresTarget(SQLInterface):
             sql.Identifier(table_name),
             sql.Literal(json.dumps(parsed_metadata))))
 
-    def get_temp_table_name(self):
-        return 'tmp_' + str(uuid.uuid4()).replace('-', '_')
-
-    def get_table_metadata(self, cur, table_name):
+    def _get_table_metadata(self, cur, table_name):
         cur.execute(
             sql.SQL('SELECT obj_description(to_regclass({}));').format(
                 sql.Literal('{}.{}'.format(self.postgres_schema, table_name))))
@@ -519,7 +516,7 @@ class PostgresTarget(SQLInterface):
 
 
     def add_column_mapping(self, cur, table_name, column_name, mapped_name, mapped_schema):
-        metadata = self.get_table_metadata(cur, table_name)
+        metadata = self._get_table_metadata(cur, table_name)
 
         if not metadata:
             metadata = {}
@@ -530,11 +527,11 @@ class PostgresTarget(SQLInterface):
         metadata['mappings'][mapped_name] = {'type': json_schema.get_type(mapped_schema),
                                              'from': column_name}
 
-        self.set_table_metadata(cur, table_name, metadata)
+        self._set_table_metadata(cur, table_name, metadata)
 
 
     def drop_column_mapping(self, cur, table_name, mapped_name):
-        metadata = self.get_table_metadata(cur, table_name)
+        metadata = self._get_table_metadata(cur, table_name)
 
         if not metadata:
             metadata = {}
@@ -544,7 +541,7 @@ class PostgresTarget(SQLInterface):
 
         metadata['mappings'].pop(mapped_name, None)
 
-        self.set_table_metadata(cur, table_name, metadata)
+        self._set_table_metadata(cur, table_name, metadata)
 
 
     def is_table_empty(self, cur, table_name):
@@ -564,7 +561,7 @@ class PostgresTarget(SQLInterface):
         for column in cur.fetchall():
             properties[column[0]] = json_schema.from_sql(column[1], column[2] == 'YES')
 
-        metadata = self.get_table_metadata(cur, table_name)
+        metadata = self._get_table_metadata(cur, table_name)
 
         if metadata is None and not properties:
             return None
