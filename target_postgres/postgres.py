@@ -226,10 +226,10 @@ class PostgresTarget(SQLInterface):
         self._validate_identifier(new_idenfitier)
         return new_idenfitier
 
-    def upsert_table(self, cur, remote_table_json_schema, table_json_schema, metadata):
+    def upsert_table(self, cur, table_json_schema, metadata):
         self._validate_identifier(table_json_schema['name'])
 
-        if remote_table_json_schema is None:
+        if self.get_table_schema(cur, table_json_schema['name']) is None:
             create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
                 sql.Identifier(self.postgres_schema),
                 sql.Identifier(table_json_schema['name']))
@@ -376,7 +376,6 @@ class PostgresTarget(SQLInterface):
         target_schema = deepcopy(remote_schema)
         target_schema['name'] = target_table_name
         self.upsert_table(cur,
-                          None,
                           target_schema,
                           {'version': remote_schema['version']})
 

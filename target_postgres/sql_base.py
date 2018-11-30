@@ -578,12 +578,11 @@ class SQLInterface:
 
         return self.get_table_schema(cur, table_name)
 
-    def upsert_table(self, connection, remote_table_json_schema, table_json_schema, metadata):
+    def upsert_table(self, connection, table_json_schema, metadata):
         """
         Update the remote table schema based on the merged difference between
         `remote_table_json_schema` and `table_json_schema`.
         :param connection: remote connection, type left to be determined by implementing class
-        :param remote_table_json_schema: get_table_schema
         :param table_json_schema: updates for get_table_schema
         :param metadata: additional metadata needed by implementing class
         :return: updated_remote_table_json_schema
@@ -663,7 +662,7 @@ class SQLInterface:
         :param streamed_schema: TABLE_SCHEMA(local)
         :param field: string
         :param value: literal
-        :return: literalg
+        :return: literal
         """
         raise NotImplementedError('`parse_table_record_serialize_null_value` not implemented.')
 
@@ -775,7 +774,6 @@ class SQLInterface:
         rows_persisted = 0
         for table_batch in self._get_table_batches(connection, root_table_name, schema, key_properties, records):
             remote_schema = self.upsert_table(connection,
-                                              table_batch['remote_schema'],
                                               table_batch['streamed_schema'],
                                               metadata)
             rows_persisted += self.write_table_batch(
