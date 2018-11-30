@@ -236,8 +236,7 @@ class PostgresTarget(SQLInterface):
         else:
             self.create_table(cur,
                               table_json_schema['name'],
-                              table_json_schema['schema'],
-                              table_json_schema['key_properties'],
+                              table_json_schema,
                               metadata.get('version', None))
 
         return self.get_table_schema(cur, table_json_schema['name'])
@@ -378,8 +377,7 @@ class PostgresTarget(SQLInterface):
         ## Create temp table to upload new data to
         self.create_table(cur,
                           target_table_name,
-                          remote_schema['schema'],
-                          remote_schema['key_properties'],
+                          remote_schema,
                           remote_schema['version'])
 
         ## Make streamable CSV records
@@ -495,20 +493,24 @@ class PostgresTarget(SQLInterface):
             sql.Literal(json.dumps(parsed_metadata))))
 
 
-    def create_table(self, cur, table_name, schema, key_properties, table_version):
+    def create_table(self, cur, table_name, schema, table_version):
         create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
                 sql.Identifier(self.postgres_schema),
                 sql.Identifier(table_name))
 
         cur.execute(sql.SQL('{} ();').format(create_table_sql))
 
-        if key_properties:
+        if 'key_properties' in schema:
             self.set_table_metadata(cur, table_name,
-                                    {'key_properties': key_properties,
+                                    {'key_properties': schema['key_properties'],
                                      'version': table_version})
 
-        for prop, column_json_schema in schema['properties'].items():
-            self.add_column(cur, table_name, prop, column_json_schema)
+        remote_table_json_schema = self.get_table_schema(cur, table_name)
+
+        self.merge_put_schemas(cur,
+                               remote_table_json_schema['name'],
+                               remote_table_json_schema,
+                               schema)
 
     def get_temp_table_name(self, stream_name):
         return stream_name + SEPARATOR + str(uuid.uuid4()).replace('-', '')
@@ -667,55 +669,138 @@ class PostgresTarget(SQLInterface):
         del existing_properties[column_name]
 
     def merge_put_schemas(self, cur, table_name, existing_schema, new_schema):
-        new_properties = new_schema['schema']['properties']
-        existing_properties = existing_schema['schema']['properties']
-        for raw_name, schema in new_properties.items():
-            name = self.canonicalize_identifier(raw_name)
+        new_columns = new_schema['schema']['properties']
+        existing_columns = existing_schema['schema']['properties']
+        existing_columns_raw_names = [v['from'] for v in existing_schema.get('mappings', {}).values()]
+        table_empty = self.is_table_empty(cur, table_name)
 
-            ## Mapping exists
-            if self.get_mapping(existing_schema, raw_name, schema) is not None:
+        for raw_column_name, column_schema in new_columns.items():
+            canonicalized_column_name = self.canonicalize_identifier(raw_column_name)
+            canonicalized_typed_column_name = self.mapping_name(canonicalized_column_name, column_schema)
+            nullable_column_schema = json_schema.make_nullable(column_schema)
+
+            ## NAME COLLISION
+            if raw_column_name != canonicalized_column_name \
+                    and raw_column_name not in existing_columns_raw_names \
+                    and (canonicalized_column_name in existing_columns
+                         or canonicalized_typed_column_name in existing_columns):
+                raise PostgresError(
+                    'NAME COLLISION: Cannot handle merging column `{}` (canonicalized as: `{}`, canonicalized with type as: `{}`) in table `{}`.'.format(
+                        self.postgres_schema,
+                        raw_column_name,
+                        canonicalized_column_name,
+                        canonicalized_typed_column_name,
+                        table_name
+                    ))
+
+
+            ## EXISTING COLUMNS
+            elif canonicalized_column_name in existing_columns \
+                    and json_schema.to_sql(column_schema) \
+                    == json_schema.to_sql(existing_columns[canonicalized_column_name]):
+                pass
+            ###
+            elif canonicalized_typed_column_name in existing_columns \
+                    and json_schema.to_sql(column_schema) \
+                    == json_schema.to_sql(existing_columns[canonicalized_typed_column_name]):
+                pass
+            ###
+            elif canonicalized_column_name in existing_columns \
+                    and json_schema.to_sql(nullable_column_schema) \
+                    == json_schema.to_sql(existing_columns[canonicalized_column_name]):
+                pass
+            ###
+            elif canonicalized_typed_column_name in existing_columns \
+                    and json_schema.to_sql(nullable_column_schema) \
+                    == json_schema.to_sql(existing_columns[canonicalized_typed_column_name]):
                 pass
 
-            ## New column
-            elif name not in existing_properties:
+            ## NULL COMPATIBILITY
+            elif canonicalized_column_name in existing_columns \
+                    and json_schema.to_sql(nullable_column_schema) == json_schema.to_sql(
+                json_schema.make_nullable(existing_columns[canonicalized_column_name])):
 
-                self.add_column(cur,
-                                table_name,
-                                raw_name,
-                                schema)
-                existing_properties[name] = schema
-
-            ## Existing column non-nullable, new column is nullable
-            elif not json_schema.is_nullable(existing_properties[name]) \
-                    and json_schema.get_type(schema) \
-                    == json_schema.get_type(json_schema.make_nullable(existing_properties[name])):
-
+                ## MAKE NULLABLE
                 self.make_column_nullable(cur,
                                           table_name,
-                                          name)
-                existing_properties[name] = json_schema.make_nullable(existing_properties[name])
+                                          canonicalized_column_name)
+                existing_columns[canonicalized_column_name] = json_schema.make_nullable(
+                    existing_columns[canonicalized_column_name])
 
-            ## Existing column, types compatible
-            elif json_schema.to_sql(json_schema.make_nullable(schema)) \
-                    == json_schema.to_sql(json_schema.make_nullable(existing_properties[name])):
-                pass
-
-            ## Column type change
-            elif self.mapping_name(name, schema) not in existing_properties \
-                and self.mapping_name(name, existing_properties[name]) not in existing_properties:
+            ## FIRST DUPLICATE TYPE
+            elif canonicalized_column_name in existing_columns:
 
                 self.split_column(cur,
                                   table_name,
-                                  raw_name,
-                                  schema,
+                                  raw_column_name,
+                                  column_schema,
                                   existing_schema)
 
-            ## Error
+            ## MULTI DUPLICATE TYPE
+            elif raw_column_name in existing_columns_raw_names:
+
+                ## Add new column
+                self.add_column_mapping(cur, table_name, raw_column_name,
+                                        canonicalized_typed_column_name,
+                                        nullable_column_schema)
+                existing_columns_raw_names.append(canonicalized_typed_column_name)
+
+                self.add_column(cur,
+                                table_name,
+                                canonicalized_typed_column_name,
+                                nullable_column_schema)
+
+                ## Update existing properties
+                existing_columns[canonicalized_typed_column_name] = nullable_column_schema
+
+            ## NEW COLUMN, VALID NAME, EMPTY TABLE
+            elif canonicalized_column_name == raw_column_name and table_empty:
+
+                self.add_column(cur,
+                                table_name,
+                                canonicalized_column_name,
+                                column_schema)
+                existing_columns[canonicalized_column_name] = column_schema
+
+            ## NEW COLUMN, VALID NAME
+            elif canonicalized_column_name == raw_column_name:
+
+                self.add_column(cur,
+                                table_name,
+                                canonicalized_column_name,
+                                nullable_column_schema)
+                existing_columns[canonicalized_column_name] = nullable_column_schema
+
+            ## NEW COLUMN, INVALID NAME, EMPTY TABLE
+            elif canonicalized_column_name != raw_column_name and table_empty:
+
+                self.add_column_mapping(cur, table_name, raw_column_name, canonicalized_column_name, column_schema)
+                existing_columns_raw_names.append(canonicalized_column_name)
+                self.add_column(cur,
+                                table_name,
+                                canonicalized_column_name,
+                                column_schema)
+                existing_columns[canonicalized_column_name] = column_schema
+
+            ## NEW COLUMN, VALID NAME
+            elif canonicalized_column_name != raw_column_name:
+
+                self.add_column_mapping(cur, table_name, raw_column_name, canonicalized_column_name,
+                                        nullable_column_schema)
+                existing_columns_raw_names.append(canonicalized_column_name)
+                self.add_column(cur,
+                                table_name,
+                                canonicalized_column_name,
+                                nullable_column_schema)
+                existing_columns[canonicalized_column_name] = nullable_column_schema
+
+            ## UNKNOWN
             else:
                 raise PostgresError(
-                    'Cannot handle column type change for: {}.{} columns {} and {}. Name collision likely.'.format(
+                    'UNKNOWN: Cannot handle merging column `{}` (canonicalized as: `{}`, canonicalized with type as: `{}`) in table `{}`.'.format(
                         self.postgres_schema,
-                        table_name,
-                        name,
-                        self.mapping_name(name, schema)
+                        raw_column_name,
+                        canonicalized_column_name,
+                        canonicalized_typed_column_name,
+                        table_name
                     ))
