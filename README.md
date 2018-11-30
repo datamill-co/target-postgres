@@ -96,7 +96,6 @@ _The above is copied from the [current list of versions](https://www.postgresql.
         - `['integer', 'number']`
         - `['any']`
         - `['null']`
-- Types cannot change
 - JSON Schema combinations such as `anyOf` and `allOf` are not supported.
 - JSON Schema $ref is partially supported:
   - ***NOTE:*** The following limitations are known to **NOT** fail gracefully
@@ -105,10 +104,18 @@ _The above is copied from the [current list of versions](https://www.postgresql.
     - URI's do not work
     - if the `$ref` is broken, the behaviour is considered unexpected
 - Any values which are the `string` `NULL` will be streamed to PostgreSQL as the literal `null`
+- Table names are restricted to:
+  - 63 characters in length
+  - can only be composed of `_`, lowercase letters, numbers, `$`
+  - cannot start with `$`
+  - ASCII characters
+- Field/Column names are restricted to:
+  - 63 characters in length
+  - ASCII characters
 
 ## Usage Logging
 
-[Singer.io](https://www.singer.io/) requires offical taps and targets to collect anonymous usage data. This data is only used in aggregate to report on individual tap/targets, as well as the Singer community at-large. IP addresses are recorded to detect unique tap/targets users but not shared with third-parties.
+[Singer.io](https://www.singer.io/) requires official taps and targets to collect anonymous usage data. This data is only used in aggregate to report on individual tap/targets, as well as the Singer community at-large. IP addresses are recorded to detect unique tap/targets users but not shared with third-parties.
 
 To disable anonymous data collection set `disable_collection` to `true` in the configuration JSON file.
 

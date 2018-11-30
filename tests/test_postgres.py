@@ -365,6 +365,58 @@ def test_loading__column_type_change(db_cleanup):
             assert cat_count == len([x for x in persisted_records if x[1] is not None])
             assert 0 == len([x for x in persisted_records if x[0] is not None and x[1] is not None])
 
+    class NameIntegerCatStream(CatStream):
+        def generate_record(self):
+            record = CatStream.generate_record(self)
+            record['id'] = record['id'] + (2 * cat_count)
+            record['name'] = 314
+            return record
+
+    stream = NameIntegerCatStream(cat_count)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties']['name'] = {'type': 'integer'}
+
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_columns_sql('cats'))
+            columns = cur.fetchall()
+
+            assert set(columns) == {
+                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_sequence', 'bigint', 'YES'),
+                ('_sdc_table_version', 'bigint', 'YES'),
+                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                ('adoption__was_foster', 'boolean', 'YES'),
+                ('age', 'bigint', 'YES'),
+                ('id', 'bigint', 'NO'),
+                ('name__s', 'text', 'YES'),
+                ('name__b', 'boolean', 'YES'),
+                ('name__i', 'bigint', 'YES'),
+                ('paw_size', 'bigint', 'NO'),
+                ('paw_colour', 'text', 'NO'),
+                ('flea_check_complete', 'boolean', 'NO'),
+                ('pattern', 'text', 'YES')
+            }
+
+            cur.execute(sql.SQL('SELECT {}, {}, {} FROM {}').format(
+                sql.Identifier('name__s'),
+                sql.Identifier('name__b'),
+                sql.Identifier('name__i'),
+                sql.Identifier('cats')
+            ))
+            persisted_records = cur.fetchall()
+
+            ## Assert that the split columns migrated data/persisted new data
+            assert 3 * cat_count == len(persisted_records)
+            assert cat_count == len([x for x in persisted_records if x[0] is not None])
+            assert cat_count == len([x for x in persisted_records if x[1] is not None])
+            assert cat_count == len([x for x in persisted_records if x[2] is not None])
+            assert 0 == len([x for x in persisted_records if x[0] is not None and x[1] is not None and x[2] is not None])
+            assert 0 == len([x for x in persisted_records if x[0] is None and x[1] is None and x[2] is None])
+
 
 def test_loading__column_type_change__nullable(db_cleanup):
     cat_count = 20
@@ -486,6 +538,217 @@ def test_loading__column_type_change__nullable(db_cleanup):
             assert 2 * cat_count == len([x for x in persisted_records if x[0] is not None])
             assert cat_count == len([x for x in persisted_records if x[0] is None])
 
+
+def test_loading__invalid__table_name(db_cleanup):
+    non_alphanumeric_stream = CatStream(100)
+    non_alphanumeric_stream.stream = '!!!invalid_name'
+    non_alphanumeric_stream.schema = deepcopy(non_alphanumeric_stream.schema)
+    non_alphanumeric_stream.schema['stream'] = '!!!invalid_name'
+
+    with pytest.raises(postgres.PostgresError):
+        main(CONFIG, input_stream=non_alphanumeric_stream)
+
+    non_lowercase_stream = CatStream(100)
+    non_lowercase_stream.stream = 'INVALID_name'
+    non_lowercase_stream.schema = deepcopy(non_lowercase_stream.schema)
+    non_lowercase_stream.schema['stream'] = 'INVALID_name'
+
+    with pytest.raises(postgres.PostgresError):
+        main(CONFIG, input_stream=non_lowercase_stream)
+
+    name_too_long_stream = CatStream(100)
+    name_too_long_stream.stream = 'x' * 1000
+    name_too_long_stream.schema = deepcopy(name_too_long_stream.schema)
+    name_too_long_stream.schema['stream'] = 'x' * 1000
+
+    with pytest.raises(postgres.PostgresError):
+        main(CONFIG, input_stream=name_too_long_stream)
+
+
+def test_loading__invalid_column_name(db_cleanup):
+    non_alphanumeric_stream = CatStream(100)
+    non_alphanumeric_stream.schema = deepcopy(non_alphanumeric_stream.schema)
+    non_alphanumeric_stream.schema['schema']['properties']['!!!invalid_name'] = \
+        non_alphanumeric_stream.schema['schema']['properties']['age']
+
+    main(CONFIG, input_stream=non_alphanumeric_stream)
+
+    non_lowercase_stream = CatStream(100)
+    non_lowercase_stream.schema = deepcopy(non_lowercase_stream.schema)
+    non_lowercase_stream.schema['schema']['properties']['INVALID_name'] = \
+        non_lowercase_stream.schema['schema']['properties']['age']
+
+    main(CONFIG, input_stream=non_lowercase_stream)
+
+
+def test_loading__invalid_column_name__non_canonicalizable(db_cleanup):
+    name_too_long_stream = CatStream(100)
+    name_too_long_stream.schema = deepcopy(name_too_long_stream.schema)
+    name_too_long_stream.schema['schema']['properties']['x' * 1000] = \
+        name_too_long_stream.schema['schema']['properties']['age']
+
+    with pytest.raises(postgres.PostgresError):
+        main(CONFIG, input_stream=name_too_long_stream)
+
+    non_lowercase_stream = CatStream(100)
+    non_lowercase_stream.schema = deepcopy(non_lowercase_stream.schema)
+    non_lowercase_stream.schema['schema']['properties']['INVALID_name'] = \
+        non_lowercase_stream.schema['schema']['properties']['age']
+
+    main(CONFIG, input_stream=non_lowercase_stream)
+
+    duplicate_canonicalization_stream = CatStream(100)
+    duplicate_canonicalization_stream.schema = deepcopy(duplicate_canonicalization_stream.schema)
+    duplicate_canonicalization_stream.schema['schema']['properties']['invalid!NAME'] = \
+        duplicate_canonicalization_stream.schema['schema']['properties']['age']
+
+    with pytest.raises(postgres.PostgresError):
+        main(CONFIG, input_stream=duplicate_canonicalization_stream)
+
+
+def test_loading__invalid_column_name__column_type_change(db_cleanup):
+    invalid_column_name = 'INVALID!name'
+    cat_count = 20
+    stream = CatStream(cat_count)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties'][invalid_column_name] = \
+        stream.schema['schema']['properties']['paw_colour']
+
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_columns_sql('cats'))
+            columns = cur.fetchall()
+
+            assert set(columns) == {
+                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_sequence', 'bigint', 'YES'),
+                ('_sdc_table_version', 'bigint', 'YES'),
+                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                ('adoption__was_foster', 'boolean', 'YES'),
+                ('age', 'bigint', 'YES'),
+                ('id', 'bigint', 'NO'),
+                ('name', 'text', 'NO'),
+                ('paw_size', 'bigint', 'NO'),
+                ('paw_colour', 'text', 'NO'),
+                ('invalid_name', 'text', 'NO'),
+                ('flea_check_complete', 'boolean', 'NO'),
+                ('pattern', 'text', 'YES')
+            }
+
+            cur.execute(sql.SQL('SELECT {} FROM {}').format(
+                sql.Identifier('invalid_name'),
+                sql.Identifier('cats')
+            ))
+            persisted_records = cur.fetchall()
+
+            ## Assert that the original data is present
+            assert cat_count == len(persisted_records)
+            assert cat_count == len([x for x in persisted_records if x[0] is not None])
+
+    class BooleanCatStream(CatStream):
+        def generate_record(self):
+            record = CatStream.generate_record(self)
+            record['id'] = record['id'] + cat_count
+            record[invalid_column_name] = False
+            return record
+
+    stream = BooleanCatStream(cat_count)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties'][invalid_column_name] = {'type': 'boolean'}
+
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_columns_sql('cats'))
+            columns = cur.fetchall()
+
+            assert set(columns) == {
+                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_sequence', 'bigint', 'YES'),
+                ('_sdc_table_version', 'bigint', 'YES'),
+                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                ('adoption__was_foster', 'boolean', 'YES'),
+                ('age', 'bigint', 'YES'),
+                ('id', 'bigint', 'NO'),
+                ('name', 'text', 'NO'),
+                ('paw_size', 'bigint', 'NO'),
+                ('paw_colour', 'text', 'NO'),
+                ('invalid_name__s', 'text', 'YES'),
+                ('invalid_name__b', 'boolean', 'YES'),
+                ('flea_check_complete', 'boolean', 'NO'),
+                ('pattern', 'text', 'YES')
+            }
+
+            cur.execute(sql.SQL('SELECT {}, {} FROM {}').format(
+                sql.Identifier('invalid_name__s'),
+                sql.Identifier('invalid_name__b'),
+                sql.Identifier('cats')
+            ))
+            persisted_records = cur.fetchall()
+
+            ## Assert that the split columns migrated data/persisted new data
+            assert 2 * cat_count == len(persisted_records)
+            assert cat_count == len([x for x in persisted_records if x[0] is not None])
+            assert cat_count == len([x for x in persisted_records if x[1] is not None])
+            assert 0 == len([x for x in persisted_records if x[0] is not None and x[1] is not None])
+
+    class IntegerCatStream(CatStream):
+        def generate_record(self):
+            record = CatStream.generate_record(self)
+            record['id'] = record['id'] + (2 * cat_count)
+            record[invalid_column_name] = 314
+            return record
+
+    stream = IntegerCatStream(cat_count)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties'][invalid_column_name] = {'type': 'integer'}
+
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_columns_sql('cats'))
+            columns = cur.fetchall()
+
+            assert set(columns) == {
+                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                ('_sdc_sequence', 'bigint', 'YES'),
+                ('_sdc_table_version', 'bigint', 'YES'),
+                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                ('adoption__was_foster', 'boolean', 'YES'),
+                ('age', 'bigint', 'YES'),
+                ('id', 'bigint', 'NO'),
+                ('name', 'text', 'NO'),
+                ('paw_size', 'bigint', 'NO'),
+                ('paw_colour', 'text', 'NO'),
+                ('invalid_name__s', 'text', 'YES'),
+                ('invalid_name__b', 'boolean', 'YES'),
+                ('invalid_name__i', 'bigint', 'YES'),
+                ('flea_check_complete', 'boolean', 'NO'),
+                ('pattern', 'text', 'YES')
+            }
+
+            cur.execute(sql.SQL('SELECT {}, {}, {} FROM {}').format(
+                sql.Identifier('invalid_name__s'),
+                sql.Identifier('invalid_name__b'),
+                sql.Identifier('invalid_name__i'),
+                sql.Identifier('cats')
+            ))
+            persisted_records = cur.fetchall()
+
+            ## Assert that the split columns migrated data/persisted new data
+            assert 3 * cat_count == len(persisted_records)
+            assert cat_count == len([x for x in persisted_records if x[0] is not None])
+            assert cat_count == len([x for x in persisted_records if x[1] is not None])
+            assert cat_count == len([x for x in persisted_records if x[2] is not None])
+            assert 0 == len([x for x in persisted_records if x[0] is not None and x[1] is not None and x[2] is not None])
+            assert 0 == len([x for x in persisted_records if x[0] is None and x[1] is None and x[2] is None])
 
 def test_loading__invalid__column_type_change__pks():
     main(CONFIG, input_stream=CatStream(20))
