@@ -413,34 +413,19 @@ class PostgresTarget(SQLInterface):
         return parsed_datetime.format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
 
     def add_column(self, cur, table_name, column_name, column_schema):
-        canonicalized_name = self.canonicalize_identifier(column_name)
-
-        if canonicalized_name != column_name:
-            self.add_column_mapping(cur, table_name, column_name, canonicalized_name, column_schema)
-
-        data_type = json_schema.to_sql(column_schema)
-
-        if not json_schema.is_nullable(column_schema) \
-                and not self.is_table_empty(cur, table_name):
-            self.logger.warning('Forcing new column `{}.{}.{}` to be nullable due to table not empty.'.format(
-                self.postgres_schema,
-                table_name,
-                canonicalized_name))
-            data_type = json_schema.to_sql(json_schema.make_nullable(column_schema))
 
         to_execute = sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
                              'ADD COLUMN {column_name} {data_type};').format(
             table_schema=sql.Identifier(self.postgres_schema),
             table_name=sql.Identifier(table_name),
-            column_name=sql.Identifier(canonicalized_name),
-            data_type=sql.SQL(data_type))
+            column_name=sql.Identifier(column_name),
+            data_type=sql.SQL(json_schema.to_sql(column_schema)))
 
         try:
             cur.execute(to_execute)
         except Exception as ex:
             raise PostgresError(
-                'Cannot add column `{}` with canonicalized name `{}` to table `{}` with schema {}.'.format(
-                    canonicalized_name,
+                'Cannot add column `{}` to table `{}` with schema {}.'.format(
                     column_name,
                     table_name,
                     str(column_schema)
