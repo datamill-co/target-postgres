@@ -638,17 +638,21 @@ class SQLInterface:
 
         return writeable_batches
 
-    def serialize_table_record_field_name(
-            self, remote_schema, streamed_schema, field, value):
+    def _serialize_table_record_field_name(self, remote_schema, streamed_schema, field):
         """
         Returns the appropriate remote field (column) name for `field`.
         :param remote_schema: TABLE_SCHEMA(remote)
         :param streamed_schema: TABLE_SCHEMA(local)
         :param field: string
-        :param value: literal
         :return: string
         """
-        raise NotImplementedError('`parse_table_record_serialize_field_name` not implemented.')
+
+        if field in streamed_schema['schema']['properties']:
+            return self.get_mapping(remote_schema,
+                                    field,
+                                    streamed_schema['schema']['properties'][field]) \
+                   or field
+        return field
 
     def serialize_table_record_null_value(
             self, remote_schema, streamed_schema, field, value):
@@ -730,7 +734,7 @@ class SQLInterface:
                 ## Serialize NULL default value
                 value = self.serialize_table_record_null_value(remote_schema, streamed_schema, field, value)
 
-                field_name = self.serialize_table_record_field_name(remote_schema, streamed_schema, field, value)
+                field_name = self._serialize_table_record_field_name(remote_schema, streamed_schema, field)
 
                 if field_name in remote_fields \
                         and not field_name in row \

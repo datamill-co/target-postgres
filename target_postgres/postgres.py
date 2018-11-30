@@ -336,14 +336,6 @@ class PostgresTarget(SQLInterface):
                         insert_distinct_on=insert_distinct_on,
                         insert_distinct_order_by=insert_distinct_order_by)
 
-    def serialize_table_record_field_name(self, remote_schema, streamed_schema, field, value):
-        if field in streamed_schema['schema']['properties']:
-            return self.get_mapping(remote_schema,
-                                    field,
-                                    streamed_schema['schema']['properties'][field]) \
-                   or field
-        return field
-
     def serialize_table_record_null_value(self, remote_schema, streamed_schema, field, value):
         if value is None:
             return RESERVED_NULL_DEFAULT
