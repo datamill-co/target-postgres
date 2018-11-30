@@ -490,6 +490,8 @@ class PostgresTarget(SQLInterface):
 
 
     def create_table(self, cur, table_name, schema, table_version):
+        self._validate_identifier(table_name)
+
         create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
                 sql.Identifier(self.postgres_schema),
                 sql.Identifier(table_name))
