@@ -372,7 +372,7 @@ class PostgresTarget(SQLInterface):
     def write_table_batch(self, cur, table_batch, metadata):
         remote_schema = table_batch['remote_schema']
 
-        target_table_name = self.get_temp_table_name(remote_schema['name'])
+        target_table_name = self.get_temp_table_name()
 
         ## Create temp table to upload new data to
         self.create_table(cur,
@@ -510,8 +510,8 @@ class PostgresTarget(SQLInterface):
                                remote_table_json_schema,
                                schema)
 
-    def get_temp_table_name(self, stream_name):
-        return stream_name + SEPARATOR + str(uuid.uuid4()).replace('-', '')
+    def get_temp_table_name(self):
+        return 'tmp_' + str(uuid.uuid4()).replace('-', '_')
 
     def get_table_metadata(self, cur, table_name):
         cur.execute(
