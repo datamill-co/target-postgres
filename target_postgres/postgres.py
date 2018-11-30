@@ -203,23 +203,37 @@ class PostgresTarget(SQLInterface):
 
         return record
 
-    def _is_valid_identifier(self, identifier):
+    def _validate_identifier(self, identifier):
         ## NAMEDATALEN _defaults_ to 64 in PostgreSQL. The maxmimum length for an identifier is
         ## NAMEDATALEN - 1.
         # TODO: Figure out way to `SELECT` value from commands
         NAMEDATALEN = 63
 
-        if not re.match(r'^[a-z_][a-z0-9_$]*', identifier):
-            return False
+        if not identifier:
+            raise PostgresError('Identifier must be non empty.')
 
         if NAMEDATALEN < len(identifier):
-            return False
+            raise PostgresError('Length of identifier must be less than or equal to {}. Got {} for `{}`'.format(
+                NAMEDATALEN,
+                len(identifier),
+                identifier
+            ))
+
+        if not re.match(r'^[a-z_].*', identifier):
+            raise PostgresError(
+                'Identifier must start with a lower case letter, or underscore. Got `{}` for `{}`'.format(
+                    identifier[0],
+                    identifier
+                ))
+
+        if not re.match(r'[a-z0-9_$]+', identifier):
+            raise PostgresError(
+                'Identifier must only contain lower case letters, numbers, underscores, or dollar signs. Got `{}` for `{}`'.format(
+                    re.findall(r'[^0-9]', '1234a567')[0],
+                    identifier
+                ))
 
         return True
-
-    def _validate_identifier(self, identifier):
-        if not self._is_valid_identifier(identifier):
-            raise PostgresError()
 
     def canonicalize_identifier(self, identifier):
         new_idenfitier = re.sub(r'[^\w\d_$]', '_', identifier.lower())
@@ -242,9 +256,7 @@ class PostgresTarget(SQLInterface):
                                          'version': metadata.get('version', None)})
 
         return self.upsert_table_helper(cur,
-                                        table_json_schema['name'],
-                                        table_json_schema,
-                                        metadata)
+                                        table_json_schema)
 
 
     def get_update_sql(self, target_table_name, temp_table_name, key_properties, subkeys):
@@ -414,30 +426,20 @@ class PostgresTarget(SQLInterface):
 
     def add_column(self, cur, table_name, column_name, column_schema):
 
-        to_execute = sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
-                             'ADD COLUMN {column_name} {data_type};').format(
+        cur.execute(sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
+                            'ADD COLUMN {column_name} {data_type};').format(
             table_schema=sql.Identifier(self.postgres_schema),
             table_name=sql.Identifier(table_name),
             column_name=sql.Identifier(column_name),
-            data_type=sql.SQL(json_schema.to_sql(column_schema)))
+            data_type=sql.SQL(json_schema.to_sql(column_schema))))
 
-        try:
-            cur.execute(to_execute)
-        except Exception as ex:
-            raise PostgresError(
-                'Cannot add column `{}` to table `{}` with schema {}.'.format(
-                    column_name,
-                    table_name,
-                    str(column_schema)
-                )) from ex
-
-    def migrate_column(self, cur, table_name, column_name, mapped_name):
+    def migrate_column(self, cur, table_name, from_column, to_column):
         cur.execute(sql.SQL('UPDATE {table_schema}.{table_name} ' +
-                            'SET {mapped_name} = {column_name};').format(
+                            'SET {to_column} = {from_column};').format(
             table_schema=sql.Identifier(self.postgres_schema),
             table_name=sql.Identifier(table_name),
-            mapped_name=sql.Identifier(mapped_name),
-            column_name=sql.Identifier(column_name)))
+            to_column=sql.Identifier(to_column),
+            from_column=sql.Identifier(from_column)))
 
     def drop_column(self, cur, table_name, column_name):
         cur.execute(sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
