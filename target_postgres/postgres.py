@@ -439,17 +439,13 @@ class PostgresTarget(SQLInterface):
         try:
             cur.execute(to_execute)
         except Exception as ex:
-            ## Name collision with non mapped, non canonicalized name
-            if column_name != canonicalized_name:
-                raise PostgresError(
-                    'Cannot add canonicalized column `{}` as `{}` to table `{}` with schema {}. Name collision likely'.format(
-                        column_name,
-                        canonicalized_name,
-                        table_name,
-                        str(column_schema)
-                    ))
-            else:
-                raise ex
+            raise PostgresError(
+                'Cannot add column `{}` with canonicalized name `{}` to table `{}` with schema {}.'.format(
+                    canonicalized_name,
+                    column_name,
+                    table_name,
+                    str(column_schema)
+                )) from ex
 
     def migrate_column(self, cur, table_name, column_name, mapped_name):
         cur.execute(sql.SQL('UPDATE {table_schema}.{table_name} ' +
