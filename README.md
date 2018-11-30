@@ -104,12 +104,12 @@ _The above is copied from the [current list of versions](https://www.postgresql.
     - URI's do not work
     - if the `$ref` is broken, the behaviour is considered unexpected
 - Any values which are the `string` `NULL` will be streamed to PostgreSQL as the literal `null`
-- Table identifiers are restricted to:
+- Table names are restricted to:
   - 63 characters in length
   - can only be composed of `_`, lowercase letters, numbers, `$`
   - cannot start with `$`
   - ASCII characters
-- Field/Column identifiers are restricted to:
+- Field/Column names are restricted to:
   - 63 characters in length
   - ASCII characters
 
