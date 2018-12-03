@@ -22,6 +22,11 @@ from target_postgres.singer_stream import (
 
 RESERVED_NULL_DEFAULT = 'NULL'
 
+## NAMEDATALEN _defaults_ to 64 in PostgreSQL. The maxmimum length for an identifier is
+## NAMEDATALEN - 1.
+# TODO: Figure out way to `SELECT` value from commands
+NAMEDATALEN = 63
+
 
 class PostgresError(Exception):
     """
@@ -204,11 +209,6 @@ class PostgresTarget(SQLInterface):
         return record
 
     def _validate_identifier(self, identifier):
-        ## NAMEDATALEN _defaults_ to 64 in PostgreSQL. The maxmimum length for an identifier is
-        ## NAMEDATALEN - 1.
-        # TODO: Figure out way to `SELECT` value from commands
-        NAMEDATALEN = 63
-
         if not identifier:
             raise PostgresError('Identifier must be non empty.')
 
@@ -236,7 +236,7 @@ class PostgresTarget(SQLInterface):
         return True
 
     def canonicalize_identifier(self, identifier):
-        new_idenfitier = re.sub(r'[^\w\d_$]', '_', identifier.lower())
+        new_idenfitier = re.sub(r'[^\w\d_$]', '_', identifier.lower())[:NAMEDATALEN]
         self._validate_identifier(new_idenfitier)
         return new_idenfitier
 
