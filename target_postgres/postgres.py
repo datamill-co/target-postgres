@@ -1,3 +1,4 @@
+from copy import deepcopy
 import io
 import re
 import csv
@@ -48,7 +49,7 @@ class PostgresTarget(SQLInterface):
             try:
                 cur.execute('BEGIN;')
 
-                processed_records = list(map(partial(self.process_record_message,
+                processed_records = list(map(partial(self._process_record_message,
                                                      stream_buffer.use_uuid_pk,
                                                      self.get_postgres_datetime()),
                                              stream_buffer.peek_buffer()))
@@ -138,8 +139,8 @@ class PostgresTarget(SQLInterface):
             try:
                 cur.execute('BEGIN;')
 
-                table_metadata = self.get_table_metadata(cur,
-                                                         stream_buffer.stream)
+                table_metadata = self._get_table_metadata(cur,
+                                                          stream_buffer.stream)
 
                 if not table_metadata:
                     self.logger.error('{} - Table for stream does not exist'.format(
@@ -181,7 +182,7 @@ class PostgresTarget(SQLInterface):
                 self.logger.exception(message)
                 raise PostgresError(message, ex)
 
-    def process_record_message(self, use_uuid_pk, batched_at, record_message):
+    def _process_record_message(self, use_uuid_pk, batched_at, record_message):
         record = record_message['record']
 
         if 'version' in record_message:
@@ -202,44 +203,61 @@ class PostgresTarget(SQLInterface):
 
         return record
 
-    def _is_valid_identifier(self, identifier):
+    def _validate_identifier(self, identifier):
         ## NAMEDATALEN _defaults_ to 64 in PostgreSQL. The maxmimum length for an identifier is
         ## NAMEDATALEN - 1.
         # TODO: Figure out way to `SELECT` value from commands
         NAMEDATALEN = 63
 
-        if not re.match(r'^[a-z_][a-z0-9_$]*', identifier):
-            return False
+        if not identifier:
+            raise PostgresError('Identifier must be non empty.')
 
         if NAMEDATALEN < len(identifier):
-            return False
+            raise PostgresError('Length of identifier must be less than or equal to {}. Got {} for `{}`'.format(
+                NAMEDATALEN,
+                len(identifier),
+                identifier
+            ))
+
+        if not re.match(r'^[a-z_].*', identifier):
+            raise PostgresError(
+                'Identifier must start with a lower case letter, or underscore. Got `{}` for `{}`'.format(
+                    identifier[0],
+                    identifier
+                ))
+
+        if not re.match(r'[a-z0-9_$]+', identifier):
+            raise PostgresError(
+                'Identifier must only contain lower case letters, numbers, underscores, or dollar signs. Got `{}` for `{}`'.format(
+                    re.findall(r'[^0-9]', '1234a567')[0],
+                    identifier
+                ))
 
         return True
-
-    def _validate_identifier(self, identifier):
-        if not self._is_valid_identifier(identifier):
-            raise PostgresError()
 
     def canonicalize_identifier(self, identifier):
         new_idenfitier = re.sub(r'[^\w\d_$]', '_', identifier.lower())
         self._validate_identifier(new_idenfitier)
         return new_idenfitier
 
-    def update_table_schema(self, cur, remote_table_json_schema, table_json_schema, metadata):
+    def upsert_table(self, cur, table_json_schema, metadata):
         self._validate_identifier(table_json_schema['name'])
 
-        if remote_table_json_schema is not None:
-            self.merge_put_schemas(cur,
-                                   remote_table_json_schema['name'],
-                                   remote_table_json_schema,
-                                   table_json_schema)
-        else:
-            self.create_table(cur,
-                              table_json_schema['name'],
-                              table_json_schema,
-                              metadata.get('version', None))
+        if self.get_table_schema(cur, table_json_schema['name']) is None:
+            create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
+                sql.Identifier(self.postgres_schema),
+                sql.Identifier(table_json_schema['name']))
 
-        return self.get_table_schema(cur, table_json_schema['name'])
+            cur.execute(sql.SQL('{} ();').format(create_table_sql))
+
+            if 'key_properties' in table_json_schema:
+                self._set_table_metadata(cur, table_json_schema['name'],
+                                         {'key_properties': table_json_schema['key_properties'],
+                                         'version': metadata.get('version', None)})
+
+        return self.upsert_table_helper(cur,
+                                        table_json_schema)
+
 
     def get_update_sql(self, target_table_name, temp_table_name, key_properties, subkeys):
         full_table_name = sql.SQL('{}.{}').format(
@@ -330,14 +348,6 @@ class PostgresTarget(SQLInterface):
                         insert_distinct_on=insert_distinct_on,
                         insert_distinct_order_by=insert_distinct_order_by)
 
-    def serialize_table_record_field_name(self, remote_schema, streamed_schema, field, value):
-        if field in streamed_schema['schema']['properties']:
-            return self.get_mapping(remote_schema,
-                                    field,
-                                    streamed_schema['schema']['properties'][field]) \
-                   or field
-        return field
-
     def serialize_table_record_null_value(self, remote_schema, streamed_schema, field, value):
         if value is None:
             return RESERVED_NULL_DEFAULT
@@ -372,13 +382,14 @@ class PostgresTarget(SQLInterface):
     def write_table_batch(self, cur, table_batch, metadata):
         remote_schema = table_batch['remote_schema']
 
-        target_table_name = self.get_temp_table_name()
+        target_table_name = 'tmp_' + str(uuid.uuid4()).replace('-', '_')
 
         ## Create temp table to upload new data to
-        self.create_table(cur,
-                          target_table_name,
-                          remote_schema,
-                          remote_schema['version'])
+        target_schema = deepcopy(remote_schema)
+        target_schema['name'] = target_table_name
+        self.upsert_table(cur,
+                          target_schema,
+                          {'version': remote_schema['version']})
 
         ## Make streamable CSV records
         csv_headers = list(remote_schema['schema']['properties'].keys())
@@ -414,46 +425,21 @@ class PostgresTarget(SQLInterface):
         return parsed_datetime.format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
 
     def add_column(self, cur, table_name, column_name, column_schema):
-        canonicalized_name = self.canonicalize_identifier(column_name)
 
-        if canonicalized_name != column_name:
-            self.add_column_mapping(cur, table_name, column_name, canonicalized_name, column_schema)
-
-        data_type = json_schema.to_sql(column_schema)
-
-        if not json_schema.is_nullable(column_schema) \
-                and not self.is_table_empty(cur, table_name):
-            self.logger.warning('Forcing new column `{}.{}.{}` to be nullable due to table not empty.'.format(
-                self.postgres_schema,
-                table_name,
-                canonicalized_name))
-            data_type = json_schema.to_sql(json_schema.make_nullable(column_schema))
-
-        to_execute = sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
-                             'ADD COLUMN {column_name} {data_type};').format(
+        cur.execute(sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
+                            'ADD COLUMN {column_name} {data_type};').format(
             table_schema=sql.Identifier(self.postgres_schema),
             table_name=sql.Identifier(table_name),
-            column_name=sql.Identifier(canonicalized_name),
-            data_type=sql.SQL(data_type))
+            column_name=sql.Identifier(column_name),
+            data_type=sql.SQL(json_schema.to_sql(column_schema))))
 
-        try:
-            cur.execute(to_execute)
-        except Exception as ex:
-            raise PostgresError(
-                'Cannot add column `{}` with canonicalized name `{}` to table `{}` with schema {}.'.format(
-                    canonicalized_name,
-                    column_name,
-                    table_name,
-                    str(column_schema)
-                )) from ex
-
-    def migrate_column(self, cur, table_name, column_name, mapped_name):
+    def migrate_column(self, cur, table_name, from_column, to_column):
         cur.execute(sql.SQL('UPDATE {table_schema}.{table_name} ' +
-                            'SET {mapped_name} = {column_name};').format(
+                            'SET {to_column} = {from_column};').format(
             table_schema=sql.Identifier(self.postgres_schema),
             table_name=sql.Identifier(table_name),
-            mapped_name=sql.Identifier(mapped_name),
-            column_name=sql.Identifier(column_name)))
+            to_column=sql.Identifier(to_column),
+            from_column=sql.Identifier(from_column)))
 
     def drop_column(self, cur, table_name, column_name):
         cur.execute(sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
@@ -469,7 +455,7 @@ class PostgresTarget(SQLInterface):
             table_name=sql.Identifier(table_name),
             column_name=sql.Identifier(column_name)))
 
-    def set_table_metadata(self, cur, table_name, metadata):
+    def _set_table_metadata(self, cur, table_name, metadata):
         """
         Given a Metadata dict, set it as the comment on the given table.
         :param self: Postgres
@@ -488,32 +474,7 @@ class PostgresTarget(SQLInterface):
             sql.Identifier(table_name),
             sql.Literal(json.dumps(parsed_metadata))))
 
-
-    def create_table(self, cur, table_name, schema, table_version):
-        self._validate_identifier(table_name)
-
-        create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
-                sql.Identifier(self.postgres_schema),
-                sql.Identifier(table_name))
-
-        cur.execute(sql.SQL('{} ();').format(create_table_sql))
-
-        if 'key_properties' in schema:
-            self.set_table_metadata(cur, table_name,
-                                    {'key_properties': schema['key_properties'],
-                                     'version': table_version})
-
-        remote_table_json_schema = self.get_table_schema(cur, table_name)
-
-        self.merge_put_schemas(cur,
-                               remote_table_json_schema['name'],
-                               remote_table_json_schema,
-                               schema)
-
-    def get_temp_table_name(self):
-        return 'tmp_' + str(uuid.uuid4()).replace('-', '_')
-
-    def get_table_metadata(self, cur, table_name):
+    def _get_table_metadata(self, cur, table_name):
         cur.execute(
             sql.SQL('SELECT obj_description(to_regclass({}));').format(
                 sql.Literal('{}.{}'.format(self.postgres_schema, table_name))))
@@ -533,7 +494,7 @@ class PostgresTarget(SQLInterface):
 
 
     def add_column_mapping(self, cur, table_name, column_name, mapped_name, mapped_schema):
-        metadata = self.get_table_metadata(cur, table_name)
+        metadata = self._get_table_metadata(cur, table_name)
 
         if not metadata:
             metadata = {}
@@ -544,11 +505,11 @@ class PostgresTarget(SQLInterface):
         metadata['mappings'][mapped_name] = {'type': json_schema.get_type(mapped_schema),
                                              'from': column_name}
 
-        self.set_table_metadata(cur, table_name, metadata)
+        self._set_table_metadata(cur, table_name, metadata)
 
 
-    def remove_column_mapping(self, cur, table_name, mapped_name):
-        metadata = self.get_table_metadata(cur, table_name)
+    def drop_column_mapping(self, cur, table_name, mapped_name):
+        metadata = self._get_table_metadata(cur, table_name)
 
         if not metadata:
             metadata = {}
@@ -558,7 +519,7 @@ class PostgresTarget(SQLInterface):
 
         metadata['mappings'].pop(mapped_name, None)
 
-        self.set_table_metadata(cur, table_name, metadata)
+        self._set_table_metadata(cur, table_name, metadata)
 
 
     def is_table_empty(self, cur, table_name):
@@ -578,7 +539,7 @@ class PostgresTarget(SQLInterface):
         for column in cur.fetchall():
             properties[column[0]] = json_schema.from_sql(column[1], column[2] == 'YES')
 
-        metadata = self.get_table_metadata(cur, table_name)
+        metadata = self._get_table_metadata(cur, table_name)
 
         if metadata is None and not properties:
             return None
@@ -590,215 +551,3 @@ class PostgresTarget(SQLInterface):
         metadata['schema'] = {'properties': properties}
 
         return metadata
-
-    def mapping_name(self, field, schema):
-        return field + SEPARATOR + json_schema.sql_shorthand(schema)
-
-    def get_mapping(self, existing_schema, field, schema):
-        canonicalized_field = self.canonicalize_identifier(field)
-        typed_field = self.mapping_name(canonicalized_field, schema)
-
-        if 'mappings' not in existing_schema:
-            return None
-
-        if canonicalized_field in existing_schema['mappings'] \
-                and field == existing_schema['mappings'][canonicalized_field]['from'] \
-                and json_schema.get_type(json_schema.make_nullable(schema)) \
-                == json_schema.get_type(json_schema.make_nullable(existing_schema['mappings'][canonicalized_field])):
-
-            return canonicalized_field
-
-        if typed_field in existing_schema['mappings'] \
-                and field == existing_schema['mappings'][typed_field]['from']:
-
-            return typed_field
-
-        return None
-
-    def split_column(self, cur, table_name, raw_column_name, column_schema, existing_schema):
-        existing_properties = existing_schema['schema']['properties']
-        column_name = self.canonicalize_identifier(raw_column_name)
-
-        if self.get_mapping(existing_schema, raw_column_name, existing_properties[column_name]):
-            self.remove_column_mapping(cur, table_name, column_name)
-
-        ## column_name -> column_name__<current-type>, column_name__<new-type>
-        existing_column_mapping = self.mapping_name(column_name, existing_properties[column_name])
-        new_column_mapping = self.mapping_name(column_name, column_schema)
-
-        ## Update existing properties
-        existing_properties[existing_column_mapping] = json_schema.make_nullable(existing_properties[column_name])
-        existing_properties[new_column_mapping] = json_schema.make_nullable(column_schema)
-
-        ## Add new columns
-        ### NOTE: all migrated columns will be nullable and remain that way
-
-        #### Table Metadata
-        self.add_column_mapping(cur, table_name, raw_column_name,
-                                existing_column_mapping,
-                                existing_properties[existing_column_mapping])
-        self.add_column_mapping(cur, table_name, raw_column_name,
-                                new_column_mapping,
-                                existing_properties[new_column_mapping])
-
-        #### Columns
-        self.add_column(cur,
-                        table_name,
-                        existing_column_mapping,
-                        existing_properties[existing_column_mapping])
-
-        self.add_column(cur,
-                        table_name,
-                        new_column_mapping,
-                        existing_properties[new_column_mapping])
-
-        ## Migrate existing data
-        self.migrate_column(cur,
-                            table_name,
-                            column_name,
-                            existing_column_mapping)
-
-        ## Drop existing column
-        self.drop_column(cur,
-                         table_name,
-                         column_name)
-
-        ## Remove column (field) from existing_properties
-        del existing_properties[column_name]
-
-    def merge_put_schemas(self, cur, table_name, existing_schema, new_schema):
-        new_columns = new_schema['schema']['properties']
-        existing_columns = existing_schema['schema']['properties']
-        existing_columns_raw_names = [v['from'] for v in existing_schema.get('mappings', {}).values()]
-        table_empty = self.is_table_empty(cur, table_name)
-
-        for raw_column_name, column_schema in new_columns.items():
-            canonicalized_column_name = self.canonicalize_identifier(raw_column_name)
-            canonicalized_typed_column_name = self.mapping_name(canonicalized_column_name, column_schema)
-            nullable_column_schema = json_schema.make_nullable(column_schema)
-
-            ## NAME COLLISION
-            if raw_column_name != canonicalized_column_name \
-                    and raw_column_name not in existing_columns_raw_names \
-                    and (canonicalized_column_name in existing_columns
-                         or canonicalized_typed_column_name in existing_columns):
-                raise PostgresError(
-                    'NAME COLLISION: Cannot handle merging column `{}` (canonicalized as: `{}`, canonicalized with type as: `{}`) in table `{}`.'.format(
-                        self.postgres_schema,
-                        raw_column_name,
-                        canonicalized_column_name,
-                        canonicalized_typed_column_name,
-                        table_name
-                    ))
-
-
-            ## EXISTING COLUMNS
-            elif canonicalized_column_name in existing_columns \
-                    and json_schema.to_sql(column_schema) \
-                    == json_schema.to_sql(existing_columns[canonicalized_column_name]):
-                pass
-            ###
-            elif canonicalized_typed_column_name in existing_columns \
-                    and json_schema.to_sql(column_schema) \
-                    == json_schema.to_sql(existing_columns[canonicalized_typed_column_name]):
-                pass
-            ###
-            elif canonicalized_column_name in existing_columns \
-                    and json_schema.to_sql(nullable_column_schema) \
-                    == json_schema.to_sql(existing_columns[canonicalized_column_name]):
-                pass
-            ###
-            elif canonicalized_typed_column_name in existing_columns \
-                    and json_schema.to_sql(nullable_column_schema) \
-                    == json_schema.to_sql(existing_columns[canonicalized_typed_column_name]):
-                pass
-
-            ## NULL COMPATIBILITY
-            elif canonicalized_column_name in existing_columns \
-                    and json_schema.to_sql(nullable_column_schema) == json_schema.to_sql(
-                json_schema.make_nullable(existing_columns[canonicalized_column_name])):
-
-                ## MAKE NULLABLE
-                self.make_column_nullable(cur,
-                                          table_name,
-                                          canonicalized_column_name)
-                existing_columns[canonicalized_column_name] = json_schema.make_nullable(
-                    existing_columns[canonicalized_column_name])
-
-            ## FIRST DUPLICATE TYPE
-            elif canonicalized_column_name in existing_columns:
-
-                self.split_column(cur,
-                                  table_name,
-                                  raw_column_name,
-                                  column_schema,
-                                  existing_schema)
-
-            ## MULTI DUPLICATE TYPE
-            elif raw_column_name in existing_columns_raw_names:
-
-                ## Add new column
-                self.add_column_mapping(cur, table_name, raw_column_name,
-                                        canonicalized_typed_column_name,
-                                        nullable_column_schema)
-                existing_columns_raw_names.append(canonicalized_typed_column_name)
-
-                self.add_column(cur,
-                                table_name,
-                                canonicalized_typed_column_name,
-                                nullable_column_schema)
-
-                ## Update existing properties
-                existing_columns[canonicalized_typed_column_name] = nullable_column_schema
-
-            ## NEW COLUMN, VALID NAME, EMPTY TABLE
-            elif canonicalized_column_name == raw_column_name and table_empty:
-
-                self.add_column(cur,
-                                table_name,
-                                canonicalized_column_name,
-                                column_schema)
-                existing_columns[canonicalized_column_name] = column_schema
-
-            ## NEW COLUMN, VALID NAME
-            elif canonicalized_column_name == raw_column_name:
-
-                self.add_column(cur,
-                                table_name,
-                                canonicalized_column_name,
-                                nullable_column_schema)
-                existing_columns[canonicalized_column_name] = nullable_column_schema
-
-            ## NEW COLUMN, INVALID NAME, EMPTY TABLE
-            elif canonicalized_column_name != raw_column_name and table_empty:
-
-                self.add_column_mapping(cur, table_name, raw_column_name, canonicalized_column_name, column_schema)
-                existing_columns_raw_names.append(canonicalized_column_name)
-                self.add_column(cur,
-                                table_name,
-                                canonicalized_column_name,
-                                column_schema)
-                existing_columns[canonicalized_column_name] = column_schema
-
-            ## NEW COLUMN, VALID NAME
-            elif canonicalized_column_name != raw_column_name:
-
-                self.add_column_mapping(cur, table_name, raw_column_name, canonicalized_column_name,
-                                        nullable_column_schema)
-                existing_columns_raw_names.append(canonicalized_column_name)
-                self.add_column(cur,
-                                table_name,
-                                canonicalized_column_name,
-                                nullable_column_schema)
-                existing_columns[canonicalized_column_name] = nullable_column_schema
-
-            ## UNKNOWN
-            else:
-                raise PostgresError(
-                    'UNKNOWN: Cannot handle merging column `{}` (canonicalized as: `{}`, canonicalized with type as: `{}`) in table `{}`.'.format(
-                        self.postgres_schema,
-                        raw_column_name,
-                        canonicalized_column_name,
-                        canonicalized_typed_column_name,
-                        table_name
-                    ))
