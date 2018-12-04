@@ -22,11 +22,6 @@ from target_postgres.singer_stream import (
 
 RESERVED_NULL_DEFAULT = 'NULL'
 
-## NAMEDATALEN _defaults_ to 64 in PostgreSQL. The maxmimum length for an identifier is
-## NAMEDATALEN - 1.
-# TODO: Figure out way to `SELECT` value from commands
-NAMEDATALEN = 63
-
 
 class PostgresError(Exception):
     """
@@ -43,6 +38,11 @@ class TransformStream:
 
 
 class PostgresTarget(SQLInterface):
+    ## NAMEDATALEN _defaults_ to 64 in PostgreSQL. The maxmimum length for an identifier is
+    ## NAMEDATALEN - 1.
+    # TODO: Figure out way to `SELECT` value from commands
+    IDENTIFIER_FIELD_LENGTH = 63
+
     def __init__(self, connection, logger, *args, postgres_schema='public', **kwargs):
         self.conn = connection
         self.logger = logger
@@ -214,9 +214,9 @@ class PostgresTarget(SQLInterface):
         if not identifier:
             raise PostgresError('Identifier must be non empty.')
 
-        if NAMEDATALEN < len(identifier):
+        if self.IDENTIFIER_FIELD_LENGTH < len(identifier):
             raise PostgresError('Length of identifier must be less than or equal to {}. Got {} for `{}`'.format(
-                NAMEDATALEN,
+                self.IDENTIFIER_FIELD_LENGTH,
                 len(identifier),
                 identifier
             ))
@@ -238,9 +238,10 @@ class PostgresTarget(SQLInterface):
         return True
 
     def canonicalize_identifier(self, identifier):
-        new_idenfitier = re.sub(r'[^\w\d_$]', '_', identifier.lower())[:NAMEDATALEN]
-        self._validate_identifier(new_idenfitier)
-        return new_idenfitier
+        if not identifier:
+            identifier = '_'
+
+        return re.sub(r'[^\w\d_$]', '_', identifier.lower())
 
     def upsert_table(self, cur, table_json_schema, metadata):
         self._validate_identifier(table_json_schema['name'])
