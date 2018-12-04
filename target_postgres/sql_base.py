@@ -441,21 +441,18 @@ class SQLInterface:
         raise NotImplementedError('`remove_column_mapping` not implemented.')
 
     def _get_mapping(self, existing_schema, field, schema):
-        canonicalized_field = self.canonicalize_identifier(field)
-        typed_field = _mapping_name(canonicalized_field, schema)
-
         if 'mappings' not in existing_schema:
             return None
 
-        if canonicalized_field in existing_schema['mappings'] \
-                and field == existing_schema['mappings'][canonicalized_field]['from'] \
-                and json_schema.get_type(json_schema.make_nullable(schema)) \
-                == json_schema.get_type(json_schema.make_nullable(existing_schema['mappings'][canonicalized_field])):
-            return canonicalized_field
+        inverted_mappings = dict([((mapping['from'],
+                                    json_schema.sql_shorthand(mapping)),
+                                   to_field)
+                                  for (to_field, mapping) in existing_schema['mappings'].items()])
 
-        if typed_field in existing_schema['mappings'] \
-                and field == existing_schema['mappings'][typed_field]['from']:
-            return typed_field
+        field_type_tuple = (field, json_schema.sql_shorthand(schema))
+
+        if field_type_tuple in inverted_mappings:
+            return inverted_mappings[field_type_tuple]
 
         return None
 
