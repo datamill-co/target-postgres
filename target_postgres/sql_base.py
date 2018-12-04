@@ -167,7 +167,7 @@ def _denest_schema(table_path, table_json_schema, key_prop_schemas, subtables, l
     table_json_schema['properties'] = new_properties
 
 
-def _denest_subrecord(table_name,
+def _denest_subrecord(table_path,
                       current_path,
                       parent_record,
                       record,
@@ -189,12 +189,12 @@ def _denest_subrecord(table_name,
             {...}
             """
             # TODO: Throws exception due to wrong number of args.
-            _denest_subrecord(table_name, next_path, parent_record, value, pk_fks, level)
+            _denest_subrecord(table_path, next_path, parent_record, value, pk_fks, level)
         elif isinstance(value, list):
             """
             [...]
             """
-            _denest_records(table_name + SEPARATOR + next_path,
+            _denest_records(table_path + (prop,),
                             value,
                             records_map,
                             key_properties,
@@ -204,10 +204,10 @@ def _denest_subrecord(table_name,
             """
             None | <literal>
             """
-            parent_record[next_path] = value
+            parent_record[SEPARATOR.join(table_path + (prop,))] = value
 
 
-def _denest_record(table_name, current_path, record, records_map, key_properties, pk_fks, level):
+def _denest_record(table_path, record, records_map, key_properties, pk_fks, level):
     """"""
     """
     {...}
@@ -217,17 +217,13 @@ def _denest_record(table_name, current_path, record, records_map, key_properties
         """
         str : {...} | [...] | None | <literal>
         """
-        if current_path:
-            next_path = current_path + SEPARATOR + prop
-        else:
-            next_path = prop
 
         if isinstance(value, dict):
             """
             {...}
             """
-            _denest_subrecord(table_name,
-                              next_path,
+            _denest_subrecord(table_path + (prop,),
+                              prop,
                               denested_record,
                               value,
                               records_map,
@@ -238,7 +234,7 @@ def _denest_record(table_name, current_path, record, records_map, key_properties
             """
             [...]
             """
-            _denest_records(table_name + SEPARATOR + next_path,
+            _denest_records(table_path + (prop,),
                             value,
                             records_map,
                             key_properties,
@@ -253,14 +249,14 @@ def _denest_record(table_name, current_path, record, records_map, key_properties
             """
             <literal>
             """
-            denested_record[next_path] = value
+            denested_record[prop] = value
 
-    if table_name not in records_map:
-        records_map[table_name] = []
-    records_map[table_name].append(denested_record)
+    if table_path not in records_map:
+        records_map[table_path] = []
+    records_map[table_path].append(denested_record)
 
 
-def _denest_records(table_name, records, records_map, key_properties, pk_fks=None, level=-1):
+def _denest_records(table_path, records, records_map, key_properties, pk_fks=None, level=-1):
     row_index = 0
     """
     [{...} ...]
@@ -282,7 +278,7 @@ def _denest_records(table_name, records, records_map, key_properties, pk_fks=Non
         """
         {...}
         """
-        _denest_record(table_name, None, record, records_map, key_properties, record_pk_fks, level)
+        _denest_record(table_path, record, records_map, key_properties, record_pk_fks, level)
 
 
 class SQLInterface:
@@ -701,11 +697,16 @@ class SQLInterface:
         """
 
         records_map = {}
-        _denest_records(root_table_name,
+        _denest_records(tuple(),
                         records,
                         records_map,
                         key_properties)
-        return records_map
+
+        ret = {}
+        for path, records in records_map.items():
+            ret[SEPARATOR.join((root_table_name,) + path)] = records
+
+        return ret
 
     def _get_table_batches(self, connection, root_table_name, schema, key_properties, records):
         """
