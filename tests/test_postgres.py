@@ -17,10 +17,14 @@ from target_postgres import TargetError, main
 ## TODO: test invalid data against JSON Schema
 ## TODO: test compound pk
 
-def get_columns_sql(table_name):
-    return "SELECT column_name, data_type, is_nullable FROM information_schema.columns " + \
-           "WHERE table_schema = 'public' and table_name = '{}';".format(
-        table_name)
+def assert_columns_equal(cursor, table_name, expected_column_tuples):
+    cursor.execute("SELECT column_name, data_type, is_nullable FROM information_schema.columns " + \
+                   "WHERE table_schema = 'public' and table_name = '{}';".format(
+                       table_name))
+    columns = cursor.fetchall()
+
+    assert (not columns and not expected_column_tuples) \
+           or set(columns) == expected_column_tuples
 
 def get_count_sql(table_name):
     return 'SELECT count(*) FROM "public"."{}"'.format(table_name)
@@ -155,10 +159,9 @@ def test_loading__invalid__records__disable():
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            cur.execute(get_columns_sql('cats'))
             # No columns for a non existent table
             ## Since all `cat`s records were invalid, we could not persist them, hence, no table created
-            assert not cur.fetchall()
+            assert_columns_equal(cur, 'cats', {})
 
 
 def test_loading__invalid__records__threshold():
@@ -188,35 +191,33 @@ def test_loading__simple(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            cur.execute(get_columns_sql('cats'))
-            columns = cur.fetchall()
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
 
-            assert set(columns) == {
-                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_sequence', 'bigint', 'YES'),
-                ('_sdc_table_version', 'bigint', 'YES'),
-                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                ('adoption__was_foster', 'boolean', 'YES'),
-                ('age', 'bigint', 'YES'),
-                ('id', 'bigint', 'NO'),
-                ('name', 'text', 'NO'),
-                ('paw_size', 'bigint', 'NO'),
-                ('paw_colour', 'text', 'NO'),
-                ('flea_check_complete', 'boolean', 'NO'),
-                ('pattern', 'text', 'YES')
-            }
-
-            cur.execute(get_columns_sql('cats__adoption__immunizations'))
-            columns = cur.fetchall()
-
-            assert set(columns) == {
-                ('_sdc_level_0_id', 'bigint', 'NO'),
-                ('_sdc_sequence', 'bigint', 'YES'),
-                ('_sdc_source_key_id', 'bigint', 'NO'),
-                ('date_administered', 'timestamp with time zone', 'YES'),
-                ('type', 'text', 'YES')
-            }
+            assert_columns_equal(cur,
+                                 'cats__adoption__immunizations',
+                                 {
+                                     ('_sdc_level_0_id', 'bigint', 'NO'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_source_key_id', 'bigint', 'NO'),
+                                     ('date_administered', 'timestamp with time zone', 'YES'),
+                                     ('type', 'text', 'YES')
+                                 })
 
             cur.execute(get_count_sql('cats'))
             assert cur.fetchone()[0] == 100
@@ -248,25 +249,24 @@ def test_loading__new_non_null_column(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            cur.execute(get_columns_sql('cats'))
-            columns = cur.fetchall()
-
-            assert set(columns) == {
-                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_sequence', 'bigint', 'YES'),
-                ('_sdc_table_version', 'bigint', 'YES'),
-                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                ('adoption__was_foster', 'boolean', 'YES'),
-                ('age', 'bigint', 'YES'),
-                ('id', 'bigint', 'NO'),
-                ('name', 'text', 'NO'),
-                ('paw_size', 'bigint', 'NO'),
-                ('paw_colour', 'text', 'NO'),
-                ('paw_toe_count', 'bigint', 'YES'),
-                ('flea_check_complete', 'boolean', 'NO'),
-                ('pattern', 'text', 'YES')
-            }
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('paw_toe_count', 'bigint', 'YES'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
 
             cur.execute(sql.SQL('SELECT {}, {} FROM {}').format(
                 sql.Identifier('id'),
@@ -288,24 +288,23 @@ def test_loading__column_type_change(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            cur.execute(get_columns_sql('cats'))
-            columns = cur.fetchall()
-
-            assert set(columns) == {
-                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_sequence', 'bigint', 'YES'),
-                ('_sdc_table_version', 'bigint', 'YES'),
-                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                ('adoption__was_foster', 'boolean', 'YES'),
-                ('age', 'bigint', 'YES'),
-                ('id', 'bigint', 'NO'),
-                ('name', 'text', 'NO'),
-                ('paw_size', 'bigint', 'NO'),
-                ('paw_colour', 'text', 'NO'),
-                ('flea_check_complete', 'boolean', 'NO'),
-                ('pattern', 'text', 'YES')
-            }
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
 
             cur.execute(sql.SQL('SELECT {} FROM {}').format(
                 sql.Identifier('name'),
@@ -332,25 +331,24 @@ def test_loading__column_type_change(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            cur.execute(get_columns_sql('cats'))
-            columns = cur.fetchall()
-
-            assert set(columns) == {
-                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_sequence', 'bigint', 'YES'),
-                ('_sdc_table_version', 'bigint', 'YES'),
-                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                ('adoption__was_foster', 'boolean', 'YES'),
-                ('age', 'bigint', 'YES'),
-                ('id', 'bigint', 'NO'),
-                ('name__s', 'text', 'YES'),
-                ('name__b', 'boolean', 'YES'),
-                ('paw_size', 'bigint', 'NO'),
-                ('paw_colour', 'text', 'NO'),
-                ('flea_check_complete', 'boolean', 'NO'),
-                ('pattern', 'text', 'YES')
-            }
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name__s', 'text', 'YES'),
+                                     ('name__b', 'boolean', 'YES'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
 
             cur.execute(sql.SQL('SELECT {}, {} FROM {}').format(
                 sql.Identifier('name__s'),
@@ -380,26 +378,25 @@ def test_loading__column_type_change(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            cur.execute(get_columns_sql('cats'))
-            columns = cur.fetchall()
-
-            assert set(columns) == {
-                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_sequence', 'bigint', 'YES'),
-                ('_sdc_table_version', 'bigint', 'YES'),
-                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                ('adoption__was_foster', 'boolean', 'YES'),
-                ('age', 'bigint', 'YES'),
-                ('id', 'bigint', 'NO'),
-                ('name__s', 'text', 'YES'),
-                ('name__b', 'boolean', 'YES'),
-                ('name__i', 'bigint', 'YES'),
-                ('paw_size', 'bigint', 'NO'),
-                ('paw_colour', 'text', 'NO'),
-                ('flea_check_complete', 'boolean', 'NO'),
-                ('pattern', 'text', 'YES')
-            }
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name__s', 'text', 'YES'),
+                                     ('name__b', 'boolean', 'YES'),
+                                     ('name__i', 'bigint', 'YES'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
 
             cur.execute(sql.SQL('SELECT {}, {}, {} FROM {}').format(
                 sql.Identifier('name__s'),
@@ -424,24 +421,23 @@ def test_loading__column_type_change__nullable(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            cur.execute(get_columns_sql('cats'))
-            columns = cur.fetchall()
-
-            assert set(columns) == {
-                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_sequence', 'bigint', 'YES'),
-                ('_sdc_table_version', 'bigint', 'YES'),
-                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                ('adoption__was_foster', 'boolean', 'YES'),
-                ('age', 'bigint', 'YES'),
-                ('id', 'bigint', 'NO'),
-                ('name', 'text', 'NO'),
-                ('paw_size', 'bigint', 'NO'),
-                ('paw_colour', 'text', 'NO'),
-                ('flea_check_complete', 'boolean', 'NO'),
-                ('pattern', 'text', 'YES')
-            }
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
 
             cur.execute(sql.SQL('SELECT {} FROM {}').format(
                 sql.Identifier('name'),
@@ -468,24 +464,23 @@ def test_loading__column_type_change__nullable(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            cur.execute(get_columns_sql('cats'))
-            columns = cur.fetchall()
-
-            assert set(columns) == {
-                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_sequence', 'bigint', 'YES'),
-                ('_sdc_table_version', 'bigint', 'YES'),
-                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                ('adoption__was_foster', 'boolean', 'YES'),
-                ('age', 'bigint', 'YES'),
-                ('id', 'bigint', 'NO'),
-                ('name', 'text', 'YES'),
-                ('paw_size', 'bigint', 'NO'),
-                ('paw_colour', 'text', 'NO'),
-                ('flea_check_complete', 'boolean', 'NO'),
-                ('pattern', 'text', 'YES')
-            }
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'YES'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
 
             cur.execute(sql.SQL('SELECT {} FROM {}').format(
                 sql.Identifier('name'),
@@ -508,24 +503,23 @@ def test_loading__column_type_change__nullable(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            cur.execute(get_columns_sql('cats'))
-            columns = cur.fetchall()
-
-            assert set(columns) == {
-                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_sequence', 'bigint', 'YES'),
-                ('_sdc_table_version', 'bigint', 'YES'),
-                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                ('adoption__was_foster', 'boolean', 'YES'),
-                ('age', 'bigint', 'YES'),
-                ('id', 'bigint', 'NO'),
-                ('name', 'text', 'YES'),
-                ('paw_size', 'bigint', 'NO'),
-                ('paw_colour', 'text', 'NO'),
-                ('flea_check_complete', 'boolean', 'NO'),
-                ('pattern', 'text', 'YES')
-            }
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'YES'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
 
             cur.execute(sql.SQL('SELECT {} FROM {}').format(
                 sql.Identifier('name'),
@@ -580,15 +574,27 @@ def test_loading__invalid_column_name(db_cleanup):
 
     main(CONFIG, input_stream=non_lowercase_stream)
 
-    name_too_long_stream = CatStream(100)
-    name_too_long_stream.schema = deepcopy(name_too_long_stream.schema)
-    name_too_long_stream.schema['schema']['properties']['x' * 1000] = \
-        name_too_long_stream.schema['schema']['properties']['age']
+    duplicate_non_lowercase_stream_1 = CatStream(100)
+    duplicate_non_lowercase_stream_1.schema = deepcopy(duplicate_non_lowercase_stream_1.schema)
+    duplicate_non_lowercase_stream_1.schema['schema']['properties']['invalid!NAME'] = \
+        duplicate_non_lowercase_stream_1.schema['schema']['properties']['age']
 
-    main(CONFIG, input_stream=name_too_long_stream)
+    main(CONFIG, input_stream=duplicate_non_lowercase_stream_1)
 
+    duplicate_non_lowercase_stream_2 = CatStream(100)
+    duplicate_non_lowercase_stream_2.schema = deepcopy(duplicate_non_lowercase_stream_2.schema)
+    duplicate_non_lowercase_stream_2.schema['schema']['properties']['invalid#NAME'] = \
+        duplicate_non_lowercase_stream_2.schema['schema']['properties']['age']
 
-def test_loading__invalid_column_name__non_canonicalizable(db_cleanup):
+    main(CONFIG, input_stream=duplicate_non_lowercase_stream_2)
+
+    duplicate_non_lowercase_stream_3 = CatStream(100)
+    duplicate_non_lowercase_stream_3.schema = deepcopy(duplicate_non_lowercase_stream_3.schema)
+    duplicate_non_lowercase_stream_3.schema['schema']['properties']['invalid%NAmE'] = \
+        duplicate_non_lowercase_stream_3.schema['schema']['properties']['age']
+
+    main(CONFIG, input_stream=duplicate_non_lowercase_stream_3)
+
     name_too_long_stream = CatStream(100)
     name_too_long_stream.schema = deepcopy(name_too_long_stream.schema)
     name_too_long_stream.schema['schema']['properties']['x' * 1000] = \
@@ -601,23 +607,71 @@ def test_loading__invalid_column_name__non_canonicalizable(db_cleanup):
     duplicate_name_too_long_stream.schema['schema']['properties']['x' * 100] = \
         duplicate_name_too_long_stream.schema['schema']['properties']['age']
 
-    with pytest.raises(postgres.PostgresError):
-        main(CONFIG, input_stream=duplicate_name_too_long_stream)
+    main(CONFIG, input_stream=duplicate_name_too_long_stream)
 
-    non_lowercase_stream = CatStream(100)
-    non_lowercase_stream.schema = deepcopy(non_lowercase_stream.schema)
-    non_lowercase_stream.schema['schema']['properties']['INVALID_name'] = \
-        non_lowercase_stream.schema['schema']['properties']['age']
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('___invalid_name', 'bigint', 'YES'),
+                                     ('invalid_name', 'bigint', 'YES'),
+                                     ('invalid_name__1', 'bigint', 'YES'),
+                                     ('invalid_name__2', 'bigint', 'YES'),
+                                     ('invalid_name__3', 'bigint', 'YES'),
+                                     ('x' * 63, 'bigint', 'YES'),
+                                     (('x' * 60 + '__1'), 'bigint', 'YES'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
 
-    main(CONFIG, input_stream=non_lowercase_stream)
 
-    duplicate_canonicalization_stream = CatStream(100)
-    duplicate_canonicalization_stream.schema = deepcopy(duplicate_canonicalization_stream.schema)
-    duplicate_canonicalization_stream.schema['schema']['properties']['invalid!NAME'] = \
-        duplicate_canonicalization_stream.schema['schema']['properties']['age']
+def test_loading__invalid_column_name__duplicate_name_handling(db_cleanup):
+    for i in range(101):
+        name_too_long_stream = CatStream(100)
+        name_too_long_stream.schema = deepcopy(name_too_long_stream.schema)
+        name_too_long_stream.schema['schema']['properties']['x' * (100 + i)] = \
+            name_too_long_stream.schema['schema']['properties']['age']
 
-    with pytest.raises(postgres.PostgresError):
-        main(CONFIG, input_stream=duplicate_canonicalization_stream)
+        main(CONFIG, input_stream=name_too_long_stream)
+
+    expected_columns = {
+        ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+        ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+        ('_sdc_sequence', 'bigint', 'YES'),
+        ('_sdc_table_version', 'bigint', 'YES'),
+        ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+        ('adoption__was_foster', 'boolean', 'YES'),
+        ('age', 'bigint', 'YES'),
+        ('id', 'bigint', 'NO'),
+        ('name', 'text', 'NO'),
+        ('paw_size', 'bigint', 'NO'),
+        ('paw_colour', 'text', 'NO'),
+        ('x' * 63, 'bigint', 'YES'),
+        (('x' * 58 + '__100'), 'bigint', 'YES'),
+        ('flea_check_complete', 'boolean', 'NO'),
+        ('pattern', 'text', 'YES')
+    }
+
+    for i in range(1, 10):
+        expected_columns.add((('x' * 60 + '__' + str(i)), 'bigint', 'YES'))
+    for i in range(10, 100):
+        expected_columns.add((('x' * 59 + '__' + str(i)), 'bigint', 'YES'))
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_columns_equal(cur, 'cats', expected_columns)
 
 
 def test_loading__invalid_column_name__column_type_change(db_cleanup):
@@ -632,25 +686,24 @@ def test_loading__invalid_column_name__column_type_change(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            cur.execute(get_columns_sql('cats'))
-            columns = cur.fetchall()
-
-            assert set(columns) == {
-                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_sequence', 'bigint', 'YES'),
-                ('_sdc_table_version', 'bigint', 'YES'),
-                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                ('adoption__was_foster', 'boolean', 'YES'),
-                ('age', 'bigint', 'YES'),
-                ('id', 'bigint', 'NO'),
-                ('name', 'text', 'NO'),
-                ('paw_size', 'bigint', 'NO'),
-                ('paw_colour', 'text', 'NO'),
-                ('invalid_name', 'text', 'NO'),
-                ('flea_check_complete', 'boolean', 'NO'),
-                ('pattern', 'text', 'YES')
-            }
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('invalid_name', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
 
             cur.execute(sql.SQL('SELECT {} FROM {}').format(
                 sql.Identifier('invalid_name'),
@@ -677,26 +730,25 @@ def test_loading__invalid_column_name__column_type_change(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            cur.execute(get_columns_sql('cats'))
-            columns = cur.fetchall()
-
-            assert set(columns) == {
-                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_sequence', 'bigint', 'YES'),
-                ('_sdc_table_version', 'bigint', 'YES'),
-                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                ('adoption__was_foster', 'boolean', 'YES'),
-                ('age', 'bigint', 'YES'),
-                ('id', 'bigint', 'NO'),
-                ('name', 'text', 'NO'),
-                ('paw_size', 'bigint', 'NO'),
-                ('paw_colour', 'text', 'NO'),
-                ('invalid_name__s', 'text', 'YES'),
-                ('invalid_name__b', 'boolean', 'YES'),
-                ('flea_check_complete', 'boolean', 'NO'),
-                ('pattern', 'text', 'YES')
-            }
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('invalid_name__s', 'text', 'YES'),
+                                     ('invalid_name__b', 'boolean', 'YES'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
 
             cur.execute(sql.SQL('SELECT {}, {} FROM {}').format(
                 sql.Identifier('invalid_name__s'),
@@ -726,27 +778,26 @@ def test_loading__invalid_column_name__column_type_change(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            cur.execute(get_columns_sql('cats'))
-            columns = cur.fetchall()
-
-            assert set(columns) == {
-                ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                ('_sdc_sequence', 'bigint', 'YES'),
-                ('_sdc_table_version', 'bigint', 'YES'),
-                ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                ('adoption__was_foster', 'boolean', 'YES'),
-                ('age', 'bigint', 'YES'),
-                ('id', 'bigint', 'NO'),
-                ('name', 'text', 'NO'),
-                ('paw_size', 'bigint', 'NO'),
-                ('paw_colour', 'text', 'NO'),
-                ('invalid_name__s', 'text', 'YES'),
-                ('invalid_name__b', 'boolean', 'YES'),
-                ('invalid_name__i', 'bigint', 'YES'),
-                ('flea_check_complete', 'boolean', 'NO'),
-                ('pattern', 'text', 'YES')
-            }
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('invalid_name__s', 'text', 'YES'),
+                                     ('invalid_name__b', 'boolean', 'YES'),
+                                     ('invalid_name__i', 'bigint', 'YES'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
 
             cur.execute(sql.SQL('SELECT {}, {}, {} FROM {}').format(
                 sql.Identifier('invalid_name__s'),
