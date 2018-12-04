@@ -80,27 +80,24 @@ def _add_singer_columns(schema, key_properties):
         }
 
 
-def _denest_schema_helper(table_name,
+def _denest_schema_helper(table_path,
                           table_json_schema,
                           not_null,
                           top_level_schema,
-                          current_path,
                           key_prop_schemas,
                           subtables,
                           level):
     for prop, item_json_schema in table_json_schema['properties'].items():
-        next_path = current_path + SEPARATOR + prop
         if json_schema.is_object(item_json_schema):
-            _denest_schema_helper(table_name,
+            _denest_schema_helper(table_path + (prop,),
                                   item_json_schema,
                                   not_null,
                                   top_level_schema,
-                                  next_path,
                                   key_prop_schemas,
                                   subtables,
                                   level)
         elif json_schema.is_iterable(item_json_schema):
-            _create_subtable(table_name + SEPARATOR + prop,
+            _create_subtable(table_path + (prop,),
                              item_json_schema,
                              key_prop_schemas,
                              subtables,
@@ -110,10 +107,13 @@ def _denest_schema_helper(table_name,
                 item_json_schema['type'].remove('null')
             elif not json_schema.is_nullable(item_json_schema):
                 item_json_schema['type'].append('null')
-            top_level_schema[next_path] = item_json_schema
+
+            column_name = SEPARATOR.join(table_path + (prop,))
+
+            top_level_schema[column_name] = item_json_schema
 
 
-def _create_subtable(table_name, table_json_schema, key_prop_schemas, subtables, level):
+def _create_subtable(table_path, table_json_schema, key_prop_schemas, subtables, level):
     if json_schema.is_object(table_json_schema['items']):
         new_properties = table_json_schema['items']['properties']
     else:
@@ -138,31 +138,26 @@ def _create_subtable(table_name, table_json_schema, key_prop_schemas, subtables,
                   'level': level,
                   'key_properties': key_properties}
 
-    _denest_schema(table_name, new_schema, key_prop_schemas, subtables, level=level)
+    _denest_schema(table_path, new_schema, key_prop_schemas, subtables, level=level)
 
-    subtables[table_name] = new_schema
+    subtables[table_path] = new_schema
 
 
-def _denest_schema(table_name, table_json_schema, key_prop_schemas, subtables, current_path=None, level=-1):
+def _denest_schema(table_path, table_json_schema, key_prop_schemas, subtables, level=-1):
     new_properties = {}
     for prop, item_json_schema in table_json_schema['properties'].items():
-        if current_path:
-            next_path = current_path + SEPARATOR + prop
-        else:
-            next_path = prop
 
         if json_schema.is_object(item_json_schema):
             not_null = 'null' not in item_json_schema['type']
-            _denest_schema_helper(table_name + SEPARATOR + next_path,
+            _denest_schema_helper(table_path + (prop,),
                                   item_json_schema,
                                   not_null,
                                   new_properties,
-                                  next_path,
                                   key_prop_schemas,
                                   subtables,
                                   level)
         elif json_schema.is_iterable(item_json_schema):
-            _create_subtable(table_name + SEPARATOR + next_path,
+            _create_subtable(table_path + (prop,),
                              item_json_schema,
                              key_prop_schemas,
                              subtables,
@@ -327,11 +322,11 @@ class SQLInterface:
         key_prop_schemas = {}
         for key in key_properties:
             key_prop_schemas[key] = schema['properties'][key]
-        _denest_schema(root_table_name, root_table_schema, key_prop_schemas, subtables)
+        _denest_schema(tuple(), root_table_schema, key_prop_schemas, subtables)
 
         ret = [to_table_schema(root_table_name, None, key_properties, root_table_schema['properties'])]
-        for name, schema in subtables.items():
-            ret.append(to_table_schema(name, schema['level'], schema['key_properties'], schema['properties']))
+        for path, schema in subtables.items():
+            ret.append(to_table_schema(SEPARATOR.join((root_table_name,) + path), schema['level'], schema['key_properties'], schema['properties']))
 
         return ret
 
