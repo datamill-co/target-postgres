@@ -28,7 +28,7 @@ from target_postgres.singer_stream import (
 SEPARATOR = '__'
 
 
-def to_table_schema(name, level, keys, properties):
+def to_table_schema(path, level, keys, properties):
     for key in keys:
         if not key in properties:
             raise Exception('Unknown key "{}" found for table "{}"'.format(
@@ -36,7 +36,8 @@ def to_table_schema(name, level, keys, properties):
             ))
 
     return {'type': 'TABLE_SCHEMA',
-            'name': name,
+            'name': SEPARATOR.join(path),
+            'path': path,
             'level': level,
             'key_properties': keys,
             'mappings': [],
@@ -300,12 +301,11 @@ class SQLInterface:
 
     IDENTIFIER_FIELD_LENGTH = NotImplementedError('`IDENTIFIER_FIELD_LENGTH` not implemented.')
 
-    def _get_streamed_table_schemas(self, root_table_name, schema, key_properties):
+    def _get_streamed_table_schemas(self, schema, key_properties):
         """
         Given a `schema` and `key_properties` return the denested/flattened TABLE_SCHEMA of
         the root table and each sub table.
 
-        :param root_table_name: string
         :param schema: SingerStreamSchema
         :param key_properties: [string, ...]
         :return: [TABLE_SCHEMA(denested_streamed_schema_0), ...]
@@ -320,9 +320,9 @@ class SQLInterface:
             key_prop_schemas[key] = schema['properties'][key]
         _denest_schema(tuple(), root_table_schema, key_prop_schemas, subtables)
 
-        ret = [to_table_schema(root_table_name, None, key_properties, root_table_schema['properties'])]
+        ret = [to_table_schema(tuple(), None, key_properties, root_table_schema['properties'])]
         for path, schema in subtables.items():
-            ret.append(to_table_schema(SEPARATOR.join((root_table_name,) + path), schema['level'], schema['key_properties'], schema['properties']))
+            ret.append(to_table_schema(path, schema['level'], schema['key_properties'], schema['properties']))
 
         return ret
 
@@ -684,12 +684,12 @@ class SQLInterface:
         """
         raise NotImplementedError('`update_table_schema` not implemented.')
 
-    def _get_streamed_table_records(self, root_table_name, key_properties, records):
+    def _get_streamed_table_records(self, key_properties, records):
         """
-        Given `records` for the `root_table_name` and `key_properties`, flatten
+        Flatten the given `records` into `table_records`.
+        Maintains `key_properties`.
         into `table_records`.
 
-        :param root_table_name: string
         :param key_properties: [string, ...]
         :param records: [{...}, ...]
         :return: {TableName string: [{...}, ...],
@@ -702,19 +702,13 @@ class SQLInterface:
                         records_map,
                         key_properties)
 
-        ret = {}
-        for path, records in records_map.items():
-            ret[SEPARATOR.join((root_table_name,) + path)] = records
+        return records_map
 
-        return ret
-
-    def _get_table_batches(self, connection, root_table_name, schema, key_properties, records):
+    def _get_table_batches(self, schema, key_properties, records):
         """
         Given the streamed schema, and records, get all table schemas and records and prep them
         in a `table_batch`.
 
-        :param connection: remote connection, type left to be determined by implementing class
-        :param root_table_name: string
         :param schema: SingerStreamSchema
         :param key_properties: [string, ...]
         :param records: [{...}, ...]
@@ -723,19 +717,15 @@ class SQLInterface:
                    'records': [{...}, ...]
         """
 
-        table_schemas = self._get_streamed_table_schemas(root_table_name,
-                                                         schema,
+        table_schemas = self._get_streamed_table_schemas(schema,
                                                          key_properties)
 
-        table_records = self._get_streamed_table_records(root_table_name,
-                                                         key_properties,
+        table_records = self._get_streamed_table_records(key_properties,
                                                          records)
         writeable_batches = []
         for table_json_schema in table_schemas:
-            remote_schema = self.get_table_schema(connection, table_json_schema['name'])
             writeable_batches.append({'streamed_schema': table_json_schema,
-                                      'remote_schema': remote_schema,
-                                      'records': table_records.get(table_json_schema['name'], [])})
+                                      'records': table_records.get(table_json_schema['path'], [])})
 
         return writeable_batches
 
@@ -877,7 +867,9 @@ class SQLInterface:
         """
         records_persisted = len(records)
         rows_persisted = 0
-        for table_batch in self._get_table_batches(connection, root_table_name, schema, key_properties, records):
+        for table_batch in self._get_table_batches(schema, key_properties, records):
+            table_batch['streamed_schema']['path'] = (root_table_name,) + table_batch['streamed_schema']['path']
+            table_batch['streamed_schema']['name'] = SEPARATOR.join(table_batch['streamed_schema']['path'])
             remote_schema = self.upsert_table(connection,
                                               table_batch['streamed_schema'],
                                               metadata)
