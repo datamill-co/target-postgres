@@ -39,9 +39,14 @@ def to_table_schema(name, level, keys, properties):
             'name': name,
             'level': level,
             'key_properties': keys,
+            'mappings': [],
             'schema': {'type': 'object',
                        'additionalProperties': False,
                        'properties': properties}}
+
+
+def _mapping_name(field, schema):
+    return field + SEPARATOR + json_schema.sql_shorthand(schema)
 
 
 def _add_singer_columns(schema, key_properties):
@@ -302,10 +307,13 @@ class SQLInterface:
     - `..._helper` suffix : Helper function
     """
 
+    IDENTIFIER_FIELD_LENGTH = NotImplementedError('`IDENTIFIER_FIELD_LENGTH` not implemented.')
+
     def _get_streamed_table_schemas(self, root_table_name, schema, key_properties):
         """
         Given a `schema` and `key_properties` return the denested/flattened TABLE_SCHEMA of
         the root table and each sub table.
+
         :param root_table_name: string
         :param schema: SingerStreamSchema
         :param key_properties: [string, ...]
@@ -330,18 +338,355 @@ class SQLInterface:
     def get_table_schema(self, connection, name):
         """
         Fetch the `table_schema` for `name`.
+
         :param connection: remote connection, type left to be determined by implementing class
         :param name: string
         :return: TABLE_SCHEMA(remote)
         """
         raise NotImplementedError('`get_table_schema` not implemented.')
 
-    def update_table_schema(self, connection, remote_table_json_schema, table_json_schema, metadata):
+    def is_table_empty(self, connection, name):
+        """
+        Returns True when given table name has no rows.
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param name: string
+        :return: boolean
+        """
+        raise NotImplementedError('`is_table_empty` not implemented.')
+
+    def canonicalize_identifier(self, name):
+        """
+        Given a SQL Identifier `name`, attempt to serialize it to an acceptable name for remote.
+        NOTE: DOES NOT handle collision support, nor identifier length/truncation support.
+
+        :param name: string
+        :return: string
+        """
+        raise NotImplementedError('`canonicalize_identifier` not implemented.')
+
+    def _canonicalize_identifier(self, name, schema, existing_columns_raw_names, existing_columns):
+        """"""
+        raw_canonicalized_column_name = self.canonicalize_identifier(name)
+        canonicalized_column_name = raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH]
+        canonicalized_typed_column_name = _mapping_name(
+            raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH - 3], schema)
+
+        ## NAME IS ALREADY CANONICALIZED
+        if name == raw_canonicalized_column_name \
+                and raw_canonicalized_column_name == canonicalized_column_name:
+            return canonicalized_column_name, canonicalized_typed_column_name
+
+        ## COLUMN WILL BE SPLIT
+        if name in existing_columns_raw_names:
+            return canonicalized_column_name, canonicalized_typed_column_name
+
+        i = 0
+        ## NAME COLLISION
+        while (canonicalized_column_name in existing_columns
+               or canonicalized_typed_column_name in existing_columns):
+            i += 1
+            suffix = SEPARATOR + str(i)
+            canonicalized_column_name = raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix
+            canonicalized_typed_column_name = _mapping_name(
+                raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH - 3 - len(suffix)], schema) + suffix
+
+            # TODO: logger warn
+            ##raise Exception(
+            ##    'NAME COLLISION: Cannot handle merging column `{}` (canonicalized as: `{}`, canonicalized with type as: `{}`) in table `{}`.'.format(
+            ##        raw_column_name,
+            ##        canonicalized_column_name,
+            ##        canonicalized_typed_column_name,
+            ##        table_name
+            ##    ))
+
+        return canonicalized_column_name, canonicalized_typed_column_name
+
+    def add_column(self, connection, table_name, name, schema):
+        """
+        Add column `name` in `table_name` with `schema`.
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param table_name: string
+        :param name: string
+        :param schema: JSON Object Schema
+        :return: None
+        """
+        raise NotImplementedError('`add_column` not implemented.')
+
+    def drop_column(self, connection, table_name, name):
+        """
+        Drop column `name` in `table_name`.
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param table_name: string
+        :param name: string
+        :return: None
+        """
+        raise NotImplementedError('`add_column` not implemented.')
+
+    def migrate_column(self, connection, table_name, from_column, to_column):
+        """
+        Migrate data `from_column` in `table_name` `to_column`.
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param table_name: string
+        :param from_column: string
+        :param to_column: string
+        :return: None
+        """
+        raise NotImplementedError('`migrate_column` not implemented.')
+
+    def make_column_nullable(self, connection, table_name, name):
+        """
+        Update column `name` in `table_name` to accept `null` values.
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param table_name: string
+        :param name: string
+        :return: None
+        """
+        raise NotImplementedError('`make_column_nullable` not implemented.')
+
+    def add_column_mapping(self, connection, table_name, name, mapped_name, schema):
+        """
+        Given column `name` add a column mapping to `mapped_name` for `schema`. A column mapping is an entry
+        in the TABLE_SCHEMA which reads:
+
+        {...
+         'mappings': {...
+           `mapped_name`: {'type': `json_schema.get_type(schema)`,
+                           'from': `name`}
+         }
+         ...}
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param table_name: string
+        :param name: string
+        :param mapped_name: string
+        :param schema: JSON Object Schema
+        :return: None
+        """
+        raise NotImplementedError('`add_column_mapping` not implemented.')
+
+    def drop_column_mapping(self, connection, table_name, name):
+        """
+        Given column mapping `name`, remove from the TABLE_SCHEMA(remote).
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param table_name: string
+        :param name: string
+        :return: None
+        """
+        raise NotImplementedError('`remove_column_mapping` not implemented.')
+
+    def _get_mapping(self, existing_schema, field, schema):
+        if 'mappings' not in existing_schema:
+            return None
+
+        inverted_mappings = dict([((mapping['from'],
+                                    json_schema.sql_shorthand(mapping)),
+                                   to_field)
+                                  for (to_field, mapping) in existing_schema['mappings'].items()])
+
+        return inverted_mappings.get(
+            (field,
+             json_schema.sql_shorthand(schema)),
+            None)
+
+    def upsert_table_helper(self, connection, schema):
+        """
+        Assumes `schema['name']` exists in remote. Upserts the `schema` to remote by adding
+        columns, adding column mappings, migrating data from old columns to new, etc.
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param schema: TABLE_SCHEMA(local)
+        :return: TABLE_SCHEMA(remote)
+        """
+        table_name = schema['name']
+        existing_schema = self.get_table_schema(connection, schema['name'])
+
+        if existing_schema is None:
+            raise Exception('No remote table `{}` found. Have you run a `CREATE TABLE` operation?'.format(
+                table_name
+            ))
+
+        new_columns = schema['schema']['properties']
+        existing_columns = existing_schema['schema']['properties']
+        existing_columns_raw_names = [v['from'] for v in existing_schema.get('mappings', {}).values()]
+        table_empty = self.is_table_empty(connection, table_name)
+
+        for raw_column_name, column_schema in new_columns.items():
+            canonicalized_column_name, canonicalized_typed_column_name = self._canonicalize_identifier(
+                raw_column_name, column_schema, existing_columns_raw_names, existing_columns
+            )
+            nullable_column_schema = json_schema.make_nullable(column_schema)
+
+            ## EXISTING COLUMNS
+            if canonicalized_column_name in existing_columns \
+                    and json_schema.to_sql(column_schema) \
+                    == json_schema.to_sql(existing_columns[canonicalized_column_name]):
+                pass
+            ###
+            elif canonicalized_typed_column_name in existing_columns \
+                    and json_schema.to_sql(column_schema) \
+                    == json_schema.to_sql(existing_columns[canonicalized_typed_column_name]):
+                pass
+            ###
+            elif canonicalized_column_name in existing_columns \
+                    and json_schema.to_sql(nullable_column_schema) \
+                    == json_schema.to_sql(existing_columns[canonicalized_column_name]):
+                pass
+            ###
+            elif canonicalized_typed_column_name in existing_columns \
+                    and json_schema.to_sql(nullable_column_schema) \
+                    == json_schema.to_sql(existing_columns[canonicalized_typed_column_name]):
+                pass
+
+            ## NULL COMPATIBILITY
+            elif canonicalized_column_name in existing_columns \
+                    and json_schema.to_sql(nullable_column_schema) == json_schema.to_sql(
+                json_schema.make_nullable(existing_columns[canonicalized_column_name])):
+
+                ## MAKE NULLABLE
+                self.make_column_nullable(connection,
+                                          table_name,
+                                          canonicalized_column_name)
+                existing_columns[canonicalized_column_name] = json_schema.make_nullable(
+                    existing_columns[canonicalized_column_name])
+
+            ## FIRST DUPLICATE TYPE
+            elif canonicalized_column_name in existing_columns:
+
+                if self._get_mapping(existing_schema, raw_column_name, existing_columns[canonicalized_column_name]):
+                    self.drop_column_mapping(connection, table_name, canonicalized_column_name)
+
+                ## column_name -> column_name__<current-type>, column_name__<new-type>
+                existing_column_mapping = _mapping_name(canonicalized_column_name,
+                                                        existing_columns[canonicalized_column_name])
+
+                ## Update existing properties
+                existing_columns[existing_column_mapping] = json_schema.make_nullable(
+                    existing_columns[canonicalized_column_name])
+                existing_columns[canonicalized_typed_column_name] = json_schema.make_nullable(column_schema)
+
+                ## Add new columns
+                ### NOTE: all migrated columns will be nullable and remain that way
+
+                #### Table Metadata
+                self.add_column_mapping(connection, table_name, raw_column_name,
+                                        existing_column_mapping,
+                                        existing_columns[existing_column_mapping])
+                self.add_column_mapping(connection, table_name, raw_column_name,
+                                        canonicalized_typed_column_name,
+                                        existing_columns[canonicalized_typed_column_name])
+
+                #### Columns
+                self.add_column(connection,
+                                table_name,
+                                existing_column_mapping,
+                                existing_columns[existing_column_mapping])
+
+                self.add_column(connection,
+                                table_name,
+                                canonicalized_typed_column_name,
+                                existing_columns[canonicalized_typed_column_name])
+
+                ## Migrate existing data
+                self.migrate_column(connection,
+                                    table_name,
+                                    canonicalized_column_name,
+                                    existing_column_mapping)
+
+                ## Drop existing column
+                self.drop_column(connection,
+                                 table_name,
+                                 canonicalized_column_name)
+
+                ## Remove column (field) from existing_properties
+                del existing_columns[canonicalized_column_name]
+
+            ## MULTI DUPLICATE TYPE
+            elif raw_column_name in existing_columns_raw_names:
+
+                ## Add new column
+                self.add_column_mapping(connection, table_name, raw_column_name,
+                                        canonicalized_typed_column_name,
+                                        nullable_column_schema)
+                existing_columns_raw_names.append(canonicalized_typed_column_name)
+
+                self.add_column(connection,
+                                table_name,
+                                canonicalized_typed_column_name,
+                                nullable_column_schema)
+
+                ## Update existing properties
+                existing_columns[canonicalized_typed_column_name] = nullable_column_schema
+
+            ## NEW COLUMN, VALID NAME, EMPTY TABLE
+            elif canonicalized_column_name == raw_column_name and table_empty:
+
+                self.add_column(connection,
+                                table_name,
+                                canonicalized_column_name,
+                                column_schema)
+                existing_columns[canonicalized_column_name] = column_schema
+
+            ## NEW COLUMN, VALID NAME
+            #             self.logger.warning('Forcing new column `{}.{}.{}` to be nullable due to table not empty.'.format(
+            #                 self.postgres_schema,
+            #                 table_name,
+            #                 column_name))
+            elif canonicalized_column_name == raw_column_name:
+
+                self.add_column(connection,
+                                table_name,
+                                canonicalized_column_name,
+                                nullable_column_schema)
+                existing_columns[canonicalized_column_name] = nullable_column_schema
+
+            ## NEW COLUMN, INVALID NAME, EMPTY TABLE
+            elif canonicalized_column_name != raw_column_name and table_empty:
+
+                self.add_column_mapping(connection, table_name, raw_column_name, canonicalized_column_name,
+                                        column_schema)
+                existing_columns_raw_names.append(canonicalized_column_name)
+                self.add_column(connection,
+                                table_name,
+                                canonicalized_column_name,
+                                column_schema)
+                existing_columns[canonicalized_column_name] = column_schema
+
+            ## NEW COLUMN, INVALID NAME
+            elif canonicalized_column_name != raw_column_name:
+
+                self.add_column_mapping(connection, table_name, raw_column_name, canonicalized_column_name,
+                                        nullable_column_schema)
+                existing_columns_raw_names.append(canonicalized_column_name)
+                self.add_column(connection,
+                                table_name,
+                                canonicalized_column_name,
+                                nullable_column_schema)
+                existing_columns[canonicalized_column_name] = nullable_column_schema
+
+            ## UNKNOWN
+            else:
+                raise Exception(
+                    'UNKNOWN: Cannot handle merging column `{}` (canonicalized as: `{}`, canonicalized with type as: `{}`) in table `{}`.'.format(
+                        raw_column_name,
+                        canonicalized_column_name,
+                        canonicalized_typed_column_name,
+                        table_name
+                    ))
+
+        return self.get_table_schema(connection, table_name)
+
+    def upsert_table(self, connection, table_json_schema, metadata):
         """
         Update the remote table schema based on the merged difference between
         `remote_table_json_schema` and `table_json_schema`.
+
         :param connection: remote connection, type left to be determined by implementing class
-        :param remote_table_json_schema: get_table_schema
         :param table_json_schema: updates for get_table_schema
         :param metadata: additional metadata needed by implementing class
         :return: updated_remote_table_json_schema
@@ -352,6 +697,7 @@ class SQLInterface:
         """
         Given `records` for the `root_table_name` and `key_properties`, flatten
         into `table_records`.
+
         :param root_table_name: string
         :param key_properties: [string, ...]
         :param records: [{...}, ...]
@@ -370,6 +716,7 @@ class SQLInterface:
         """
         Given the streamed schema, and records, get all table schemas and records and prep them
         in a `table_batch`.
+
         :param connection: remote connection, type left to be determined by implementing class
         :param root_table_name: string
         :param schema: SingerStreamSchema
@@ -396,28 +743,34 @@ class SQLInterface:
 
         return writeable_batches
 
-    def serialize_table_record_field_name(
-            self, remote_schema, streamed_schema, field, value):
+    def _serialize_table_record_field_name(self, remote_schema, streamed_schema, field):
         """
         Returns the appropriate remote field (column) name for `field`.
+
         :param remote_schema: TABLE_SCHEMA(remote)
         :param streamed_schema: TABLE_SCHEMA(local)
         :param field: string
-        :param value: literal
         :return: string
         """
-        raise NotImplementedError('`parse_table_record_serialize_field_name` not implemented.')
+
+        if field in streamed_schema['schema']['properties']:
+            return self._get_mapping(remote_schema,
+                                     field,
+                                     streamed_schema['schema']['properties'][field]) \
+                   or field
+        return field
 
     def serialize_table_record_null_value(
             self, remote_schema, streamed_schema, field, value):
         """
         Returns the serialized version of `value` which is appropriate for the target's null
         implementation.
+
         :param remote_schema: TABLE_SCHEMA(remote)
         :param streamed_schema: TABLE_SCHEMA(local)
         :param field: string
         :param value: literal
-        :return: literalg
+        :return: literal
         """
         raise NotImplementedError('`parse_table_record_serialize_null_value` not implemented.')
 
@@ -426,6 +779,7 @@ class SQLInterface:
         """
         Returns the serialized version of `value` which is appropriate  for the target's datetime
         implementation.
+
         :param remote_schema: TABLE_SCHEMA(remote)
         :param streamed_schema: TABLE_SCHEMA(local)
         :param field: string
@@ -488,7 +842,7 @@ class SQLInterface:
                 ## Serialize NULL default value
                 value = self.serialize_table_record_null_value(remote_schema, streamed_schema, field, value)
 
-                field_name = self.serialize_table_record_field_name(remote_schema, streamed_schema, field, value)
+                field_name = self._serialize_table_record_field_name(remote_schema, streamed_schema, field)
 
                 if field_name in remote_fields \
                         and not field_name in row \
@@ -528,10 +882,9 @@ class SQLInterface:
         records_persisted = len(records)
         rows_persisted = 0
         for table_batch in self._get_table_batches(connection, root_table_name, schema, key_properties, records):
-            remote_schema = self.update_table_schema(connection,
-                                                     table_batch['remote_schema'],
-                                                     table_batch['streamed_schema'],
-                                                     metadata)
+            remote_schema = self.upsert_table(connection,
+                                              table_batch['streamed_schema'],
+                                              metadata)
             rows_persisted += self.write_table_batch(
                 connection,
                 {'remote_schema': remote_schema,
@@ -548,6 +901,7 @@ class SQLInterface:
     def write_batch(self, stream_buffer):
         """
         Persist `stream_buffer.records` to remote.
+
         :param stream_buffer: SingerStreamBuffer
         :return: {'records_persisted': int,
                   'rows_persisted': int}
@@ -557,6 +911,7 @@ class SQLInterface:
     def activate_version(self, stream_buffer, version):
         """
         Activate the given `stream_buffer`'s remote to `version`
+
         :param stream_buffer: SingerStreamBuffer
         :param version: integer
         :return: boolean
