@@ -307,6 +307,8 @@ class SQLInterface:
     - `..._helper` suffix : Helper function
     """
 
+    IDENTIFIER_FIELD_LENGTH = NotImplementedError('`IDENTIFIER_FIELD_LENGTH` not implemented.')
+
     def _get_streamed_table_schemas(self, root_table_name, schema, key_properties):
         """
         Given a `schema` and `key_properties` return the denested/flattened TABLE_SCHEMA of
@@ -356,11 +358,49 @@ class SQLInterface:
     def canonicalize_identifier(self, name):
         """
         Given a SQL Identifier `name`, attempt to serialize it to an acceptable name for remote.
+        NOTE: DOES NOT handle collision support, nor identifier length/truncation support.
 
         :param name: string
         :return: string
         """
         raise NotImplementedError('`canonicalize_identifier` not implemented.')
+
+    def _canonicalize_identifier(self, name, schema, existing_columns_raw_names, existing_columns):
+        """"""
+        raw_canonicalized_column_name = self.canonicalize_identifier(name)
+        canonicalized_column_name = raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH]
+        canonicalized_typed_column_name = _mapping_name(
+            raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH - 3], schema)
+
+        ## NAME IS ALREADY CANONICALIZED
+        if name == raw_canonicalized_column_name \
+                and raw_canonicalized_column_name == canonicalized_column_name:
+            return canonicalized_column_name, canonicalized_typed_column_name
+
+        ## COLUMN WILL BE SPLIT
+        if name in existing_columns_raw_names:
+            return canonicalized_column_name, canonicalized_typed_column_name
+
+        i = 0
+        ## NAME COLLISION
+        while (canonicalized_column_name in existing_columns
+               or canonicalized_typed_column_name in existing_columns):
+            i += 1
+            suffix = SEPARATOR + str(i)
+            canonicalized_column_name = raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix
+            canonicalized_typed_column_name = _mapping_name(
+                raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH - 3 - len(suffix)], schema) + suffix
+
+            # TODO: logger warn
+            ##raise Exception(
+            ##    'NAME COLLISION: Cannot handle merging column `{}` (canonicalized as: `{}`, canonicalized with type as: `{}`) in table `{}`.'.format(
+            ##        raw_column_name,
+            ##        canonicalized_column_name,
+            ##        canonicalized_typed_column_name,
+            ##        table_name
+            ##    ))
+
+        return canonicalized_column_name, canonicalized_typed_column_name
 
     def add_column(self, connection, table_name, name, schema):
         """
@@ -479,26 +519,13 @@ class SQLInterface:
         table_empty = self.is_table_empty(connection, table_name)
 
         for raw_column_name, column_schema in new_columns.items():
-            canonicalized_column_name = self.canonicalize_identifier(raw_column_name)
-            canonicalized_typed_column_name = _mapping_name(canonicalized_column_name, column_schema)
+            canonicalized_column_name, canonicalized_typed_column_name = self._canonicalize_identifier(
+                raw_column_name, column_schema, existing_columns_raw_names, existing_columns
+            )
             nullable_column_schema = json_schema.make_nullable(column_schema)
 
-            ## NAME COLLISION
-            if raw_column_name != canonicalized_column_name \
-                    and raw_column_name not in existing_columns_raw_names \
-                    and (canonicalized_column_name in existing_columns
-                         or canonicalized_typed_column_name in existing_columns):
-                raise Exception(
-                    'NAME COLLISION: Cannot handle merging column `{}` (canonicalized as: `{}`, canonicalized with type as: `{}`) in table `{}`.'.format(
-                        raw_column_name,
-                        canonicalized_column_name,
-                        canonicalized_typed_column_name,
-                        table_name
-                    ))
-
-
             ## EXISTING COLUMNS
-            elif canonicalized_column_name in existing_columns \
+            if canonicalized_column_name in existing_columns \
                     and json_schema.to_sql(column_schema) \
                     == json_schema.to_sql(existing_columns[canonicalized_column_name]):
                 pass
@@ -539,12 +566,11 @@ class SQLInterface:
                 ## column_name -> column_name__<current-type>, column_name__<new-type>
                 existing_column_mapping = _mapping_name(canonicalized_column_name,
                                                         existing_columns[canonicalized_column_name])
-                new_column_mapping = _mapping_name(canonicalized_column_name, column_schema)
 
                 ## Update existing properties
                 existing_columns[existing_column_mapping] = json_schema.make_nullable(
                     existing_columns[canonicalized_column_name])
-                existing_columns[new_column_mapping] = json_schema.make_nullable(column_schema)
+                existing_columns[canonicalized_typed_column_name] = json_schema.make_nullable(column_schema)
 
                 ## Add new columns
                 ### NOTE: all migrated columns will be nullable and remain that way
@@ -554,8 +580,8 @@ class SQLInterface:
                                         existing_column_mapping,
                                         existing_columns[existing_column_mapping])
                 self.add_column_mapping(connection, table_name, raw_column_name,
-                                        new_column_mapping,
-                                        existing_columns[new_column_mapping])
+                                        canonicalized_typed_column_name,
+                                        existing_columns[canonicalized_typed_column_name])
 
                 #### Columns
                 self.add_column(connection,
@@ -565,8 +591,8 @@ class SQLInterface:
 
                 self.add_column(connection,
                                 table_name,
-                                new_column_mapping,
-                                existing_columns[new_column_mapping])
+                                canonicalized_typed_column_name,
+                                existing_columns[canonicalized_typed_column_name])
 
                 ## Migrate existing data
                 self.migrate_column(connection,
