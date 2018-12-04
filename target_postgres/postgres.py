@@ -22,11 +22,17 @@ from target_postgres.singer_stream import (
 
 RESERVED_NULL_DEFAULT = 'NULL'
 
+## NAMEDATALEN _defaults_ to 64 in PostgreSQL. The maxmimum length for an identifier is
+## NAMEDATALEN - 1.
+# TODO: Figure out way to `SELECT` value from commands
+NAMEDATALEN = 63
+
 
 class PostgresError(Exception):
     """
     Raise this when there is an error with regards to Postgres streaming
     """
+
 
 class TransformStream:
     def __init__(self, fun):
@@ -34,6 +40,7 @@ class TransformStream:
 
     def read(self, *args, **kwargs):
         return self.fun()
+
 
 class PostgresTarget(SQLInterface):
     def __init__(self, connection, logger, *args, postgres_schema='public', **kwargs):
@@ -58,7 +65,7 @@ class PostgresTarget(SQLInterface):
                 for record in processed_records:
                     record_version = record.get(SINGER_TABLE_VERSION)
                     if record_version is not None and \
-                       (max_version is None or record_version > max_version):
+                            (max_version is None or record_version > max_version):
                         max_version = record_version
                     versions.add(record_version)
 
@@ -92,7 +99,7 @@ class PostgresTarget(SQLInterface):
                                         .format(stream_buffer.stream))
 
                 if current_table_version is not None and \
-                   target_table_version > current_table_version:
+                        target_table_version > current_table_version:
                     root_table_name = stream_buffer.stream + SEPARATOR + str(target_table_version)
                 else:
                     root_table_name = stream_buffer.stream
@@ -204,11 +211,6 @@ class PostgresTarget(SQLInterface):
         return record
 
     def _validate_identifier(self, identifier):
-        ## NAMEDATALEN _defaults_ to 64 in PostgreSQL. The maxmimum length for an identifier is
-        ## NAMEDATALEN - 1.
-        # TODO: Figure out way to `SELECT` value from commands
-        NAMEDATALEN = 63
-
         if not identifier:
             raise PostgresError('Identifier must be non empty.')
 
@@ -236,7 +238,7 @@ class PostgresTarget(SQLInterface):
         return True
 
     def canonicalize_identifier(self, identifier):
-        new_idenfitier = re.sub(r'[^\w\d_$]', '_', identifier.lower())
+        new_idenfitier = re.sub(r'[^\w\d_$]', '_', identifier.lower())[:NAMEDATALEN]
         self._validate_identifier(new_idenfitier)
         return new_idenfitier
 
@@ -253,11 +255,10 @@ class PostgresTarget(SQLInterface):
             if 'key_properties' in table_json_schema:
                 self._set_table_metadata(cur, table_json_schema['name'],
                                          {'key_properties': table_json_schema['key_properties'],
-                                         'version': metadata.get('version', None)})
+                                          'version': metadata.get('version', None)})
 
         return self.upsert_table_helper(cur,
                                         table_json_schema)
-
 
     def get_update_sql(self, target_table_name, temp_table_name, key_properties, subkeys):
         full_table_name = sql.SQL('{}.{}').format(
@@ -421,7 +422,7 @@ class PostgresTarget(SQLInterface):
         if len(args) > 0:
             parsed_datetime = arrow.get(args[0])
         else:
-            parsed_datetime = arrow.get() # defaults to UTC now
+            parsed_datetime = arrow.get()  # defaults to UTC now
         return parsed_datetime.format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
 
     def add_column(self, cur, table_name, column_name, column_schema):
@@ -492,7 +493,6 @@ class PostgresTarget(SQLInterface):
 
         return comment_meta
 
-
     def add_column_mapping(self, cur, table_name, column_name, mapped_name, mapped_schema):
         metadata = self._get_table_metadata(cur, table_name)
 
@@ -507,7 +507,6 @@ class PostgresTarget(SQLInterface):
 
         self._set_table_metadata(cur, table_name, metadata)
 
-
     def drop_column_mapping(self, cur, table_name, mapped_name):
         metadata = self._get_table_metadata(cur, table_name)
 
@@ -520,7 +519,6 @@ class PostgresTarget(SQLInterface):
         metadata['mappings'].pop(mapped_name, None)
 
         self._set_table_metadata(cur, table_name, metadata)
-
 
     def is_table_empty(self, cur, table_name):
         cur.execute(sql.SQL('SELECT COUNT(1) FROM {}.{};').format(

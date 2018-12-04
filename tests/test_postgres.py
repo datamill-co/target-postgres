@@ -580,6 +580,13 @@ def test_loading__invalid_column_name(db_cleanup):
 
     main(CONFIG, input_stream=non_lowercase_stream)
 
+    name_too_long_stream = CatStream(100)
+    name_too_long_stream.schema = deepcopy(name_too_long_stream.schema)
+    name_too_long_stream.schema['schema']['properties']['x' * 1000] = \
+        name_too_long_stream.schema['schema']['properties']['age']
+
+    main(CONFIG, input_stream=name_too_long_stream)
+
 
 def test_loading__invalid_column_name__non_canonicalizable(db_cleanup):
     name_too_long_stream = CatStream(100)
@@ -587,8 +594,15 @@ def test_loading__invalid_column_name__non_canonicalizable(db_cleanup):
     name_too_long_stream.schema['schema']['properties']['x' * 1000] = \
         name_too_long_stream.schema['schema']['properties']['age']
 
+    main(CONFIG, input_stream=name_too_long_stream)
+
+    duplicate_name_too_long_stream = CatStream(100)
+    duplicate_name_too_long_stream.schema = deepcopy(duplicate_name_too_long_stream.schema)
+    duplicate_name_too_long_stream.schema['schema']['properties']['x' * 100] = \
+        duplicate_name_too_long_stream.schema['schema']['properties']['age']
+
     with pytest.raises(postgres.PostgresError):
-        main(CONFIG, input_stream=name_too_long_stream)
+        main(CONFIG, input_stream=duplicate_name_too_long_stream)
 
     non_lowercase_stream = CatStream(100)
     non_lowercase_stream.schema = deepcopy(non_lowercase_stream.schema)
