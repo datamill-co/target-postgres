@@ -581,6 +581,29 @@ def test_loading__invalid_column_name(db_cleanup):
 
     main(CONFIG, input_stream=name_too_long_stream)
 
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('invalid_name', 'bigint', 'YES'),
+                                     ('___invalid_name', 'bigint', 'YES'),
+                                     ('x' * postgres.NAMEDATALEN, 'bigint', 'YES'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
+
 
 def test_loading__invalid_column_name__non_canonicalizable(db_cleanup):
     name_too_long_stream = CatStream(100)
