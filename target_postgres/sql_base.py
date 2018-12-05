@@ -713,7 +713,6 @@ class SQLInterface:
         :param key_properties: [string, ...]
         :param records: [{...}, ...]
         :return: [{'streamed_schema': TABLE_SCHEMA(local),
-                   'remote_schema': TABLE_SCHEMA(remote),
                    'records': [{...}, ...]
         """
 
