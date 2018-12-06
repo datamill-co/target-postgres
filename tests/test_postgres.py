@@ -533,30 +533,20 @@ def test_loading__column_type_change__nullable(db_cleanup):
             assert cat_count == len([x for x in persisted_records if x[0] is None])
 
 
-def test_loading__invalid__table_name(db_cleanup):
-    non_alphanumeric_stream = CatStream(100)
-    non_alphanumeric_stream.stream = '!!!invalid_name'
-    non_alphanumeric_stream.schema = deepcopy(non_alphanumeric_stream.schema)
-    non_alphanumeric_stream.schema['stream'] = '!!!invalid_name'
+def test_loading__invalid__table_name__stream(db_cleanup):
+    def invalid_stream_named(stream_name, postgres_error_regex):
+        stream = CatStream(100)
+        stream.stream = stream_name
+        stream.schema = deepcopy(stream.schema)
+        stream.schema['stream'] = stream_name
 
-    with pytest.raises(postgres.PostgresError):
-        main(CONFIG, input_stream=non_alphanumeric_stream)
+        with pytest.raises(postgres.PostgresError, match=postgres_error_regex):
+            main(CONFIG, input_stream=stream)
 
-    non_lowercase_stream = CatStream(100)
-    non_lowercase_stream.stream = 'INVALID_name'
-    non_lowercase_stream.schema = deepcopy(non_lowercase_stream.schema)
-    non_lowercase_stream.schema['stream'] = 'INVALID_name'
-
-    with pytest.raises(postgres.PostgresError):
-        main(CONFIG, input_stream=non_lowercase_stream)
-
-    name_too_long_stream = CatStream(100)
-    name_too_long_stream.stream = 'x' * 1000
-    name_too_long_stream.schema = deepcopy(name_too_long_stream.schema)
-    name_too_long_stream.schema['stream'] = 'x' * 1000
-
-    with pytest.raises(postgres.PostgresError):
-        main(CONFIG, input_stream=name_too_long_stream)
+    invalid_stream_named('', r'.*non empty.*')
+    invalid_stream_named('x' * 1000, r'Length.*')
+    invalid_stream_named('INVALID_name', r'.*must start.*')
+    invalid_stream_named('a!!!invalid_name', r'.*only contain.*')
 
 
 def test_loading__invalid_column_name(db_cleanup):
