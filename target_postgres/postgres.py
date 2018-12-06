@@ -54,6 +54,8 @@ class PostgresTarget(SQLInterface):
 
         with self.conn.cursor() as cur:
             try:
+                self._validate_identifier(stream_buffer.stream)
+
                 cur.execute('BEGIN;')
 
                 processed_records = list(map(partial(self._process_record_message,
@@ -228,7 +230,7 @@ class PostgresTarget(SQLInterface):
                     identifier
                 ))
 
-        if not re.match(r'[a-z0-9_$]+', identifier):
+        if not re.match(r'^[a-z0-9_$]+$', identifier):
             raise PostgresError(
                 'Identifier must only contain lower case letters, numbers, underscores, or dollar signs. Got `{}` for `{}`'.format(
                     re.findall(r'[^0-9]', '1234a567')[0],
