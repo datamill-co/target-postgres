@@ -549,6 +549,61 @@ def test_loading__invalid__table_name__stream(db_cleanup):
     invalid_stream_named('a!!!invalid_name', r'.*only contain.*')
 
 
+def test_loading__invalid__table_name__nested(db_cleanup):
+    cat_count = 20
+    sub_table_name = 'immunizations'
+    invalid_name = 'INValID!NON{conflicting'
+
+    class InvalidNameSubTableCatStream(CatStream):
+        immunizations_count = 0
+
+        def generate_record(self):
+            record = CatStream.generate_record(self)
+            if record.get('adoption', False):
+                self.immunizations_count += len(record['adoption'][sub_table_name])
+                record['adoption'][invalid_name] = record['adoption'][sub_table_name]
+            return record
+
+    stream = InvalidNameSubTableCatStream(cat_count)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties']['adoption']['properties'][invalid_name] = \
+        stream.schema['schema']['properties']['adoption']['properties'][sub_table_name]
+
+    main(CONFIG, input_stream=stream)
+
+    immunizations_count = stream.immunizations_count
+    invalid_name_count = stream.immunizations_count
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
+
+            cur.execute(get_count_sql('cats'))
+            assert cat_count == cur.fetchone()[0]
+
+            cur.execute(get_count_sql('cats__adoption__immunizations'))
+            assert immunizations_count == cur.fetchone()[0]
+
+            cur.execute(get_count_sql('cats__adoption__invalid_non_conflicting'))
+            assert invalid_name_count == cur.fetchone()[0]
+
+
 def test_loading__invalid_column_name(db_cleanup):
     non_alphanumeric_stream = CatStream(100)
     non_alphanumeric_stream.schema = deepcopy(non_alphanumeric_stream.schema)
