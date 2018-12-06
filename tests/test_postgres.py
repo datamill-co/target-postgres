@@ -549,6 +549,34 @@ def test_loading__invalid__table_name__stream(db_cleanup):
     invalid_stream_named('a!!!invalid_name', r'.*only contain.*')
 
 
+def test_loading__invalid__table_name__nested_conflicting(db_cleanup):
+    cat_count = 20
+
+    stream = CatStream(cat_count)
+    stream.schema = deepcopy(stream.schema)
+
+    main(CONFIG, input_stream=stream)
+
+    sub_table_name = 'immunizations'
+    conflicting_name = sub_table_name.upper()
+
+    class ConflictingNameSubTableCatStream(CatStream):
+        def generate_record(self):
+            record = CatStream.generate_record(self)
+            if record.get('adoption', False):
+                record['adoption'][conflicting_name] = record['adoption'][sub_table_name]
+            record['id'] = record['id'] + cat_count
+            return record
+
+    stream = ConflictingNameSubTableCatStream(cat_count)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties']['adoption']['properties'][conflicting_name] = \
+        stream.schema['schema']['properties']['adoption']['properties'][sub_table_name]
+
+    with pytest.raises(postgres.PostgresError, match=r".*Table name conflict detected.*"):
+        main(CONFIG, input_stream=stream)
+
+
 def test_loading__invalid__table_name__nested(db_cleanup):
     cat_count = 20
     sub_table_name = 'immunizations'
