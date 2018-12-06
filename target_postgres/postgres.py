@@ -245,23 +245,23 @@ class PostgresTarget(SQLInterface):
 
         return re.sub(r'[^\w\d_$]', '_', identifier.lower())
 
-    def upsert_table(self, cur, table_json_schema, metadata):
-        self._validate_identifier(table_json_schema['name'])
+    def add_key_properties(self, cur, table_name, key_properties):
+        metadata = self._get_table_metadata(cur, table_name)
+        metadata['key_properties'] = key_properties
+        self._set_table_metadata(cur, table_name, metadata)
 
-        if self.get_table_schema(cur, table_json_schema['name']) is None:
-            create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
-                sql.Identifier(self.postgres_schema),
-                sql.Identifier(table_json_schema['name']))
+    def add_table(self, cur, name, metadata):
+        self._validate_identifier(name)
 
-            cur.execute(sql.SQL('{} ();').format(create_table_sql))
+        create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
+            sql.Identifier(self.postgres_schema),
+            sql.Identifier(name))
 
-            if 'key_properties' in table_json_schema:
-                self._set_table_metadata(cur, table_json_schema['name'],
-                                         {'key_properties': table_json_schema['key_properties'],
-                                          'version': metadata.get('version', None)})
+        cur.execute(sql.SQL('{} ();').format(create_table_sql))
 
-        return self.upsert_table_helper(cur,
-                                        table_json_schema)
+        self._set_table_metadata(cur, name, {'version': metadata.get('version', None)})
+
+        return self.get_table_schema(cur, name)
 
     def get_update_sql(self, target_table_name, temp_table_name, key_properties, subkeys):
         full_table_name = sql.SQL('{}.{}').format(
@@ -391,9 +391,9 @@ class PostgresTarget(SQLInterface):
         ## Create temp table to upload new data to
         target_schema = deepcopy(remote_schema)
         target_schema['name'] = target_table_name
-        self.upsert_table(cur,
-                          target_schema,
-                          {'version': remote_schema['version']})
+        self.upsert_table_helper(cur,
+                                 target_schema,
+                                 {'version': remote_schema['version']})
 
         ## Make streamable CSV records
         csv_headers = list(remote_schema['schema']['properties'].keys())

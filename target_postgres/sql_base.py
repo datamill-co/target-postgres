@@ -378,7 +378,8 @@ class SQLInterface:
                or canonicalized_typed_column_name in existing_columns):
             i += 1
             suffix = SEPARATOR + str(i)
-            canonicalized_column_name = raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix
+            canonicalized_column_name = raw_canonicalized_column_name[
+                                        :self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix
             canonicalized_typed_column_name = _mapping_name(
                 raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH - 3 - len(suffix)], schema) + suffix
 
@@ -392,6 +393,27 @@ class SQLInterface:
             ##    ))
 
         return canonicalized_column_name, canonicalized_typed_column_name
+
+    def add_table(self, connection, schema, metadata):
+        """
+        Create the remote table schema.
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param schema: TABLE_SCHEMA(local) definition for table to be created
+        :param metadata: additional metadata needed by implementing class
+        :return: updated_remote_table_json_schema
+        """
+        raise NotImplementedError('`add_table` not implemented.')
+
+    def add_key_properties(self, connection, table_name, key_properties):
+        """
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param table_name: string
+        :param key_properties: [string, ...]
+        :return: None
+        """
+        raise NotImplementedError('`add_key_properties` not implemented.')
 
     def add_column(self, connection, table_name, name, schema):
         """
@@ -485,22 +507,29 @@ class SQLInterface:
              json_schema.sql_shorthand(schema)),
             None)
 
-    def upsert_table_helper(self, connection, schema):
+    def upsert_table_helper(self, connection, schema, metadata):
         """
-        Assumes `schema['name']` exists in remote. Upserts the `schema` to remote by adding
-        columns, adding column mappings, migrating data from old columns to new, etc.
+        Upserts the `schema` to remote by:
+        - creating table if necessary
+        - adding columns
+        - adding column mappings
+        - migrating data from old columns to new, etc.
 
         :param connection: remote connection, type left to be determined by implementing class
         :param schema: TABLE_SCHEMA(local)
         :return: TABLE_SCHEMA(remote)
         """
-        table_name = schema['name']
-        existing_schema = self.get_table_schema(connection, schema['name'])
+        table_name = self.canonicalize_identifier(schema['name'])
+        schema = deepcopy(schema)
+        schema['name'] = table_name
+
+        existing_schema = self.get_table_schema(connection, table_name)
 
         if existing_schema is None:
-            raise Exception('No remote table `{}` found. Have you run a `CREATE TABLE` operation?'.format(
-                table_name
-            ))
+            existing_schema = self.add_table(connection, table_name, metadata)
+            _key_properties = schema.get('key_properties', False)
+            if _key_properties:
+                self.add_key_properties(connection, table_name, _key_properties)
 
         new_columns = schema['schema']['properties']
         existing_columns = existing_schema['schema']['properties']
@@ -671,18 +700,6 @@ class SQLInterface:
                     ))
 
         return self.get_table_schema(connection, table_name)
-
-    def upsert_table(self, connection, table_json_schema, metadata):
-        """
-        Update the remote table schema based on the merged difference between
-        `remote_table_json_schema` and `table_json_schema`.
-
-        :param connection: remote connection, type left to be determined by implementing class
-        :param table_json_schema: updates for get_table_schema
-        :param metadata: additional metadata needed by implementing class
-        :return: updated_remote_table_json_schema
-        """
-        raise NotImplementedError('`update_table_schema` not implemented.')
 
     def _get_streamed_table_records(self, key_properties, records):
         """
@@ -869,9 +886,9 @@ class SQLInterface:
         for table_batch in self._get_table_batches(schema, key_properties, records):
             table_batch['streamed_schema']['path'] = (root_table_name,) + table_batch['streamed_schema']['path']
             table_batch['streamed_schema']['name'] = SEPARATOR.join(table_batch['streamed_schema']['path'])
-            remote_schema = self.upsert_table(connection,
-                                              table_batch['streamed_schema'],
-                                              metadata)
+            remote_schema = self.upsert_table_helper(connection,
+                                                     table_batch['streamed_schema'],
+                                                     metadata)
             rows_persisted += self.write_table_batch(
                 connection,
                 {'remote_schema': remote_schema,
