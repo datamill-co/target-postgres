@@ -400,7 +400,7 @@ class SQLInterface:
         :param connection: remote connection, type left to be determined by implementing class
         :param schema: TABLE_SCHEMA(local) definition for table to be created
         :param metadata: additional metadata needed by implementing class
-        :return: updated_remote_table_json_schema
+        :return: None
         """
         raise NotImplementedError('`add_table` not implemented.')
 
@@ -524,7 +524,8 @@ class SQLInterface:
         existing_schema = self.get_table_schema(connection, table_name)
 
         if existing_schema is None:
-            existing_schema = self.add_table(connection, table_name, metadata)
+            self.add_table(connection, table_name, metadata)
+            existing_schema = self.get_table_schema(connection, table_name)
             _key_properties = schema.get('key_properties', False)
             if _key_properties:
                 self.add_key_properties(connection, table_name, _key_properties)

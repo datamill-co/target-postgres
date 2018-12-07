@@ -261,8 +261,6 @@ class PostgresTarget(SQLInterface):
 
         self._set_table_metadata(cur, name, {'version': metadata.get('version', None)})
 
-        return self.get_table_schema(cur, name)
-
     def get_update_sql(self, target_table_name, temp_table_name, key_properties, subkeys):
         full_table_name = sql.SQL('{}.{}').format(
             sql.Identifier(self.postgres_schema),
