@@ -528,9 +528,8 @@ class SQLInterface:
         if existing_schema is None:
             self.add_table(connection, table_name, metadata)
             existing_schema = self.get_table_schema(connection, table_path, table_name)
-            _key_properties = schema.get('key_properties', False)
-            if _key_properties:
-                self.add_key_properties(connection, table_name, _key_properties)
+
+        self.add_key_properties(connection, table_name, schema.get('key_properties', None))
 
         new_columns = schema['schema']['properties']
         existing_columns = existing_schema['schema']['properties']

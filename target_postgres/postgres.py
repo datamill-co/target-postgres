@@ -247,9 +247,14 @@ class PostgresTarget(SQLInterface):
         return re.sub(r'[^\w\d_$]', '_', identifier.lower())
 
     def add_key_properties(self, cur, table_name, key_properties):
+        if not key_properties:
+            return None
+
         metadata = self._get_table_metadata(cur, table_name)
-        metadata['key_properties'] = key_properties
-        self._set_table_metadata(cur, table_name, metadata)
+
+        if not 'key_properties' in metadata:
+            metadata['key_properties'] = key_properties
+            self._set_table_metadata(cur, table_name, metadata)
 
     def add_table(self, cur, name, metadata):
         self._validate_identifier(name)
@@ -389,7 +394,7 @@ class PostgresTarget(SQLInterface):
 
         ## Create temp table to upload new data to
         target_schema = deepcopy(remote_schema)
-        target_schema['name'] = target_table_name
+        target_schema['path'] = (target_table_name,)
         self.upsert_table_helper(cur,
                                  target_schema,
                                  {'version': remote_schema['version']})
@@ -467,15 +472,10 @@ class PostgresTarget(SQLInterface):
         :param metadata: Metadata Dict
         :return: None
         """
-
-        parsed_metadata = {'key_properties': metadata.get('key_properties', []),
-                           'version': metadata.get('version'),
-                           'mappings': metadata.get('mappings', {})}
-
         cur.execute(sql.SQL('COMMENT ON TABLE {}.{} IS {};').format(
             sql.Identifier(self.postgres_schema),
             sql.Identifier(table_name),
-            sql.Literal(json.dumps(parsed_metadata))))
+            sql.Literal(json.dumps(metadata))))
 
     def _get_table_metadata(self, cur, table_name):
         cur.execute(
