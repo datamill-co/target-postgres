@@ -72,6 +72,7 @@ class PostgresTarget(SQLInterface):
                     versions.add(record_version)
 
                 current_table_schema = self.get_table_schema(cur,
+                                                             (stream_buffer.stream,),
                                                              stream_buffer.stream)
 
                 current_table_version = None
@@ -528,24 +529,26 @@ class PostgresTarget(SQLInterface):
 
         return cur.fetchall()[0][0] == 0
 
-    def get_table_schema(self, cur, table_name):
+    def get_table_schema(self, cur, path, name):
         cur.execute(
             sql.SQL('SELECT column_name, data_type, is_nullable FROM information_schema.columns ') +
             sql.SQL('WHERE table_schema = {} and table_name = {};').format(
-                sql.Literal(self.postgres_schema), sql.Literal(table_name)))
+                sql.Literal(self.postgres_schema), sql.Literal(name)))
 
         properties = {}
         for column in cur.fetchall():
             properties[column[0]] = json_schema.from_sql(column[1], column[2] == 'YES')
 
-        metadata = self._get_table_metadata(cur, table_name)
+        metadata = self._get_table_metadata(cur, name)
 
         if metadata is None and not properties:
             return None
-        elif metadata is None:
+
+        if metadata is None:
             metadata = {'version': None}
 
-        metadata['name'] = table_name
+        metadata['name'] = name
+        metadata['path'] = path
         metadata['type'] = 'TABLE_SCHEMA'
         metadata['schema'] = {'properties': properties}
 

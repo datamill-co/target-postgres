@@ -325,11 +325,12 @@ class SQLInterface:
 
         return ret
 
-    def get_table_schema(self, connection, name):
+    def get_table_schema(self, connection, path, name):
         """
         Fetch the `table_schema` for `name`.
 
         :param connection: remote connection, type left to be determined by implementing class
+        :param path: (string, ...)
         :param name: string
         :return: TABLE_SCHEMA(remote)
         """
@@ -520,12 +521,13 @@ class SQLInterface:
         :return: TABLE_SCHEMA(remote)
         """
         table_name = schema.get('name', False) or self.canonicalize_identifier(SEPARATOR.join(schema['path']))
+        table_path = schema.get('path', tuple(table_name))
 
-        existing_schema = self.get_table_schema(connection, table_name)
+        existing_schema = self.get_table_schema(connection, table_path, table_name)
 
         if existing_schema is None:
             self.add_table(connection, table_name, metadata)
-            existing_schema = self.get_table_schema(connection, table_name)
+            existing_schema = self.get_table_schema(connection, table_path, table_name)
             _key_properties = schema.get('key_properties', False)
             if _key_properties:
                 self.add_key_properties(connection, table_name, _key_properties)
@@ -698,7 +700,7 @@ class SQLInterface:
                         table_name
                     ))
 
-        return self.get_table_schema(connection, table_name)
+        return self.get_table_schema(connection, table_path, table_name)
 
     def _get_streamed_table_records(self, key_properties, records):
         """
