@@ -267,6 +267,43 @@ class PostgresTarget(SQLInterface):
 
         self._set_table_metadata(cur, name, {'version': metadata.get('version', None)})
 
+    def add_table_mapping(self, cur, from_path, metadata):
+        root_table = from_path[0]
+        cur.execute(
+            sql.SQL('''
+            SELECT EXISTS(
+              SELECT 1
+              FROM information_schema.tables
+              WHERE table_schema = {}
+                AND table_name = {}
+            );
+            ''').format(
+                sql.Literal(self.postgres_schema),
+                sql.Literal(root_table)))
+
+        # No root table present
+        ## Table mappings are hung off of the root table's metadata
+        ## SQLInterface's helpers do not guarantee order of table creation
+        if not cur.fetchone()[0]:
+            self.add_table(cur, root_table, metadata)
+
+        metadata = self._get_table_metadata(cur, root_table)
+        if not metadata:
+            metadata = {}
+
+        if not 'table_mappings' in metadata:
+            metadata['table_mappings'] = []
+
+        mapping = self.add_table_mapping_helper(from_path, metadata['table_mappings'])
+
+        if not mapping['exists']:
+            metadata['table_mappings'].append({'type': 'TABLE',
+                                               'from': from_path,
+                                               'to': mapping['to']})
+            self._set_table_metadata(cur, root_table, metadata)
+
+        return mapping['to']
+
     def get_update_sql(self, target_table_name, temp_table_name, key_properties, subkeys):
         full_table_name = sql.SQL('{}.{}').format(
             sql.Identifier(self.postgres_schema),
@@ -547,9 +584,18 @@ class PostgresTarget(SQLInterface):
         if metadata is None:
             metadata = {'version': None}
 
+        if len(path) > 1:
+            table_mappings = self.get_table_schema(cur, path[:1], path[0])['table_mappings']
+        else:
+            table_mappings = []
+            for mapping in metadata.get('table_mappings', []):
+                if mapping['type'] == 'TABLE':
+                    table_mappings.append(mapping)
+
         metadata['name'] = name
         metadata['path'] = path
         metadata['type'] = 'TABLE_SCHEMA'
         metadata['schema'] = {'properties': properties}
+        metadata['table_mappings'] = table_mappings
 
         return metadata

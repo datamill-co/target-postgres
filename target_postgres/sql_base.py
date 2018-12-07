@@ -415,6 +415,56 @@ class SQLInterface:
         """
         raise NotImplementedError('`add_key_properties` not implemented.')
 
+    def add_table_mapping_helper(self, from_path, table_mappings):
+        """
+
+        :param from_path:
+        :param table_mappings:
+        :return: (boolean, string)
+        """
+        from_to = dict([(tuple(mapping['from']), mapping['to']) for mapping in table_mappings])
+
+        ## MAPPING EXISTS
+        if from_path in from_to:
+            return {'exists': True, 'to': from_to[from_path]}
+
+        to_from = dict([(v, k) for k, v in from_to.items()])
+
+        name = SEPARATOR.join(from_path)
+
+        raw_canonicalized_name = self.canonicalize_identifier(name)
+        canonicalized_name = raw_canonicalized_name[:self.IDENTIFIER_FIELD_LENGTH]
+
+        i = 0
+        ## NAME COLLISION
+        while canonicalized_name in to_from:
+            raise Exception('Table name conflict detected.')
+            # i += 1
+            # suffix = SEPARATOR + str(i)
+            # canonicalized_name = raw_canonicalized_name[
+            #                      :self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix
+
+            # TODO: logger warn
+            ##raise Exception(
+            ##    'NAME COLLISION: Cannot handle merging column `{}` (canonicalized as: `{}`, canonicalized with type as: `{}`) in table `{}`.'.format(
+            ##        raw_column_name,
+            ##        canonicalized_column_name,
+            ##        canonicalized_typed_column_name,
+            ##        table_name
+            ##    ))
+
+        return {'exists': False, 'to': canonicalized_name}
+
+    def add_table_mapping(self, connection, from_path, metadata):
+        """
+        Given a full path to a table, `from_path`, add a table mapping to the canonicalized name.
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param from_path: (string, ...)
+        :return: None
+        """
+        raise NotImplementedError('`add_table_mapping` not implemented.')
+
     def add_column(self, connection, table_name, name, schema):
         """
         Add column `name` in `table_name` with `schema`.
@@ -520,8 +570,9 @@ class SQLInterface:
         :param metadata: additional information necessary for downstream operations
         :return: TABLE_SCHEMA(remote)
         """
-        table_name = schema.get('name', False) or self.canonicalize_identifier(SEPARATOR.join(schema['path']))
-        table_path = schema.get('path', tuple(table_name))
+        table_path = schema['path']
+
+        table_name = self.add_table_mapping(connection, table_path, metadata)
 
         existing_schema = self.get_table_schema(connection, table_path, table_name)
 
