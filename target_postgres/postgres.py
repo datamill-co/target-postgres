@@ -10,7 +10,7 @@ import arrow
 from psycopg2 import sql
 
 from target_postgres import json_schema
-from target_postgres.sql_base import SQLInterface, SEPARATOR
+from target_postgres.sql_base import SEPARATOR, SQLInterface
 from target_postgres.singer_stream import (
     SINGER_RECEIVED_AT,
     SINGER_BATCHED_AT,
@@ -21,6 +21,7 @@ from target_postgres.singer_stream import (
 )
 
 RESERVED_NULL_DEFAULT = 'NULL'
+TABLE_MAPPINGS_TABLE_NAME = '__singer_target_postgres__table_mappings'
 
 
 class PostgresError(Exception):
@@ -262,6 +263,57 @@ class PostgresTarget(SQLInterface):
         self._set_table_metadata(cur, name, {'version': metadata.get('version', None)})
 
         return self.get_table_schema(cur, name)
+
+    def _get_table_mapping(self, cur, table_name):
+        cur.execute(
+            sql.SQL('''
+            SELECT EXISTS(
+              SELECT 1
+              FROM information_schema.tables
+              WHERE table_schema = {}
+                AND table_name = {}
+            );
+            ''').format(
+                sql.Literal(self.postgres_schema),
+                sql.Literal(TABLE_MAPPINGS_TABLE_NAME)))
+
+        # No mappings table present
+        if not cur.fetchone()[0]:
+            return {}
+
+        cur.execute(
+            sql.SQL('SELECT from_table_path FROM {}.{} WHERE to_table_name = {}').format(
+                sql.Identifier(self.postgres_schema),
+                sql.Identifier(TABLE_MAPPINGS_TABLE_NAME),
+                sql.Literal(table_name)))
+        mappings = cur.fetchone()
+
+        if mappings:
+            try:
+                return {'from': json.loads(mappings[0]),
+                        'to': table_name}
+            except Exception as ex:
+                message = 'Could not fetch table mapping. JSON Parse exception.'
+                self.logger.exception(message)
+                raise PostgresError(message, ex)
+
+        return {}
+
+    def add_table_mapping(self, cur, from_table_path, to_table_name):
+        cur.execute(sql.SQL('''
+        CREATE TABLE IF NOT EXISTS {}.{} (
+           from_table_path TEXT,
+           to_table_name TEXT
+        )
+        ''').format(sql.Identifier(self.postgres_schema),
+                    sql.Identifier(TABLE_MAPPINGS_TABLE_NAME)))
+
+        cur.execute(sql.SQL('''
+        INSERT INTO {}.{} (from_table_path, to_table_name) VALUES ({}, {})
+        ''').format(sql.Identifier(self.postgres_schema),
+                    sql.Identifier(TABLE_MAPPINGS_TABLE_NAME),
+                    sql.Literal(json.dumps(from_table_path)),
+                    sql.Literal(to_table_name)))
 
     def get_update_sql(self, target_table_name, temp_table_name, key_properties, subkeys):
         full_table_name = sql.SQL('{}.{}').format(
@@ -548,6 +600,9 @@ class PostgresTarget(SQLInterface):
             metadata = {'version': None}
 
         metadata['name'] = table_name
+        table_path = self._get_table_mapping(cur, table_name).get('from', False)
+        if table_path:
+            metadata['path'] = table_path
         metadata['type'] = 'TABLE_SCHEMA'
         metadata['schema'] = {'properties': properties}
 

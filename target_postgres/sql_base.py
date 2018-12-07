@@ -395,7 +395,7 @@ class SQLInterface:
 
     def add_table(self, connection, schema, metadata):
         """
-        Create the remote table schema.
+        Create the remote table `schema`.
 
         :param connection: remote connection, type left to be determined by implementing class
         :param schema: TABLE_SCHEMA(local) definition for table to be created
@@ -406,6 +406,7 @@ class SQLInterface:
 
     def add_key_properties(self, connection, table_name, key_properties):
         """
+        Set `key_properties` on `table_name`.
 
         :param connection: remote connection, type left to be determined by implementing class
         :param table_name: string
@@ -413,6 +414,17 @@ class SQLInterface:
         :return: None
         """
         raise NotImplementedError('`add_key_properties` not implemented.')
+
+    def add_table_mapping(self, connection, from_table_path, to_table_name):
+        """
+        Given `from_table_path`, add a mapping `to_table_name`.
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param from_table_path: (string, ...)
+        :param to_table_name: string
+        :return: None
+        """
+        raise NotImplementedError('`add_table_mapping` not implemented.')
 
     def add_column(self, connection, table_name, name, schema):
         """
@@ -528,6 +540,15 @@ class SQLInterface:
             _key_properties = schema.get('key_properties', False)
             if _key_properties:
                 self.add_key_properties(connection, table_name, _key_properties)
+            if 'path' in schema:
+                self.add_table_mapping(connection, schema['path'], table_name)
+        elif schema.get('path', False) and \
+                tuple(existing_schema['path']) != tuple(schema['path']):
+            raise Exception('Table name conflict detected. Existing table path: {} name: {}. New table path: {}'.format(
+                tuple(existing_schema['path']),
+                table_name,
+                tuple(schema['path'])
+            ))
 
         new_columns = schema['schema']['properties']
         existing_columns = existing_schema['schema']['properties']
