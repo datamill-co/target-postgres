@@ -438,11 +438,10 @@ class SQLInterface:
         i = 0
         ## NAME COLLISION
         while canonicalized_name in to_from:
-            raise Exception('Table name conflict detected.')
-            # i += 1
-            # suffix = SEPARATOR + str(i)
-            # canonicalized_name = raw_canonicalized_name[
-            #                      :self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix
+            i += 1
+            suffix = SEPARATOR + str(i)
+            canonicalized_name = raw_canonicalized_name[
+                                 :self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix
 
             # TODO: logger warn
             ##raise Exception(
