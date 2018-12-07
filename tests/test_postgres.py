@@ -548,6 +548,21 @@ def test_loading__invalid__table_name__stream(db_cleanup):
     invalid_stream_named('INVALID_name', r'.*must start.*')
     invalid_stream_named('a!!!invalid_name', r'.*only contain.*')
 
+    borderline_length_stream_name = 'x' * 61
+    stream = CatStream(100, version=1)
+    stream.stream = borderline_length_stream_name
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['stream'] = borderline_length_stream_name
+    main(CONFIG, input_stream=stream)
+
+    stream = CatStream(100, version=10)
+    stream.stream = borderline_length_stream_name
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['stream'] = borderline_length_stream_name
+
+    with pytest.raises(postgres.PostgresError, match=r'Length.*'):
+        main(CONFIG, input_stream=stream)
+
 
 def test_loading__invalid__table_name__nested(db_cleanup):
     cat_count = 20
