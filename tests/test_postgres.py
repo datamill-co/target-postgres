@@ -549,34 +549,6 @@ def test_loading__invalid__table_name__stream(db_cleanup):
     invalid_stream_named('a!!!invalid_name', r'.*only contain.*')
 
 
-def test_loading__invalid__table_name__nested_conflicting(db_cleanup):
-    cat_count = 20
-
-    stream = CatStream(cat_count)
-    stream.schema = deepcopy(stream.schema)
-
-    main(CONFIG, input_stream=stream)
-
-    sub_table_name = 'immunizations'
-    conflicting_name = sub_table_name.upper()
-
-    class ConflictingNameSubTableCatStream(CatStream):
-        def generate_record(self):
-            record = CatStream.generate_record(self)
-            if record.get('adoption', False):
-                record['adoption'][conflicting_name] = record['adoption'][sub_table_name]
-            record['id'] = record['id'] + cat_count
-            return record
-
-    stream = ConflictingNameSubTableCatStream(cat_count)
-    stream.schema = deepcopy(stream.schema)
-    stream.schema['schema']['properties']['adoption']['properties'][conflicting_name] = \
-        stream.schema['schema']['properties']['adoption']['properties'][sub_table_name]
-
-    with pytest.raises(postgres.PostgresError, match=r".*Table name conflict detected.*"):
-        main(CONFIG, input_stream=stream)
-
-
 def test_loading__invalid__table_name__nested(db_cleanup):
     cat_count = 20
     sub_table_name = 'immunizations'
@@ -602,6 +574,29 @@ def test_loading__invalid__table_name__nested(db_cleanup):
     immunizations_count = stream.immunizations_count
     invalid_name_count = stream.immunizations_count
 
+    conflicting_name = sub_table_name.upper()
+
+    class ConflictingNameSubTableCatStream(CatStream):
+        immunizations_count = 0
+
+        def generate_record(self):
+            record = CatStream.generate_record(self)
+            if record.get('adoption', False):
+                self.immunizations_count += len(record['adoption'][sub_table_name])
+                record['adoption'][conflicting_name] = record['adoption'][sub_table_name]
+            record['id'] = record['id'] + cat_count
+            return record
+
+    stream = ConflictingNameSubTableCatStream(cat_count)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties']['adoption']['properties'][conflicting_name] = \
+        stream.schema['schema']['properties']['adoption']['properties'][sub_table_name]
+
+    main(CONFIG, input_stream=stream)
+
+    immunizations_count += stream.immunizations_count
+    conflicting_name_count = stream.immunizations_count
+
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
             assert_columns_equal(cur,
@@ -623,13 +618,16 @@ def test_loading__invalid__table_name__nested(db_cleanup):
                                  })
 
             cur.execute(get_count_sql('cats'))
-            assert cat_count == cur.fetchone()[0]
+            assert 2 * cat_count == cur.fetchone()[0]
 
             cur.execute(get_count_sql('cats__adoption__immunizations'))
             assert immunizations_count == cur.fetchone()[0]
 
             cur.execute(get_count_sql('cats__adoption__invalid_non_conflicting'))
             assert invalid_name_count == cur.fetchone()[0]
+
+            cur.execute(get_count_sql('cats__adoption__immunizations__1'))
+            assert conflicting_name_count == cur.fetchone()[0]
 
 
 def test_loading__invalid_column_name(db_cleanup):
