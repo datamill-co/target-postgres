@@ -126,6 +126,8 @@ class PostgresTarget(SQLInterface):
                                 json_schema.get_type(stream_buffer.schema['properties'][key])
                             ))
 
+                self._validate_identifier(root_table_name)
+
                 written_batches_details = self.write_batch_helper(cur,
                                                                   root_table_name,
                                                                   stream_buffer.schema,
