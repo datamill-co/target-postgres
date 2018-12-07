@@ -32,11 +32,10 @@ def to_table_schema(path, level, keys, properties):
     for key in keys:
         if not key in properties:
             raise Exception('Unknown key "{}" found for table "{}"'.format(
-                key, name
+                key, path
             ))
 
     return {'type': 'TABLE_SCHEMA',
-            'name': SEPARATOR.join(path),
             'path': path,
             'level': level,
             'key_properties': keys,
@@ -517,11 +516,10 @@ class SQLInterface:
 
         :param connection: remote connection, type left to be determined by implementing class
         :param schema: TABLE_SCHEMA(local)
+        :param metadata: additional information necessary for downstream operations
         :return: TABLE_SCHEMA(remote)
         """
-        table_name = self.canonicalize_identifier(schema['name'])
-        schema = deepcopy(schema)
-        schema['name'] = table_name
+        table_name = schema.get('name', False) or self.canonicalize_identifier(SEPARATOR.join(schema['path']))
 
         existing_schema = self.get_table_schema(connection, table_name)
 
@@ -885,7 +883,6 @@ class SQLInterface:
         rows_persisted = 0
         for table_batch in self._get_table_batches(schema, key_properties, records):
             table_batch['streamed_schema']['path'] = (root_table_name,) + table_batch['streamed_schema']['path']
-            table_batch['streamed_schema']['name'] = SEPARATOR.join(table_batch['streamed_schema']['path'])
             remote_schema = self.upsert_table_helper(connection,
                                                      table_batch['streamed_schema'],
                                                      metadata)
