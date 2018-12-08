@@ -238,8 +238,20 @@ def test_loading__default__complex_type(db_cleanup):
             cur.execute(get_count_sql('root'))
             assert 10 == cur.fetchone()[0]
 
-            cur.execute(get_count_sql('root__array_scalar'))
+            cur.execute(get_count_sql('root__array_scalar_defaulted'))
             assert 100 == cur.fetchone()[0]
+
+
+def test_loading__nested_scalar_table(db_cleanup):
+    main(CONFIG, input_stream=NestedStream(10))
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_count_sql('root'))
+            assert 10 == cur.fetchone()[0]
+
+            cur.execute(get_count_sql('root__array_scalar'))
+            assert 50 == cur.fetchone()[0]
 
 
 def test_loading__new_non_null_column(db_cleanup):

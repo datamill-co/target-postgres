@@ -234,10 +234,14 @@ NESTED_STREAM = {
             'id': {
                 'type': 'integer'
             },
-            'array_scalar': {
+            'array_scalar_defaulted': {
                 'type': 'array',
                 'items': {'type': 'integer'},
-                'default': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+                'default': list(range(10))
+            },
+            'array_scalar': {
+                'type': 'array',
+                'items': {'type': 'integer'}
             }
         }
     },
@@ -251,7 +255,8 @@ class NestedStream(FakeStream):
 
     def generate_record(self):
         return {
-            'id': self.id
+            'id': self.id,
+            'array_scalar': list(range(5))
         }
 
 
