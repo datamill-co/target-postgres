@@ -225,6 +225,36 @@ class InvalidCatStream(CatStream):
         return record
 
 
+NESTED_STREAM = {
+    'type': 'SCHEMA',
+    'stream': 'root',
+    'schema': {
+        'additionalProperties': False,
+        'properties': {
+            'id': {
+                'type': 'integer'
+            },
+            'array_scalar': {
+                'type': 'array',
+                'items': {'type': 'integer'},
+                'default': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+            }
+        }
+    },
+    'key_properties': ['id']
+}
+
+
+class NestedStream(FakeStream):
+    stream = 'root'
+    schema = NESTED_STREAM
+
+    def generate_record(self):
+        return {
+            'id': self.id
+        }
+
+
 def clear_db():
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:

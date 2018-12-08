@@ -7,7 +7,7 @@ from psycopg2 import sql
 import psycopg2.extras
 import pytest
 
-from fixtures import CatStream, CONFIG, db_cleanup, InvalidCatStream, TEST_DB
+from fixtures import CatStream, CONFIG, db_cleanup, InvalidCatStream, NestedStream, TEST_DB
 from target_postgres import json_schema
 from target_postgres import postgres
 from target_postgres import singer_stream
@@ -228,6 +228,18 @@ def test_loading__simple(db_cleanup):
             record['flea_check_complete'] = False
 
         assert_records(conn, stream.records, 'cats', 'id')
+
+
+def test_loading__default__complex_type(db_cleanup):
+    main(CONFIG, input_stream=NestedStream(10))
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_count_sql('root'))
+            assert 10 == cur.fetchone()[0]
+
+            cur.execute(get_count_sql('root__array_scalar'))
+            assert 100 == cur.fetchone()[0]
 
 
 def test_loading__new_non_null_column(db_cleanup):
