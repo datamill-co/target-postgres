@@ -243,6 +243,16 @@ NESTED_STREAM = {
                 'type': 'array',
                 'items': {'type': 'integer'}
             },
+            'array_of_array': {
+                'type': 'array',
+                'items': {
+                    'type': 'array',
+                    'items': {
+                        'type': 'array',
+                        'items': {'type': 'integer'}
+                    }
+                }
+            },
             'object_defaulted': {
                 'type': 'object',
                 'properties': {
@@ -319,6 +329,14 @@ class NestedStream(FakeStream):
         return {
             'id': self.id,
             'array_scalar': list(range(5)),
+            'array_of_array': [[[1, 2, 3],
+                                [4, 5, 6, 7, 8],
+                                [9, 10],
+                                []],
+                               [[10],
+                                [20, 30],
+                                [40, 50, 60],
+                                [70, 80, 90, 100]]],
             'object_of_object_0': {
                 'object_of_object_1': {
                     'object_of_object_2': {
