@@ -287,6 +287,17 @@ NESTED_STREAM = {
                         }
                     }
                 }
+            },
+            'null': {
+                'type': ['null', 'integer']
+            },
+            'nested_null': {
+                'type': 'object',
+                'properties': {
+                    'null': {
+                        'type': ['null', 'integer']
+                    }
+                }
             }
         }
     },
@@ -299,6 +310,12 @@ class NestedStream(FakeStream):
     schema = NESTED_STREAM
 
     def generate_record(self):
+        null = None
+        ## We use this trick so that we _always_ know we'll have both null and non-null values
+        ##  vs using something like chance here.
+        if self.id % 2 == 0:
+            null = 31415
+
         return {
             'id': self.id,
             'array_scalar': list(range(5)),
@@ -311,6 +328,10 @@ class NestedStream(FakeStream):
                         'c': self.id
                     }
                 }
+            },
+            'null': null,
+            'nested_null': {
+                'null': null
             }
         }
 
