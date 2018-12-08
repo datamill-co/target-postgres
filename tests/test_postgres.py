@@ -242,7 +242,7 @@ def test_loading__default__complex_type(db_cleanup):
             assert 100 == cur.fetchone()[0]
 
 
-def test_loading__nested_scalar_table(db_cleanup):
+def test_loading__nested_tables(db_cleanup):
     main(CONFIG, input_stream=NestedStream(10))
 
     with psycopg2.connect(**TEST_DB) as conn:
@@ -252,6 +252,26 @@ def test_loading__nested_scalar_table(db_cleanup):
 
             cur.execute(get_count_sql('root__array_scalar'))
             assert 50 == cur.fetchone()[0]
+
+            cur.execute(get_count_sql('root__object_of_object_0__object_of_object_1__object_of_object_2__array_scalar'[:63]))
+
+            assert 50 == cur.fetchone()[0]
+            assert_columns_equal(cur,
+                                 'root',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO')
+                                     ('object_defaulted__a', 'bigint', 'NO'),
+                                     ('object_defaulted__b', 'bigint', 'NO'),
+                                     ('object_defaulted__c', 'bigint', 'NO'),
+                                     ('object_of_object_0__object_of_object_1__object_of_object_2__a', 'bigint', 'NO'),
+                                     ('object_of_object_0__object_of_object_1__object_of_object_2__b', 'bigint', 'NO'),
+                                     ('object_of_object_0__object_of_object_1__object_of_object_2__c', 'bigint', 'NO')
+                                 })
+
 
 
 def test_loading__new_non_null_column(db_cleanup):

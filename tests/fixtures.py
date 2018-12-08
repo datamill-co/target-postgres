@@ -242,6 +242,51 @@ NESTED_STREAM = {
             'array_scalar': {
                 'type': 'array',
                 'items': {'type': 'integer'}
+            },
+            'object_defaulted': {
+                'type': 'object',
+                'properties': {
+                    'a': {
+                        'type': 'integer'
+                    },
+                    'b': {
+                        'type': 'integer'
+                    },
+                    'c': {
+                        'type': 'integer'
+                    }
+                },
+                'default': {'a': 123, 'b': 456, 'c': 789}
+            },
+            'object_of_object_0': {
+                'type': 'object',
+                'properties': {
+                    'object_of_object_1': {
+                        'type': 'object',
+                        'properties': {
+                            'object_of_object_2': {
+                                'type': 'object',
+                                'properties': {
+                                    'array_scalar': {
+                                        'type': 'array',
+                                        'items': {
+                                            'type': 'boolean'
+                                        }
+                                    },
+                                    'a': {
+                                        'type': 'integer'
+                                    },
+                                    'b': {
+                                        'type': 'integer'
+                                    },
+                                    'c': {
+                                        'type': 'integer'
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     },
@@ -256,7 +301,17 @@ class NestedStream(FakeStream):
     def generate_record(self):
         return {
             'id': self.id,
-            'array_scalar': list(range(5))
+            'array_scalar': list(range(5)),
+            'object_of_object_0': {
+                'object_of_object_1': {
+                    'object_of_object_2': {
+                        'array_scalar': [True, False, True, False, False],
+                        'a': self.id,
+                        'b': self.id,
+                        'c': self.id
+                    }
+                }
+            }
         }
 
 
