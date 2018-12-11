@@ -234,11 +234,12 @@ NESTED_STREAM = {
             'id': {
                 'type': 'integer'
             },
-            'array_scalar_defaulted': {
-                'type': 'array',
-                'items': {'type': 'integer'},
-                'default': list(range(10))
-            },
+            ## TODO: Complex types defaulted
+            # 'array_scalar_defaulted': {
+            #     'type': 'array',
+            #     'items': {'type': 'integer'},
+            #     'default': list(range(10))
+            # },
             'array_scalar': {
                 'type': 'array',
                 'items': {'type': 'integer'}
@@ -253,21 +254,22 @@ NESTED_STREAM = {
                     }
                 }
             },
-            'object_defaulted': {
-                'type': 'object',
-                'properties': {
-                    'a': {
-                        'type': 'integer'
-                    },
-                    'b': {
-                        'type': 'integer'
-                    },
-                    'c': {
-                        'type': 'integer'
-                    }
-                },
-                'default': {'a': 123, 'b': 456, 'c': 789}
-            },
+            ## TODO: Complex types defaulted
+            # 'object_defaulted': {
+            #     'type': 'object',
+            #     'properties': {
+            #         'a': {
+            #             'type': 'integer'
+            #         },
+            #         'b': {
+            #             'type': 'integer'
+            #         },
+            #         'c': {
+            #             'type': 'integer'
+            #         }
+            #     },
+            #     'default': {'a': 123, 'b': 456, 'c': 789}
+            # },
             'object_of_object_0': {
                 'type': 'object',
                 'properties': {

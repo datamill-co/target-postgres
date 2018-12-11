@@ -9,8 +9,10 @@ from target_postgres import main
 
 
 def assert_tables_equal(cursor, expected_table_names):
-    cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
-    tables = cursor.fetchall()
+    cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
+    tables = []
+    for table in cursor.fetchall():
+        tables.append(table[0])
 
     assert (not tables and not expected_table_names) \
            or set(tables) == expected_table_names
@@ -333,4 +335,6 @@ def test_bigcommerce__sandbox(db_cleanup):
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
             assert_tables_equal(cur,
-                                {'products', 'customers'})
+                                {'products', 'customers',
+                                 'products__categories',
+                                 'products__related_products'})
