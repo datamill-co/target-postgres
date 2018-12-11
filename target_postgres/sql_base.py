@@ -598,7 +598,26 @@ class SQLInterface:
         existing_columns_raw_names = [v['from'] for v in existing_schema.get('mappings', {}).values()]
         table_empty = self.is_table_empty(connection, table_name)
 
+        ## Only process columns which have single, nullable, types
+        single_type_columns = []
         for raw_column_name, column_schema in new_columns.items():
+            single_type_column_schema = deepcopy(column_schema)
+            column_types = json_schema.get_type(single_type_column_schema)
+            make_nullable = json_schema.is_nullable(column_schema)
+
+            for type in column_types:
+                if type == json_schema.NULL:
+                    continue
+
+                single_type_column_schema['type'] = [type]
+
+                if make_nullable:
+                    single_type_columns.append((raw_column_name, json_schema.make_nullable(single_type_column_schema)))
+                else:
+                    single_type_columns.append((raw_column_name, single_type_column_schema))
+
+        ## Process new columns against existing
+        for raw_column_name, column_schema in single_type_columns:
             canonicalized_column_name, canonicalized_typed_column_name = self._canonicalize_identifier(
                 raw_column_name, column_schema, existing_columns_raw_names, existing_columns
             )
@@ -909,8 +928,8 @@ class SQLInterface:
                 field_name = self._serialize_table_record_field_name(remote_schema, streamed_schema, field)
 
                 if field_name in remote_fields \
-                        and not field_name in row \
-                        or row[field_name] == NULL_DEFAULT:
+                        and (not field_name in row
+                             or row[field_name] == NULL_DEFAULT):
                     row[field_name] = value
 
             serialized_rows.append(row)

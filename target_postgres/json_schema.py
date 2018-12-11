@@ -4,6 +4,7 @@ import re
 from jsonschema import Draft4Validator
 from jsonschema.exceptions import SchemaError
 
+NULL = 'null'
 
 class JSONSchemaError(Exception):
     """
@@ -98,7 +99,7 @@ def is_nullable(schema):
     :return: Boolean
     """
 
-    return 'null' in get_type(schema)
+    return NULL in get_type(schema)
 
 
 def make_nullable(schema):
@@ -108,11 +109,11 @@ def make_nullable(schema):
     :return: dict, JSON Schema
     """
     type = get_type(schema)
-    if 'null' in type:
+    if NULL in type:
         return schema
 
     ret_schema = deepcopy(schema)
-    ret_schema['type'] = type + ['null']
+    ret_schema['type'] = type + [NULL]
     return ret_schema
 
 
@@ -237,7 +238,7 @@ def from_sql(sql_type, nullable):
 
     json_type = [json_type]
     if nullable:
-        json_type.append('null')
+        json_type.append(NULL)
 
     ret_json_schema = {'type': json_type}
     if _format:
@@ -252,9 +253,9 @@ def to_sql(schema):
     ln = len(_type)
     if ln == 1:
         _type = _type[0]
-    if ln == 2 and 'null' in _type:
+    if ln == 2 and NULL in _type:
         not_null = False
-        if _type.index('null') == 0:
+        if _type.index(NULL) == 0:
             _type = _type[1]
         else:
             _type = _type[0]
@@ -281,7 +282,7 @@ def to_sql(schema):
 
 
 _shorthand_mapping = {
-    'null': '',
+    NULL: '',
     'string': 's',
     'number': 'f',
     'integer': 'i',
