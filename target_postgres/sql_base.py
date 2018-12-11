@@ -103,9 +103,7 @@ def _denest_schema_helper(table_path,
                              subtables,
                              level + 1)
         else:
-            if not_null and json_schema.is_nullable(item_json_schema):
-                item_json_schema['type'].remove('null')
-            elif not json_schema.is_nullable(item_json_schema):
+            if not not_null and not json_schema.is_nullable(item_json_schema):
                 item_json_schema['type'].append('null')
 
             column_name = SEPARATOR.join(table_path + (prop,))
