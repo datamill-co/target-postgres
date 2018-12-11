@@ -254,8 +254,17 @@ def test_loading__nested_tables(db_cleanup):
             assert 50 == cur.fetchone()[0]
 
             cur.execute(get_count_sql('root__object_of_object_0__object_of_object_1__object_of_object_2__array_scalar'[:63]))
-
             assert 50 == cur.fetchone()[0]
+
+            cur.execute(get_count_sql('root__array_of_array'))
+            assert 20 == cur.fetchone()[0]
+
+            cur.execute(get_count_sql('root__array_of_array___sdc_value'))
+            assert 80 == cur.fetchone()[0]
+
+            cur.execute(get_count_sql('root__array_of_array___sdc_value___sdc_value'))
+            assert 200 == cur.fetchone()[0]
+
             assert_columns_equal(cur,
                                  'root',
                                  {
@@ -263,13 +272,49 @@ def test_loading__nested_tables(db_cleanup):
                                      ('_sdc_received_at', 'timestamp with time zone', 'YES'),
                                      ('_sdc_sequence', 'bigint', 'YES'),
                                      ('_sdc_table_version', 'bigint', 'YES'),
-                                     ('id', 'bigint', 'NO')
-                                     ('object_defaulted__a', 'bigint', 'NO'),
-                                     ('object_defaulted__b', 'bigint', 'NO'),
-                                     ('object_defaulted__c', 'bigint', 'NO'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('null', 'bigint', 'YES'),
+                                     ('nested_null__null', 'bigint', 'YES'),
                                      ('object_of_object_0__object_of_object_1__object_of_object_2__a', 'bigint', 'NO'),
                                      ('object_of_object_0__object_of_object_1__object_of_object_2__b', 'bigint', 'NO'),
                                      ('object_of_object_0__object_of_object_1__object_of_object_2__c', 'bigint', 'NO')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'root__object_of_object_0__object_of_object_1__object_of_object_2__array_scalar'[:63],
+                                 {
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_source_key_id', 'bigint', 'NO'),
+                                     ('_sdc_level_0_id', 'bigint', 'NO'),
+                                     ('_sdc_value', 'boolean', 'NO')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'root__array_of_array',
+                                 {
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_source_key_id', 'bigint', 'NO'),
+                                     ('_sdc_level_0_id', 'bigint', 'NO')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'root__array_of_array___sdc_value',
+                                 {
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_source_key_id', 'bigint', 'NO'),
+                                     ('_sdc_level_0_id', 'bigint', 'NO'),
+                                     ('_sdc_level_1_id', 'bigint', 'NO')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'root__array_of_array___sdc_value___sdc_value',
+                                 {
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_source_key_id', 'bigint', 'NO'),
+                                     ('_sdc_level_0_id', 'bigint', 'NO'),
+                                     ('_sdc_level_1_id', 'bigint', 'NO'),
+                                     ('_sdc_level_2_id', 'bigint', 'NO'),
+                                     ('_sdc_value', 'bigint', 'NO')
                                  })
 
 
