@@ -221,12 +221,16 @@ class InvalidCatStream(CatStream):
 
         return record
 
+
 def clear_db():
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
+            cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
+            drop_command = ''
+            for table in cur.fetchall():
+                drop_command += 'DROP TABLE IF EXISTS ' + table[0] + ';'
             cur.execute('begin;' +
-                        'drop table if exists cats;' +
-                        'drop table if exists cats__adoption__immunizations;' +
+                        drop_command +
                         'commit;')
 
 @pytest.fixture

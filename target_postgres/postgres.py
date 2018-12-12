@@ -54,6 +54,8 @@ class PostgresTarget(SQLInterface):
 
         with self.conn.cursor() as cur:
             try:
+                self._validate_identifier(stream_buffer.stream)
+
                 cur.execute('BEGIN;')
 
                 processed_records = list(map(partial(self._process_record_message,
@@ -70,6 +72,7 @@ class PostgresTarget(SQLInterface):
                     versions.add(record_version)
 
                 current_table_schema = self.get_table_schema(cur,
+                                                             (stream_buffer.stream,),
                                                              stream_buffer.stream)
 
                 current_table_version = None
@@ -122,6 +125,8 @@ class PostgresTarget(SQLInterface):
                                 json_schema.get_type(current_table_schema['schema']['properties'][key]),
                                 json_schema.get_type(stream_buffer.schema['properties'][key])
                             ))
+
+                self._validate_identifier(root_table_name)
 
                 written_batches_details = self.write_batch_helper(cur,
                                                                   root_table_name,
@@ -228,7 +233,7 @@ class PostgresTarget(SQLInterface):
                     identifier
                 ))
 
-        if not re.match(r'[a-z0-9_$]+', identifier):
+        if not re.match(r'^[a-z0-9_$]+$', identifier):
             raise PostgresError(
                 'Identifier must only contain lower case letters, numbers, underscores, or dollar signs. Got `{}` for `{}`'.format(
                     re.findall(r'[^0-9]', '1234a567')[0],
@@ -243,23 +248,63 @@ class PostgresTarget(SQLInterface):
 
         return re.sub(r'[^\w\d_$]', '_', identifier.lower())
 
-    def upsert_table(self, cur, table_json_schema, metadata):
-        self._validate_identifier(table_json_schema['name'])
+    def add_key_properties(self, cur, table_name, key_properties):
+        if not key_properties:
+            return None
 
-        if self.get_table_schema(cur, table_json_schema['name']) is None:
-            create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
-                sql.Identifier(self.postgres_schema),
-                sql.Identifier(table_json_schema['name']))
+        metadata = self._get_table_metadata(cur, table_name)
 
-            cur.execute(sql.SQL('{} ();').format(create_table_sql))
+        if not 'key_properties' in metadata:
+            metadata['key_properties'] = key_properties
+            self._set_table_metadata(cur, table_name, metadata)
 
-            if 'key_properties' in table_json_schema:
-                self._set_table_metadata(cur, table_json_schema['name'],
-                                         {'key_properties': table_json_schema['key_properties'],
-                                          'version': metadata.get('version', None)})
+    def add_table(self, cur, name, metadata):
+        self._validate_identifier(name)
 
-        return self.upsert_table_helper(cur,
-                                        table_json_schema)
+        create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
+            sql.Identifier(self.postgres_schema),
+            sql.Identifier(name))
+
+        cur.execute(sql.SQL('{} ();').format(create_table_sql))
+
+        self._set_table_metadata(cur, name, {'version': metadata.get('version', None)})
+
+    def add_table_mapping(self, cur, from_path, metadata):
+        root_table = from_path[0]
+        cur.execute(
+            sql.SQL('''
+            SELECT EXISTS(
+              SELECT 1
+              FROM information_schema.tables
+              WHERE table_schema = {}
+                AND table_name = {}
+            );
+            ''').format(
+                sql.Literal(self.postgres_schema),
+                sql.Literal(root_table)))
+
+        # No root table present
+        ## Table mappings are hung off of the root table's metadata
+        ## SQLInterface's helpers do not guarantee order of table creation
+        if not cur.fetchone()[0]:
+            self.add_table(cur, root_table, metadata)
+
+        metadata = self._get_table_metadata(cur, root_table)
+        if not metadata:
+            metadata = {}
+
+        if not 'table_mappings' in metadata:
+            metadata['table_mappings'] = []
+
+        mapping = self.add_table_mapping_helper(from_path, metadata['table_mappings'])
+
+        if not mapping['exists']:
+            metadata['table_mappings'].append({'type': 'TABLE',
+                                               'from': from_path,
+                                               'to': mapping['to']})
+            self._set_table_metadata(cur, root_table, metadata)
+
+        return mapping['to']
 
     def get_update_sql(self, target_table_name, temp_table_name, key_properties, subkeys):
         full_table_name = sql.SQL('{}.{}').format(
@@ -388,10 +433,10 @@ class PostgresTarget(SQLInterface):
 
         ## Create temp table to upload new data to
         target_schema = deepcopy(remote_schema)
-        target_schema['name'] = target_table_name
-        self.upsert_table(cur,
-                          target_schema,
-                          {'version': remote_schema['version']})
+        target_schema['path'] = (target_table_name,)
+        self.upsert_table_helper(cur,
+                                 target_schema,
+                                 {'version': remote_schema['version']})
 
         ## Make streamable CSV records
         csv_headers = list(remote_schema['schema']['properties'].keys())
@@ -466,15 +511,10 @@ class PostgresTarget(SQLInterface):
         :param metadata: Metadata Dict
         :return: None
         """
-
-        parsed_metadata = {'key_properties': metadata.get('key_properties', []),
-                           'version': metadata.get('version'),
-                           'mappings': metadata.get('mappings', {})}
-
         cur.execute(sql.SQL('COMMENT ON TABLE {}.{} IS {};').format(
             sql.Identifier(self.postgres_schema),
             sql.Identifier(table_name),
-            sql.Literal(json.dumps(parsed_metadata))))
+            sql.Literal(json.dumps(metadata))))
 
     def _get_table_metadata(self, cur, table_name):
         cur.execute(
@@ -528,25 +568,36 @@ class PostgresTarget(SQLInterface):
 
         return cur.fetchall()[0][0] == 0
 
-    def get_table_schema(self, cur, table_name):
+    def get_table_schema(self, cur, path, name):
         cur.execute(
             sql.SQL('SELECT column_name, data_type, is_nullable FROM information_schema.columns ') +
             sql.SQL('WHERE table_schema = {} and table_name = {};').format(
-                sql.Literal(self.postgres_schema), sql.Literal(table_name)))
+                sql.Literal(self.postgres_schema), sql.Literal(name)))
 
         properties = {}
         for column in cur.fetchall():
             properties[column[0]] = json_schema.from_sql(column[1], column[2] == 'YES')
 
-        metadata = self._get_table_metadata(cur, table_name)
+        metadata = self._get_table_metadata(cur, name)
 
         if metadata is None and not properties:
             return None
-        elif metadata is None:
+
+        if metadata is None:
             metadata = {'version': None}
 
-        metadata['name'] = table_name
+        if len(path) > 1:
+            table_mappings = self.get_table_schema(cur, path[:1], path[0])['table_mappings']
+        else:
+            table_mappings = []
+            for mapping in metadata.get('table_mappings', []):
+                if mapping['type'] == 'TABLE':
+                    table_mappings.append(mapping)
+
+        metadata['name'] = name
+        metadata['path'] = path
         metadata['type'] = 'TABLE_SCHEMA'
         metadata['schema'] = {'properties': properties}
+        metadata['table_mappings'] = table_mappings
 
         return metadata
