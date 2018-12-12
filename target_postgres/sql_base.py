@@ -28,15 +28,15 @@ from target_postgres.singer_stream import (
 SEPARATOR = '__'
 
 
-def to_table_schema(name, level, keys, properties):
+def to_table_schema(path, level, keys, properties):
     for key in keys:
         if not key in properties:
             raise Exception('Unknown key "{}" found for table "{}"'.format(
-                key, name
+                key, path
             ))
 
     return {'type': 'TABLE_SCHEMA',
-            'name': name,
+            'path': path,
             'level': level,
             'key_properties': keys,
             'mappings': [],
@@ -80,27 +80,24 @@ def _add_singer_columns(schema, key_properties):
         }
 
 
-def _denest_schema_helper(table_name,
+def _denest_schema_helper(table_path,
                           table_json_schema,
                           not_null,
                           top_level_schema,
-                          current_path,
                           key_prop_schemas,
                           subtables,
                           level):
     for prop, item_json_schema in table_json_schema['properties'].items():
-        next_path = current_path + SEPARATOR + prop
         if json_schema.is_object(item_json_schema):
-            _denest_schema_helper(table_name,
+            _denest_schema_helper(table_path + (prop,),
                                   item_json_schema,
                                   not_null,
                                   top_level_schema,
-                                  next_path,
                                   key_prop_schemas,
                                   subtables,
                                   level)
         elif json_schema.is_iterable(item_json_schema):
-            _create_subtable(table_name + SEPARATOR + prop,
+            _create_subtable(table_path + (prop,),
                              item_json_schema,
                              key_prop_schemas,
                              subtables,
@@ -110,10 +107,13 @@ def _denest_schema_helper(table_name,
                 item_json_schema['type'].remove('null')
             elif not json_schema.is_nullable(item_json_schema):
                 item_json_schema['type'].append('null')
-            top_level_schema[next_path] = item_json_schema
+
+            column_name = SEPARATOR.join(table_path + (prop,))
+
+            top_level_schema[column_name] = item_json_schema
 
 
-def _create_subtable(table_name, table_json_schema, key_prop_schemas, subtables, level):
+def _create_subtable(table_path, table_json_schema, key_prop_schemas, subtables, level):
     if json_schema.is_object(table_json_schema['items']):
         new_properties = table_json_schema['items']['properties']
     else:
@@ -138,31 +138,26 @@ def _create_subtable(table_name, table_json_schema, key_prop_schemas, subtables,
                   'level': level,
                   'key_properties': key_properties}
 
-    _denest_schema(table_name, new_schema, key_prop_schemas, subtables, level=level)
+    _denest_schema(table_path, new_schema, key_prop_schemas, subtables, level=level)
 
-    subtables[table_name] = new_schema
+    subtables[table_path] = new_schema
 
 
-def _denest_schema(table_name, table_json_schema, key_prop_schemas, subtables, current_path=None, level=-1):
+def _denest_schema(table_path, table_json_schema, key_prop_schemas, subtables, level=-1):
     new_properties = {}
     for prop, item_json_schema in table_json_schema['properties'].items():
-        if current_path:
-            next_path = current_path + SEPARATOR + prop
-        else:
-            next_path = prop
 
         if json_schema.is_object(item_json_schema):
             not_null = 'null' not in item_json_schema['type']
-            _denest_schema_helper(table_name + SEPARATOR + next_path,
+            _denest_schema_helper(table_path + (prop,),
                                   item_json_schema,
                                   not_null,
                                   new_properties,
-                                  next_path,
                                   key_prop_schemas,
                                   subtables,
                                   level)
         elif json_schema.is_iterable(item_json_schema):
-            _create_subtable(table_name + SEPARATOR + next_path,
+            _create_subtable(table_path + (prop,),
                              item_json_schema,
                              key_prop_schemas,
                              subtables,
@@ -172,7 +167,7 @@ def _denest_schema(table_name, table_json_schema, key_prop_schemas, subtables, c
     table_json_schema['properties'] = new_properties
 
 
-def _denest_subrecord(table_name,
+def _denest_subrecord(table_path,
                       current_path,
                       parent_record,
                       record,
@@ -194,12 +189,12 @@ def _denest_subrecord(table_name,
             {...}
             """
             # TODO: Throws exception due to wrong number of args.
-            _denest_subrecord(table_name, next_path, parent_record, value, pk_fks, level)
+            _denest_subrecord(table_path, next_path, parent_record, value, pk_fks, level)
         elif isinstance(value, list):
             """
             [...]
             """
-            _denest_records(table_name + SEPARATOR + next_path,
+            _denest_records(table_path + (prop,),
                             value,
                             records_map,
                             key_properties,
@@ -209,10 +204,10 @@ def _denest_subrecord(table_name,
             """
             None | <literal>
             """
-            parent_record[next_path] = value
+            parent_record[SEPARATOR.join(table_path + (prop,))] = value
 
 
-def _denest_record(table_name, current_path, record, records_map, key_properties, pk_fks, level):
+def _denest_record(table_path, record, records_map, key_properties, pk_fks, level):
     """"""
     """
     {...}
@@ -222,17 +217,13 @@ def _denest_record(table_name, current_path, record, records_map, key_properties
         """
         str : {...} | [...] | None | <literal>
         """
-        if current_path:
-            next_path = current_path + SEPARATOR + prop
-        else:
-            next_path = prop
 
         if isinstance(value, dict):
             """
             {...}
             """
-            _denest_subrecord(table_name,
-                              next_path,
+            _denest_subrecord(table_path + (prop,),
+                              prop,
                               denested_record,
                               value,
                               records_map,
@@ -243,7 +234,7 @@ def _denest_record(table_name, current_path, record, records_map, key_properties
             """
             [...]
             """
-            _denest_records(table_name + SEPARATOR + next_path,
+            _denest_records(table_path + (prop,),
                             value,
                             records_map,
                             key_properties,
@@ -258,14 +249,14 @@ def _denest_record(table_name, current_path, record, records_map, key_properties
             """
             <literal>
             """
-            denested_record[next_path] = value
+            denested_record[prop] = value
 
-    if table_name not in records_map:
-        records_map[table_name] = []
-    records_map[table_name].append(denested_record)
+    if table_path not in records_map:
+        records_map[table_path] = []
+    records_map[table_path].append(denested_record)
 
 
-def _denest_records(table_name, records, records_map, key_properties, pk_fks=None, level=-1):
+def _denest_records(table_path, records, records_map, key_properties, pk_fks=None, level=-1):
     row_index = 0
     """
     [{...} ...]
@@ -287,7 +278,7 @@ def _denest_records(table_name, records, records_map, key_properties, pk_fks=Non
         """
         {...}
         """
-        _denest_record(table_name, None, record, records_map, key_properties, record_pk_fks, level)
+        _denest_record(table_path, record, records_map, key_properties, record_pk_fks, level)
 
 
 class SQLInterface:
@@ -309,12 +300,11 @@ class SQLInterface:
 
     IDENTIFIER_FIELD_LENGTH = NotImplementedError('`IDENTIFIER_FIELD_LENGTH` not implemented.')
 
-    def _get_streamed_table_schemas(self, root_table_name, schema, key_properties):
+    def _get_streamed_table_schemas(self, schema, key_properties):
         """
         Given a `schema` and `key_properties` return the denested/flattened TABLE_SCHEMA of
         the root table and each sub table.
 
-        :param root_table_name: string
         :param schema: SingerStreamSchema
         :param key_properties: [string, ...]
         :return: [TABLE_SCHEMA(denested_streamed_schema_0), ...]
@@ -327,19 +317,20 @@ class SQLInterface:
         key_prop_schemas = {}
         for key in key_properties:
             key_prop_schemas[key] = schema['properties'][key]
-        _denest_schema(root_table_name, root_table_schema, key_prop_schemas, subtables)
+        _denest_schema(tuple(), root_table_schema, key_prop_schemas, subtables)
 
-        ret = [to_table_schema(root_table_name, None, key_properties, root_table_schema['properties'])]
-        for name, schema in subtables.items():
-            ret.append(to_table_schema(name, schema['level'], schema['key_properties'], schema['properties']))
+        ret = [to_table_schema(tuple(), None, key_properties, root_table_schema['properties'])]
+        for path, schema in subtables.items():
+            ret.append(to_table_schema(path, schema['level'], schema['key_properties'], schema['properties']))
 
         return ret
 
-    def get_table_schema(self, connection, name):
+    def get_table_schema(self, connection, path, name):
         """
         Fetch the `table_schema` for `name`.
 
         :param connection: remote connection, type left to be determined by implementing class
+        :param path: (string, ...)
         :param name: string
         :return: TABLE_SCHEMA(remote)
         """
@@ -387,7 +378,8 @@ class SQLInterface:
                or canonicalized_typed_column_name in existing_columns):
             i += 1
             suffix = SEPARATOR + str(i)
-            canonicalized_column_name = raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix
+            canonicalized_column_name = raw_canonicalized_column_name[
+                                        :self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix
             canonicalized_typed_column_name = _mapping_name(
                 raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH - 3 - len(suffix)], schema) + suffix
 
@@ -401,6 +393,76 @@ class SQLInterface:
             ##    ))
 
         return canonicalized_column_name, canonicalized_typed_column_name
+
+    def add_table(self, connection, schema, metadata):
+        """
+        Create the remote table schema.
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param schema: TABLE_SCHEMA(local) definition for table to be created
+        :param metadata: additional metadata needed by implementing class
+        :return: None
+        """
+        raise NotImplementedError('`add_table` not implemented.')
+
+    def add_key_properties(self, connection, table_name, key_properties):
+        """
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param table_name: string
+        :param key_properties: [string, ...]
+        :return: None
+        """
+        raise NotImplementedError('`add_key_properties` not implemented.')
+
+    def add_table_mapping_helper(self, from_path, table_mappings):
+        """
+
+        :param from_path:
+        :param table_mappings:
+        :return: (boolean, string)
+        """
+        from_to = dict([(tuple(mapping['from']), mapping['to']) for mapping in table_mappings])
+
+        ## MAPPING EXISTS
+        if from_path in from_to:
+            return {'exists': True, 'to': from_to[from_path]}
+
+        to_from = dict([(v, k) for k, v in from_to.items()])
+
+        name = SEPARATOR.join(from_path)
+
+        raw_canonicalized_name = self.canonicalize_identifier(name)
+        canonicalized_name = raw_canonicalized_name[:self.IDENTIFIER_FIELD_LENGTH]
+
+        i = 0
+        ## NAME COLLISION
+        while canonicalized_name in to_from:
+            i += 1
+            suffix = SEPARATOR + str(i)
+            canonicalized_name = raw_canonicalized_name[
+                                 :self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix
+
+            # TODO: logger warn
+            ##raise Exception(
+            ##    'NAME COLLISION: Cannot handle merging column `{}` (canonicalized as: `{}`, canonicalized with type as: `{}`) in table `{}`.'.format(
+            ##        raw_column_name,
+            ##        canonicalized_column_name,
+            ##        canonicalized_typed_column_name,
+            ##        table_name
+            ##    ))
+
+        return {'exists': False, 'to': canonicalized_name}
+
+    def add_table_mapping(self, connection, from_path, metadata):
+        """
+        Given a full path to a table, `from_path`, add a table mapping to the canonicalized name.
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param from_path: (string, ...)
+        :return: None
+        """
+        raise NotImplementedError('`add_table_mapping` not implemented.')
 
     def add_column(self, connection, table_name, name, schema):
         """
@@ -494,22 +556,30 @@ class SQLInterface:
              json_schema.sql_shorthand(schema)),
             None)
 
-    def upsert_table_helper(self, connection, schema):
+    def upsert_table_helper(self, connection, schema, metadata):
         """
-        Assumes `schema['name']` exists in remote. Upserts the `schema` to remote by adding
-        columns, adding column mappings, migrating data from old columns to new, etc.
+        Upserts the `schema` to remote by:
+        - creating table if necessary
+        - adding columns
+        - adding column mappings
+        - migrating data from old columns to new, etc.
 
         :param connection: remote connection, type left to be determined by implementing class
         :param schema: TABLE_SCHEMA(local)
+        :param metadata: additional information necessary for downstream operations
         :return: TABLE_SCHEMA(remote)
         """
-        table_name = schema['name']
-        existing_schema = self.get_table_schema(connection, schema['name'])
+        table_path = schema['path']
+
+        table_name = self.add_table_mapping(connection, table_path, metadata)
+
+        existing_schema = self.get_table_schema(connection, table_path, table_name)
 
         if existing_schema is None:
-            raise Exception('No remote table `{}` found. Have you run a `CREATE TABLE` operation?'.format(
-                table_name
-            ))
+            self.add_table(connection, table_name, metadata)
+            existing_schema = self.get_table_schema(connection, table_path, table_name)
+
+        self.add_key_properties(connection, table_name, schema.get('key_properties', None))
 
         new_columns = schema['schema']['properties']
         existing_columns = existing_schema['schema']['properties']
@@ -679,26 +749,14 @@ class SQLInterface:
                         table_name
                     ))
 
-        return self.get_table_schema(connection, table_name)
+        return self.get_table_schema(connection, table_path, table_name)
 
-    def upsert_table(self, connection, table_json_schema, metadata):
+    def _get_streamed_table_records(self, key_properties, records):
         """
-        Update the remote table schema based on the merged difference between
-        `remote_table_json_schema` and `table_json_schema`.
-
-        :param connection: remote connection, type left to be determined by implementing class
-        :param table_json_schema: updates for get_table_schema
-        :param metadata: additional metadata needed by implementing class
-        :return: updated_remote_table_json_schema
-        """
-        raise NotImplementedError('`update_table_schema` not implemented.')
-
-    def _get_streamed_table_records(self, root_table_name, key_properties, records):
-        """
-        Given `records` for the `root_table_name` and `key_properties`, flatten
+        Flatten the given `records` into `table_records`.
+        Maintains `key_properties`.
         into `table_records`.
 
-        :param root_table_name: string
         :param key_properties: [string, ...]
         :param records: [{...}, ...]
         :return: {TableName string: [{...}, ...],
@@ -706,40 +764,34 @@ class SQLInterface:
         """
 
         records_map = {}
-        _denest_records(root_table_name,
+        _denest_records(tuple(),
                         records,
                         records_map,
                         key_properties)
+
         return records_map
 
-    def _get_table_batches(self, connection, root_table_name, schema, key_properties, records):
+    def _get_table_batches(self, schema, key_properties, records):
         """
         Given the streamed schema, and records, get all table schemas and records and prep them
         in a `table_batch`.
 
-        :param connection: remote connection, type left to be determined by implementing class
-        :param root_table_name: string
         :param schema: SingerStreamSchema
         :param key_properties: [string, ...]
         :param records: [{...}, ...]
         :return: [{'streamed_schema': TABLE_SCHEMA(local),
-                   'remote_schema': TABLE_SCHEMA(remote),
                    'records': [{...}, ...]
         """
 
-        table_schemas = self._get_streamed_table_schemas(root_table_name,
-                                                         schema,
+        table_schemas = self._get_streamed_table_schemas(schema,
                                                          key_properties)
 
-        table_records = self._get_streamed_table_records(root_table_name,
-                                                         key_properties,
+        table_records = self._get_streamed_table_records(key_properties,
                                                          records)
         writeable_batches = []
         for table_json_schema in table_schemas:
-            remote_schema = self.get_table_schema(connection, table_json_schema['name'])
             writeable_batches.append({'streamed_schema': table_json_schema,
-                                      'remote_schema': remote_schema,
-                                      'records': table_records.get(table_json_schema['name'], [])})
+                                      'records': table_records.get(table_json_schema['path'], [])})
 
         return writeable_batches
 
@@ -881,10 +933,11 @@ class SQLInterface:
         """
         records_persisted = len(records)
         rows_persisted = 0
-        for table_batch in self._get_table_batches(connection, root_table_name, schema, key_properties, records):
-            remote_schema = self.upsert_table(connection,
-                                              table_batch['streamed_schema'],
-                                              metadata)
+        for table_batch in self._get_table_batches(schema, key_properties, records):
+            table_batch['streamed_schema']['path'] = (root_table_name,) + table_batch['streamed_schema']['path']
+            remote_schema = self.upsert_table_helper(connection,
+                                                     table_batch['streamed_schema'],
+                                                     metadata)
             rows_persisted += self.write_table_batch(
                 connection,
                 {'remote_schema': remote_schema,
