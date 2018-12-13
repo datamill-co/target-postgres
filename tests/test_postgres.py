@@ -648,9 +648,9 @@ def test_loading__multi_types_columns(db_cleanup):
                                      ('every_type__n', 'double precision', 'YES'),
                                      ('every_type__b', 'boolean', 'YES'),
                                      ('every_type__d', 'timestamp with time zone', 'YES'),
-                                     ('every_type__a', 'bigint', 'YES'),
-                                     ('every_type__b', 'double precision', 'YES'),
-                                     ('every_type__c', 'boolean', 'YES')
+                                     ('every_type__i__1', 'bigint', 'YES'),
+                                     ('every_type__n__1', 'double precision', 'YES'),
+                                     ('every_type__b__1', 'boolean', 'YES')
                                  })
 
             assert_columns_equal(cur,

@@ -97,13 +97,15 @@ def _denest_schema_helper(table_path,
                                   key_prop_schemas,
                                   subtables,
                                   level)
-        elif json_schema.is_iterable(item_json_schema):
+
+        if json_schema.is_iterable(item_json_schema):
             _create_subtable(table_path + (prop,),
                              item_json_schema,
                              key_prop_schemas,
                              subtables,
                              level + 1)
-        else:
+
+        if json_schema.is_literal(item_json_schema):
             if nullable and not json_schema.is_nullable(item_json_schema):
                 item_json_schema['type'].append('null')
 
@@ -152,14 +154,17 @@ def _denest_schema(table_path, table_json_schema, key_prop_schemas, subtables, l
                                   key_prop_schemas,
                                   subtables,
                                   level)
-        elif json_schema.is_iterable(item_json_schema):
+
+        if json_schema.is_iterable(item_json_schema):
             _create_subtable(table_path + (prop,),
                              item_json_schema,
                              key_prop_schemas,
                              subtables,
                              level + 1)
-        else:
+
+        if json_schema.is_literal(item_json_schema):
             new_properties[(prop,)] = item_json_schema
+
     table_json_schema['properties'] = new_properties
 
 
@@ -607,7 +612,7 @@ class SQLInterface:
             make_nullable = json_schema.is_nullable(column_schema)
 
             for type in column_types:
-                if type == json_schema.NULL:
+                if type in {json_schema.NULL, json_schema.OBJECT, json_schema.ARRAY}:
                     continue
 
                 single_type_column_schema['type'] = [type]

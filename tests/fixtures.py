@@ -367,9 +367,12 @@ MULTI_TYPE = {
                 'items': {'type': 'integer'},
                 'format': 'date-time',
                 'properties': {
-                    'a': {'type': 'integer'},
-                    'b': {'type': 'number'},
-                    'c': {'type': 'boolean'}
+                    ## We use these field names to increase the difficulty for our column
+                    ##  name collision functionality. ie, the denested values will not only
+                    ##  conflict in terms of their denested _names_ but also, their types
+                    'i': {'type': 'integer'},
+                    'n': {'type': 'number'},
+                    'b': {'type': 'boolean'}
                 }
             }
         }
@@ -393,9 +396,9 @@ class MultiTypeStream(FakeStream):
         for i in range(random.randint(0, 1000)):
             value_array.append(random.randint(-314, 314))
 
-        value_object = {'a': random.randint(-314159265359, 314159265359),
-                        'b': random.uniform(-314159265359, 314159265359),
-                        'c': chance.boolean()}
+        value_object = {'i': random.randint(-314159265359, 314159265359),
+                        'n': random.uniform(-314159265359, 314159265359),
+                        'b': chance.boolean()}
 
         return {'every_type': chance.pickone(
             [value_null, value_integer, value_integer_as_number, value_number, value_boolean, value_date_time_string,
