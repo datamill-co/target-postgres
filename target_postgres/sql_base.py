@@ -168,6 +168,17 @@ def _denest_schema(table_path, table_json_schema, key_prop_schemas, subtables, l
     table_json_schema['properties'] = new_properties
 
 
+_PYTHON_TYPE_TO_JSON_SCHEMA = {
+    int: json_schema.INTEGER,
+    float: json_schema.NUMBER,
+    bool: json_schema.BOOLEAN,
+    str: json_schema.STRING
+}
+
+def _json_schema_type(x):
+    return _PYTHON_TYPE_TO_JSON_SCHEMA[type(x)]
+
+
 def _denest_subrecord(table_path,
                       prop_path,
                       parent_record,
@@ -207,11 +218,17 @@ def _denest_subrecord(table_path,
                             key_properties,
                             pk_fks=pk_fks,
                             level=level + 1)
+        elif value is None:
+            """
+            None
+            """
+            continue
+
         else:
             """
-            None | <literal>
+            <literal>
             """
-            parent_record[prop_path + (prop,)] = value
+            parent_record[prop_path + (prop,)] = (_json_schema_type(value), value)
 
 
 def _denest_record(table_path, record, records_map, key_properties, pk_fks, level):
@@ -252,11 +269,12 @@ def _denest_record(table_path, record, records_map, key_properties, pk_fks, leve
             None
             """
             continue
+
         else:
             """
             <literal>
             """
-            denested_record[(prop,)] = value
+            denested_record[(prop,)] = (_json_schema_type(value), value)
 
     if table_path not in records_map:
         records_map[table_path] = []
@@ -888,7 +906,7 @@ class SQLInterface:
 
         :param remote_schema: TABLE_SCHEMA(remote)
         :param streamed_schema: TABLE_SCHEMA(local)
-        :param records: [{...}, ...]
+        :param records: [{(path_0, path_1, ...): (_json_schema_type, value), ...}, ...]
         :return: [{...}, ...]
         """
 
@@ -912,7 +930,7 @@ class SQLInterface:
             row = deepcopy(default_row)
 
             for path in paths:
-                value = record.get(path, None)
+                json_schema_type, value = record.get(path, (None, None))
 
                 ## Serialize fields which are not present but have default values set
                 if path in default_paths \

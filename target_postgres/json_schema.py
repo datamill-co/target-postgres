@@ -7,6 +7,10 @@ from jsonschema.exceptions import SchemaError
 NULL = 'null'
 OBJECT = 'object'
 ARRAY = 'array'
+INTEGER = 'integer'
+NUMBER = 'number'
+BOOLEAN = 'boolean'
+STRING = 'string'
 
 class JSONSchemaError(Exception):
     """
@@ -112,7 +116,7 @@ def is_literal(schema):
     :return: Boolean
     """
 
-    return not {'string', 'integer', 'number', 'boolean'}.isdisjoint(set(get_type(schema)))
+    return not {STRING, INTEGER, NUMBER, BOOLEAN}.isdisjoint(set(get_type(schema)))
 
 
 def make_nullable(schema):

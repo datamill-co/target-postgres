@@ -204,7 +204,7 @@ class PostgresTarget(SQLInterface):
             record[SINGER_RECEIVED_AT] = record_message['time_extracted']
 
         if use_uuid_pk and record.get(SINGER_PK) is None:
-            record[SINGER_PK] = uuid.uuid4()
+            record[SINGER_PK] = str(uuid.uuid4())
 
         record[SINGER_BATCHED_AT] = batched_at
 
