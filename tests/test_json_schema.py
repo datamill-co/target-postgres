@@ -72,6 +72,37 @@ def test_simplify__types_into_arrays():
 def test_simplify__complex():
     assert \
         json_schema.simplify({
+            'properties': {
+                'every_type': {
+                    'type': ['null', 'integer', 'number', 'boolean', 'string', 'array', 'object'],
+                    'items': {'type': 'integer'},
+                    'format': 'date-time',
+                    'properties': {
+                        'i': {'type': 'integer'},
+                        'n': {'type': 'number'},
+                        'b': {'type': 'boolean'}
+                    }
+                }
+            }
+        }) \
+        == {
+            'type': ['object'],
+            'properties': {
+                'every_type': {
+                    'type': ['null', 'integer', 'number', 'boolean', 'string', 'array', 'object'],
+                    'items': {'type': ['integer']},
+                    'format': 'date-time',
+                    'properties': {
+                        'i': {'type': ['integer']},
+                        'n': {'type': ['number']},
+                        'b': {'type': ['boolean']}
+                    }
+                }
+            }
+        }
+
+    assert \
+        json_schema.simplify({
             'type': ['null', 'array'],
             'items': {
                 'type': 'object',
