@@ -31,9 +31,9 @@ SEPARATOR = '__'
 
 def to_table_schema(path, level, keys, properties):
     for key in keys:
-        if not key in properties:
-            raise Exception('Unknown key "{}" found for table "{}"'.format(
-                key, path
+        if not (key,) in properties:
+            raise Exception('Unknown key "{}" found for table "{}". Known fields are: {}'.format(
+                key, path, properties
             ))
 
     return {'type': 'TABLE_SCHEMA',
@@ -160,7 +160,7 @@ def _denest_schema(table_path, table_json_schema, key_prop_schemas, subtables, l
                              subtables,
                              level + 1)
         else:
-            new_properties[prop] = item_json_schema
+            new_properties[(prop,)] = item_json_schema
     table_json_schema['properties'] = new_properties
 
 
@@ -828,7 +828,7 @@ class SQLInterface:
 
         return writeable_batches
 
-    def _serialize_table_record_field_name(self, remote_schema, streamed_schema, field):
+    def _serialize_table_record_field_name(self, remote_schema, streamed_schema, path):
         """
         Returns the appropriate remote field (column) name for `field`.
 
@@ -838,12 +838,12 @@ class SQLInterface:
         :return: string
         """
 
-        if field in streamed_schema['schema']['properties']:
-            return self._get_mapping(remote_schema,
-                                     field,
-                                     streamed_schema['schema']['properties'][field]) \
-                   or field
-        return field
+        field = SEPARATOR.join(path)
+
+        return self._get_mapping(remote_schema,
+                                 field,
+                                 streamed_schema['schema']['properties'][path]) \
+               or field
 
     def serialize_table_record_null_value(
             self, remote_schema, streamed_schema, field, value):
@@ -888,51 +888,43 @@ class SQLInterface:
         :return: [{...}, ...]
         """
 
-        datetime_fields = [k for k, v in streamed_schema['schema']['properties'].items()
-                           if v.get('format') == 'date-time']
+        datetime_paths = [k for k, v in streamed_schema['schema']['properties'].items()
+                          if v.get('format') == 'date-time']
 
-        default_fields = {k: v.get('default') for k, v in streamed_schema['schema']['properties'].items()
-                          if v.get('default') is not None}
-
-        ## Get remote fields and streamed fields.
-        ### `remote_fields` determine which keys are allowed to be serialized into `serialized_rows`
-        ### but the `streamed_schema` might have fields which are not present in remote due to
-        ### `parse_table_record_serialize_field_name`
-        remote_fields = set(remote_schema['schema']['properties'].keys())
-        fields = remote_fields.union(set(streamed_schema['schema']['properties'].keys()))
+        default_paths = {k: v.get('default') for k, v in streamed_schema['schema']['properties'].items()
+                         if v.get('default') is not None}
 
         ## Get the default NULL value so we can assign row values when value is _not_ NULL
         NULL_DEFAULT = self.serialize_table_record_null_value(remote_schema, streamed_schema, None, None)
 
         serialized_rows = []
+
+        remote_fields = set(remote_schema['schema']['properties'].keys())
         default_row = dict([(field, NULL_DEFAULT) for field in remote_fields])
 
-        for raw_record in records:
-            record = {}
-            for field_path, data in raw_record.items():
-                record[SEPARATOR.join(field_path)] = data
+        paths = streamed_schema['schema']['properties'].keys()
+        for record in records:
 
             row = deepcopy(default_row)
 
-            for field in fields:
-
-                value = record.get(field, None)
+            for path in paths:
+                value = record.get(path, None)
 
                 ## Serialize fields which are not present but have default values set
-                if field in default_fields \
+                if path in default_paths \
                         and value is None:
-                    value = default_fields[field]
+                    value = default_paths[path]
 
                 ## Serialize datetime to compatible format
-                if field in datetime_fields \
+                if path in datetime_paths \
                         and value is not None:
-                    value = self.serialize_table_record_datetime_value(remote_schema, streamed_schema, field,
+                    value = self.serialize_table_record_datetime_value(remote_schema, streamed_schema, path,
                                                                        value)
 
                 ## Serialize NULL default value
-                value = self.serialize_table_record_null_value(remote_schema, streamed_schema, field, value)
+                value = self.serialize_table_record_null_value(remote_schema, streamed_schema, path, value)
 
-                field_name = self._serialize_table_record_field_name(remote_schema, streamed_schema, field)
+                field_name = self._serialize_table_record_field_name(remote_schema, streamed_schema, path)
 
                 if field_name in remote_fields \
                         and (not field_name in row
