@@ -5,6 +5,8 @@ from jsonschema import Draft4Validator
 from jsonschema.exceptions import SchemaError
 
 NULL = 'null'
+OBJECT = 'object'
+ARRAY = 'array'
 
 class JSONSchemaError(Exception):
     """
@@ -20,7 +22,7 @@ def get_type(schema):
     """
     type = schema.get('type', None)
     if not type:
-        return ['object']
+        return [OBJECT]
 
     if isinstance(type, str):
         return [type]
@@ -75,7 +77,7 @@ def is_object(schema):
     """
 
     return not is_ref(schema) \
-           and ('object' in get_type(schema)
+           and (OBJECT in get_type(schema)
                 or 'properties' in schema
                 or not schema)
 
@@ -88,7 +90,7 @@ def is_iterable(schema):
     """
 
     return not is_ref(schema) \
-           and 'array' in get_type(schema) \
+           and ARRAY in get_type(schema) \
            and 'items' in schema
 
 
