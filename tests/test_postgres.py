@@ -649,23 +649,29 @@ def test_loading__multi_types_columns(db_cleanup):
                                      ('every_type__b', 'boolean', 'YES'),
                                      ('every_type__s', 'timestamp with time zone', 'YES'),
                                      ('every_type__i__1', 'bigint', 'YES'),
-                                     ('every_type__n__1', 'double precision', 'YES'),
-                                     ('every_type__b__1', 'boolean', 'YES')
+                                     ('every_type__f__1', 'double precision', 'YES'),
+                                     ('every_type__b__1', 'boolean', 'YES'),
+                                     ('number_which_only_comes_as_integer', 'double precision', 'NO')
                                  })
 
             assert_columns_equal(cur,
                                  'root__every_type',
                                  {
-                                     ('_sdc_primary_key', 'text', 'NO'),
-                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_source_key__sdc_primary_key', 'text', 'NO'),
+                                     ('_sdc_level_0_id', 'bigint', 'NO'),
                                      ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_table_version', 'bigint', 'YES'),
                                      ('_sdc_value', 'bigint', 'NO'),
                                  })
 
-            cur.execute(get_count_sql('root'))
-            assert stream_count == cur.fetchone()[0]
+            cur.execute(sql.SQL('SELECT {} FROM {}').format(
+                sql.Identifier('number_which_only_comes_as_integer'),
+                sql.Identifier('root')
+            ))
+            persisted_records = cur.fetchall()
+
+            ## Assert that the column is has migrated data
+            assert stream_count == len(persisted_records)
+            assert stream_count == len([x for x in persisted_records if isinstance(x[0], float)])
 
 
 def test_loading__invalid__table_name__stream(db_cleanup):

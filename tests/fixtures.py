@@ -374,6 +374,9 @@ MULTI_TYPE = {
                     'f': {'type': 'number'},
                     'b': {'type': 'boolean'}
                 }
+            },
+            'number_which_only_comes_as_integer': {
+                'type': 'number'
             }
         }
     },
@@ -400,9 +403,18 @@ class MultiTypeStream(FakeStream):
                         'n': random.uniform(-314159265359, 314159265359),
                         'b': chance.boolean()}
 
-        return {'every_type': chance.pickone(
-            [value_null, value_integer, value_integer_as_number, value_number, value_boolean, value_date_time_string,
-             value_array, value_object])}
+        return {
+            'every_type': chance.pickone(
+                [value_null,
+                 value_integer,
+                 value_integer_as_number,
+                 value_number,
+                 value_boolean,
+                 value_date_time_string,
+                 value_array,
+                 value_object]),
+            'number_which_only_comes_as_integer': value_integer
+        }
 
 
 def clear_db():

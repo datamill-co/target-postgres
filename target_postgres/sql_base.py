@@ -891,7 +891,7 @@ class SQLInterface:
 
         ## Integers and Numbers can validate for each other in JSON Schema
         ##  ie, 123.0 is a valid 'integer' and 456 is a valid 'number'
-        if json_schema_type == json_schema.NUMBER:
+        if json_schema.NUMBER in json_schema_type:
             mapping = self._get_mapping(remote_schema,
                                         path,
                                         {'type': json_schema.INTEGER})
@@ -899,7 +899,7 @@ class SQLInterface:
             if not mapping is None:
                 return mapping
 
-        if json_schema_type == json_schema.INTEGER:
+        if json_schema.INTEGER in json_schema_type:
             mapping = self._get_mapping(remote_schema,
                                         path,
                                         {'type': json_schema.NUMBER})
