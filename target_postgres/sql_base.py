@@ -207,7 +207,7 @@ def _denest_subrecord(table_path,
             """
             None | <literal>
             """
-            parent_record[SEPARATOR.join(prop_path + (prop,))] = value
+            parent_record[prop_path + (prop,)] = value
 
 
 def _denest_record(table_path, record, records_map, key_properties, pk_fks, level):
@@ -252,7 +252,7 @@ def _denest_record(table_path, record, records_map, key_properties, pk_fks, leve
             """
             <literal>
             """
-            denested_record[prop] = value
+            denested_record[(prop,)] = value
 
     if table_path not in records_map:
         records_map[table_path] = []
@@ -907,10 +907,15 @@ class SQLInterface:
         serialized_rows = []
         default_row = dict([(field, NULL_DEFAULT) for field in remote_fields])
 
-        for record in records:
+        for raw_record in records:
+            record = {}
+            for field_path, data in raw_record.items():
+                record[SEPARATOR.join(field_path)] = data
+
             row = deepcopy(default_row)
 
             for field in fields:
+
                 value = record.get(field, None)
 
                 ## Serialize fields which are not present but have default values set
