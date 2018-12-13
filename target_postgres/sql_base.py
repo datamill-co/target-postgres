@@ -107,9 +107,7 @@ def _denest_schema_helper(table_path,
             if not not_null and not json_schema.is_nullable(item_json_schema):
                 item_json_schema['type'].append('null')
 
-            column_name = SEPARATOR.join(table_path + (prop,))
-
-            top_level_schema[column_name] = item_json_schema
+            top_level_schema[table_path + (prop,)] = item_json_schema
 
 
 def _create_subtable(table_path, table_json_schema, key_prop_schemas, subtables, level):
@@ -600,7 +598,11 @@ class SQLInterface:
 
         ## Only process columns which have single, nullable, types
         single_type_columns = []
-        for raw_column_name, column_schema in new_columns.items():
+        for raw_column_name__or__path, column_schema in new_columns.items():
+            raw_column_name = raw_column_name__or__path
+            if isinstance(raw_column_name__or__path, tuple):
+                raw_column_name = SEPARATOR.join(raw_column_name__or__path)
+
             single_type_column_schema = deepcopy(column_schema)
             column_types = json_schema.get_type(single_type_column_schema)
             make_nullable = json_schema.is_nullable(column_schema)
