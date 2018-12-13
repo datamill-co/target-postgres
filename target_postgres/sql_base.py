@@ -83,7 +83,7 @@ def _add_singer_columns(schema, key_properties):
 
 def _denest_schema_helper(table_path,
                           table_json_schema,
-                          not_null,
+                          nullable,
                           top_level_schema,
                           key_prop_schemas,
                           subtables,
@@ -92,7 +92,7 @@ def _denest_schema_helper(table_path,
         if json_schema.is_object(item_json_schema):
             _denest_schema_helper(table_path + (prop,),
                                   item_json_schema,
-                                  not_null,
+                                  nullable,
                                   top_level_schema,
                                   key_prop_schemas,
                                   subtables,
@@ -104,7 +104,7 @@ def _denest_schema_helper(table_path,
                              subtables,
                              level + 1)
         else:
-            if not not_null and not json_schema.is_nullable(item_json_schema):
+            if nullable and not json_schema.is_nullable(item_json_schema):
                 item_json_schema['type'].append('null')
 
             top_level_schema[table_path + (prop,)] = item_json_schema
@@ -145,10 +145,9 @@ def _denest_schema(table_path, table_json_schema, key_prop_schemas, subtables, l
     for prop, item_json_schema in table_json_schema['properties'].items():
 
         if json_schema.is_object(item_json_schema):
-            not_null = 'null' not in item_json_schema['type']
             _denest_schema_helper(table_path + (prop,),
                                   item_json_schema,
-                                  not_null,
+                                  json_schema.is_nullable(item_json_schema),
                                   new_properties,
                                   key_prop_schemas,
                                   subtables,
