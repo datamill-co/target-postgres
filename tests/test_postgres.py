@@ -7,7 +7,7 @@ from psycopg2 import sql
 import psycopg2.extras
 import pytest
 
-from fixtures import CatStream, CONFIG, db_cleanup, InvalidCatStream, NestedStream, TEST_DB
+from fixtures import CatStream, CONFIG, db_cleanup, InvalidCatStream, MultiTypeStream, NestedStream, TEST_DB
 from target_postgres import json_schema
 from target_postgres import postgres
 from target_postgres import singer_stream
@@ -628,6 +628,44 @@ def test_loading__column_type_change__nullable(db_cleanup):
             assert 3 * cat_count == len(persisted_records)
             assert 2 * cat_count == len([x for x in persisted_records if x[0] is not None])
             assert cat_count == len([x for x in persisted_records if x[0] is None])
+
+
+def test_loading__multi_types_columns(db_cleanup):
+    stream_count = 50
+    main(CONFIG, input_stream=MultiTypeStream(stream_count))
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_columns_equal(cur,
+                                 'root',
+                                 {
+                                     ('_sdc_primary_key', 'text', 'NO'),
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('every_type__i', 'bigint', 'YES'),
+                                     ('every_type__n', 'double precision', 'YES'),
+                                     ('every_type__b', 'boolean', 'YES'),
+                                     ('every_type__d', 'timestamp with time zone', 'YES'),
+                                     ('every_type__a', 'bigint', 'YES'),
+                                     ('every_type__b', 'double precision', 'YES'),
+                                     ('every_type__c', 'boolean', 'YES')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'root__every_type',
+                                 {
+                                     ('_sdc_primary_key', 'text', 'NO'),
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('_sdc_value', 'bigint', 'NO'),
+                                 })
+
+            cur.execute(get_count_sql('root'))
+            assert stream_count == cur.fetchone()[0]
 
 
 def test_loading__invalid__table_name__stream(db_cleanup):

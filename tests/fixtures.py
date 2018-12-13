@@ -356,6 +356,52 @@ class NestedStream(FakeStream):
         }
 
 
+MULTI_TYPE = {
+    'type': 'SCHEMA',
+    'stream': 'root',
+    'schema': {
+        'additionalProperties': False,
+        'properties': {
+            'every_type': {
+                'type': ['null', 'integer', 'number', 'boolean', 'string', 'array', 'object'],
+                'items': {'type': 'integer'},
+                'format': 'date-time',
+                'properties': {
+                    'a': {'type': 'integer'},
+                    'b': {'type': 'number'},
+                    'c': {'type': 'boolean'}
+                }
+            }
+        }
+    },
+    'key_properties': []
+}
+
+
+class MultiTypeStream(FakeStream):
+    stream = 'root'
+    schema = MULTI_TYPE
+
+    def generate_record(self):
+        value_null = None
+        value_integer = random.randint(-314159265359, 314159265359)
+        value_integer_as_number = float(random.randint(-314159265359, 314159265359))
+        value_number = random.uniform(-314159265359, 314159265359)
+        value_boolean = chance.boolean()
+        value_date_time_string = chance.date(minyear=2012).isoformat()
+        value_array = []
+        for i in range(random.randint(0, 1000)):
+            value_array.append(random.randint(-314, 314))
+
+        value_object = {'a': random.randint(-314159265359, 314159265359),
+                        'b': random.uniform(-314159265359, 314159265359),
+                        'c': chance.boolean()}
+
+        return {'every_type': chance.pickone(
+            [value_null, value_integer, value_integer_as_number, value_number, value_boolean, value_date_time_string,
+             value_array, value_object])}
+
+
 def clear_db():
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
