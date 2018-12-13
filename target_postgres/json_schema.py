@@ -102,6 +102,17 @@ def is_nullable(schema):
     return NULL in get_type(schema)
 
 
+def is_literal(schema):
+    """
+    Given a JSON Schema compatible dict, returns True when schema's type allows being a literal
+    (ie, 'integer', 'number', etc.)
+    :param schema: dict, JSON Schema
+    :return: Boolean
+    """
+
+    return not {'string', 'integer', 'number', 'boolean'}.isdisjoint(set(get_type(schema)))
+
+
 def make_nullable(schema):
     """
     Given a JSON Schema dict, returns the dict but makes the `type` `null`able.
