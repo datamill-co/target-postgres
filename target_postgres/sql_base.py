@@ -81,6 +81,21 @@ def _add_singer_columns(schema, key_properties):
         }
 
 
+def _literal_only_schema(schema):
+    ret = deepcopy(schema)
+
+    ret_type = json_schema.get_type(ret)
+
+    if json_schema.is_object(ret):
+        ret_type.remove(json_schema.OBJECT)
+    if json_schema.is_iterable(ret):
+        ret_type.remove(json_schema.ARRAY)
+
+    ret['type'] = ret_type
+
+    return ret
+
+
 def _denest_schema_helper(table_path,
                           table_json_schema,
                           nullable,
@@ -109,7 +124,7 @@ def _denest_schema_helper(table_path,
             if nullable and not json_schema.is_nullable(item_json_schema):
                 item_json_schema['type'].append('null')
 
-            top_level_schema[table_path + (prop,)] = item_json_schema
+            top_level_schema[table_path + (prop,)] = _literal_only_schema(item_json_schema)
 
 
 def _create_subtable(table_path, table_json_schema, key_prop_schemas, subtables, level):
@@ -132,7 +147,7 @@ def _create_subtable(table_path, table_json_schema, key_prop_schemas, subtables,
             'type': ['integer']
         }
 
-    new_schema = {'type': ['object'],
+    new_schema = {'type': [json_schema.OBJECT],
                   'properties': new_properties,
                   'level': level,
                   'key_properties': key_properties}
@@ -163,7 +178,7 @@ def _denest_schema(table_path, table_json_schema, key_prop_schemas, subtables, l
                              level + 1)
 
         if json_schema.is_literal(item_json_schema):
-            new_properties[(prop,)] = item_json_schema
+            new_properties[(prop,)] = _literal_only_schema(item_json_schema)
 
     table_json_schema['properties'] = new_properties
 
@@ -172,8 +187,10 @@ _PYTHON_TYPE_TO_JSON_SCHEMA = {
     int: json_schema.INTEGER,
     float: json_schema.NUMBER,
     bool: json_schema.BOOLEAN,
-    str: json_schema.STRING
+    str: json_schema.STRING,
+    None: None
 }
+
 
 def _json_schema_type(x):
     return _PYTHON_TYPE_TO_JSON_SCHEMA[type(x)]
@@ -208,6 +225,7 @@ def _denest_subrecord(table_path,
                               key_properties,
                               pk_fks,
                               level)
+
         elif isinstance(value, list):
             """
             [...]
@@ -218,6 +236,7 @@ def _denest_subrecord(table_path,
                             key_properties,
                             pk_fks=pk_fks,
                             level=level + 1)
+
         elif value is None:
             """
             None
@@ -254,6 +273,7 @@ def _denest_record(table_path, record, records_map, key_properties, pk_fks, leve
                               key_properties,
                               pk_fks,
                               level)
+
         elif isinstance(value, list):
             """
             [...]
@@ -264,7 +284,8 @@ def _denest_record(table_path, record, records_map, key_properties, pk_fks, leve
                             key_properties,
                             pk_fks=pk_fks,
                             level=level + 1)
-        elif value is None:  ## nulls mess up nested objects
+
+        elif value is None:
             """
             None
             """
@@ -630,7 +651,7 @@ class SQLInterface:
             make_nullable = json_schema.is_nullable(column_schema)
 
             for type in column_types:
-                if type in {json_schema.NULL, json_schema.OBJECT, json_schema.ARRAY}:
+                if type == json_schema.NULL:
                     continue
 
                 single_type_column_schema['type'] = [type]
@@ -850,22 +871,46 @@ class SQLInterface:
 
         return writeable_batches
 
-    def _serialize_table_record_field_name(self, remote_schema, streamed_schema, path):
+    def _serialize_table_record_field_name(self, remote_schema, streamed_schema, path, json_schema_type):
         """
         Returns the appropriate remote field (column) name for `field`.
 
         :param remote_schema: TABLE_SCHEMA(remote)
         :param streamed_schema: TABLE_SCHEMA(local)
-        :param field: string
+        :param path: (string, ...)
+        :value_json_schema_type: string
         :return: string
         """
 
+        json_schema_type = json_schema_type or json_schema.get_type(streamed_schema['schema']['properties'][path])
         field = SEPARATOR.join(path)
 
-        return self._get_mapping(remote_schema,
-                                 field,
-                                 streamed_schema['schema']['properties'][path]) \
-               or field
+        mapping = self._get_mapping(remote_schema,
+                                        field,
+                                        {'type': json_schema_type})
+
+        if not mapping is None:
+            return mapping
+
+        ## Integers and Numbers can validate for each other in JSON Schema
+        ##  ie, 123.0 is a valid 'integer' and 456 is a valid 'number'
+        if json_schema_type == json_schema.NUMBER:
+            mapping = self._get_mapping(remote_schema,
+                                        field,
+                                        {'type': json_schema.INTEGER})
+
+            if not mapping is None:
+                return mapping
+
+        if json_schema_type == json_schema.INTEGER:
+            mapping = self._get_mapping(remote_schema,
+                                        field,
+                                        {'type': json_schema.NUMBER})
+
+            if not mapping is None:
+                return mapping
+
+        return field
 
     def serialize_table_record_null_value(
             self, remote_schema, streamed_schema, field, value):
@@ -936,9 +981,11 @@ class SQLInterface:
                 if path in default_paths \
                         and value is None:
                     value = default_paths[path]
+                    json_schema_type = _json_schema_type(value)
 
                 ## Serialize datetime to compatible format
                 if path in datetime_paths \
+                        and json_schema_type == json_schema.STRING \
                         and value is not None:
                     value = self.serialize_table_record_datetime_value(remote_schema, streamed_schema, path,
                                                                        value)
@@ -946,7 +993,8 @@ class SQLInterface:
                 ## Serialize NULL default value
                 value = self.serialize_table_record_null_value(remote_schema, streamed_schema, path, value)
 
-                field_name = self._serialize_table_record_field_name(remote_schema, streamed_schema, path)
+                field_name = self._serialize_table_record_field_name(remote_schema, streamed_schema, path,
+                                                                     json_schema_type)
 
                 if field_name in remote_fields \
                         and (not field_name in row
