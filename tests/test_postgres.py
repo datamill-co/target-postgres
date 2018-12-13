@@ -645,9 +645,9 @@ def test_loading__multi_types_columns(db_cleanup):
                                      ('_sdc_sequence', 'bigint', 'YES'),
                                      ('_sdc_table_version', 'bigint', 'YES'),
                                      ('every_type__i', 'bigint', 'YES'),
-                                     ('every_type__n', 'double precision', 'YES'),
+                                     ('every_type__f', 'double precision', 'YES'),
                                      ('every_type__b', 'boolean', 'YES'),
-                                     ('every_type__d', 'timestamp with time zone', 'YES'),
+                                     ('every_type__s', 'timestamp with time zone', 'YES'),
                                      ('every_type__i__1', 'bigint', 'YES'),
                                      ('every_type__n__1', 'double precision', 'YES'),
                                      ('every_type__b__1', 'boolean', 'YES')

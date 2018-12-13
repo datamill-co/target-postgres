@@ -534,7 +534,7 @@ class PostgresTarget(SQLInterface):
 
         return comment_meta
 
-    def add_column_mapping(self, cur, table_name, column_name, mapped_name, mapped_schema):
+    def add_column_mapping(self, cur, table_name, from_path, to_name, mapped_schema):
         metadata = self._get_table_metadata(cur, table_name)
 
         if not metadata:
@@ -543,8 +543,8 @@ class PostgresTarget(SQLInterface):
         if not 'mappings' in metadata:
             metadata['mappings'] = {}
 
-        metadata['mappings'][mapped_name] = {'type': json_schema.get_type(mapped_schema),
-                                             'from': column_name}
+        metadata['mappings'][to_name] = {'type': json_schema.get_type(mapped_schema),
+                                         'from': from_path}
 
         self._set_table_metadata(cur, table_name, metadata)
 

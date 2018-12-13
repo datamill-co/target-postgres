@@ -371,7 +371,7 @@ MULTI_TYPE = {
                     ##  name collision functionality. ie, the denested values will not only
                     ##  conflict in terms of their denested _names_ but also, their types
                     'i': {'type': 'integer'},
-                    'n': {'type': 'number'},
+                    'f': {'type': 'number'},
                     'b': {'type': 'boolean'}
                 }
             }
