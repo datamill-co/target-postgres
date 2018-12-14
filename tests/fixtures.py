@@ -58,22 +58,22 @@ CATS_SCHEMA = {
                 'type': ['object', 'null'],
                 'properties': {
                     'adopted_on': {
-                        'type': ['null','string'],
+                        'type': ['null', 'string'],
                         'format': 'date-time'
                     },
                     'was_foster': {
                         'type': 'boolean'
                     },
                     'immunizations': {
-                        'type': ['null','array'],
+                        'type': ['null', 'array'],
                         'items': {
                             'type': ['object'],
                             'properties': {
                                 'type': {
-                                    'type': ['null','string']
+                                    'type': ['null', 'string']
                                 },
                                 'date_administered': {
-                                    'type': ['null','string'],
+                                    'type': ['null', 'string'],
                                     'format': 'date-time'
                                 }
                             }
@@ -85,6 +85,7 @@ CATS_SCHEMA = {
     },
     'key_properties': ['id']
 }
+
 
 class FakeStream(object):
     def __init__(self,
@@ -115,9 +116,9 @@ class FakeStream(object):
 
     def duplicate(self, force=False):
         if self.duplicates > 0 and \
-           len(self.records) > 0 and \
-           self.duplicates_written < self.duplicates and \
-           (force or chance.boolean(likelihood=30)):
+                len(self.records) > 0 and \
+                self.duplicates_written < self.duplicates and \
+                (force or chance.boolean(likelihood=30)):
             self.duplicates_written += 1
             random_index = random.randint(0, len(self.records) - 1)
             record = self.records[random_index]
@@ -176,6 +177,7 @@ class FakeStream(object):
             return json.dumps(self.activate_version())
         raise StopIteration
 
+
 class CatStream(FakeStream):
     stream = 'cats'
     schema = CATS_SCHEMA
@@ -203,6 +205,7 @@ class CatStream(FakeStream):
             'adoption': adoption
         }
 
+
 class InvalidCatStream(CatStream):
     def generate_record(self):
         record = CatStream.generate_record(self)
@@ -217,9 +220,140 @@ class InvalidCatStream(CatStream):
                 'date_administered': ['clearly', 'not', 'a', 'date']
             }
         else:
-            record['name'] = 22/7
+            record['name'] = 22 / 7
 
         return record
+
+
+NESTED_STREAM = {
+    'type': 'SCHEMA',
+    'stream': 'root',
+    'schema': {
+        'additionalProperties': False,
+        'properties': {
+            'id': {
+                'type': 'integer'
+            },
+            ## TODO: Complex types defaulted
+            # 'array_scalar_defaulted': {
+            #     'type': 'array',
+            #     'items': {'type': 'integer'},
+            #     'default': list(range(10))
+            # },
+            'array_scalar': {
+                'type': 'array',
+                'items': {'type': 'integer'}
+            },
+            'array_of_array': {
+                'type': 'array',
+                'items': {
+                    'type': 'array',
+                    'items': {
+                        'type': 'array',
+                        'items': {'type': 'integer'}
+                    }
+                }
+            },
+            ## TODO: Complex types defaulted
+            # 'object_defaulted': {
+            #     'type': 'object',
+            #     'properties': {
+            #         'a': {
+            #             'type': 'integer'
+            #         },
+            #         'b': {
+            #             'type': 'integer'
+            #         },
+            #         'c': {
+            #             'type': 'integer'
+            #         }
+            #     },
+            #     'default': {'a': 123, 'b': 456, 'c': 789}
+            # },
+            'object_of_object_0': {
+                'type': 'object',
+                'properties': {
+                    'object_of_object_1': {
+                        'type': 'object',
+                        'properties': {
+                            'object_of_object_2': {
+                                'type': 'object',
+                                'properties': {
+                                    'array_scalar': {
+                                        'type': 'array',
+                                        'items': {
+                                            'type': 'boolean'
+                                        }
+                                    },
+                                    'a': {
+                                        'type': 'integer'
+                                    },
+                                    'b': {
+                                        'type': 'integer'
+                                    },
+                                    'c': {
+                                        'type': 'integer'
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            'null': {
+                'type': ['null', 'integer']
+            },
+            'nested_null': {
+                'type': 'object',
+                'properties': {
+                    'null': {
+                        'type': ['null', 'integer']
+                    }
+                }
+            }
+        }
+    },
+    'key_properties': ['id']
+}
+
+
+class NestedStream(FakeStream):
+    stream = 'root'
+    schema = NESTED_STREAM
+
+    def generate_record(self):
+        null = None
+        ## We use this trick so that we _always_ know we'll have both null and non-null values
+        ##  vs using something like chance here.
+        if self.id % 2 == 0:
+            null = 31415
+
+        return {
+            'id': self.id,
+            'array_scalar': list(range(5)),
+            'array_of_array': [[[1, 2, 3],
+                                [4, 5, 6, 7, 8],
+                                [9, 10],
+                                []],
+                               [[10],
+                                [20, 30],
+                                [40, 50, 60],
+                                [70, 80, 90, 100]]],
+            'object_of_object_0': {
+                'object_of_object_1': {
+                    'object_of_object_2': {
+                        'array_scalar': [True, False, True, False, False],
+                        'a': self.id,
+                        'b': self.id,
+                        'c': self.id
+                    }
+                }
+            },
+            'null': null,
+            'nested_null': {
+                'null': null
+            }
+        }
 
 
 def clear_db():
@@ -232,6 +366,7 @@ def clear_db():
             cur.execute('begin;' +
                         drop_command +
                         'commit;')
+
 
 @pytest.fixture
 def db_cleanup():

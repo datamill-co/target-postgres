@@ -16,13 +16,14 @@ from copy import deepcopy
 
 from target_postgres import json_schema
 from target_postgres.singer_stream import (
-    SINGER_RECEIVED_AT,
     SINGER_BATCHED_AT,
-    SINGER_SEQUENCE,
-    SINGER_TABLE_VERSION,
+    SINGER_LEVEL,
     SINGER_PK,
+    SINGER_RECEIVED_AT,
+    SINGER_SEQUENCE,
     SINGER_SOURCE_PK_PREFIX,
-    SINGER_LEVEL
+    SINGER_TABLE_VERSION,
+    SINGER_VALUE
 )
 
 SEPARATOR = '__'
@@ -103,9 +104,7 @@ def _denest_schema_helper(table_path,
                              subtables,
                              level + 1)
         else:
-            if not_null and json_schema.is_nullable(item_json_schema):
-                item_json_schema['type'].remove('null')
-            elif not json_schema.is_nullable(item_json_schema):
+            if not not_null and not json_schema.is_nullable(item_json_schema):
                 item_json_schema['type'].append('null')
 
             column_name = SEPARATOR.join(table_path + (prop,))
@@ -117,7 +116,7 @@ def _create_subtable(table_path, table_json_schema, key_prop_schemas, subtables,
     if json_schema.is_object(table_json_schema['items']):
         new_properties = table_json_schema['items']['properties']
     else:
-        new_properties = {'value': table_json_schema['items']}
+        new_properties = {SINGER_VALUE: table_json_schema['items']}
 
     key_properties = []
     for pk, item_json_schema in key_prop_schemas.items():
@@ -168,7 +167,7 @@ def _denest_schema(table_path, table_json_schema, key_prop_schemas, subtables, l
 
 
 def _denest_subrecord(table_path,
-                      current_path,
+                      prop_path,
                       parent_record,
                       record,
                       records_map,
@@ -183,18 +182,24 @@ def _denest_subrecord(table_path,
         """
         str : {...} | [...] | ???None??? | <literal>
         """
-        next_path = current_path + SEPARATOR + prop
+
         if isinstance(value, dict):
             """
             {...}
             """
-            # TODO: Throws exception due to wrong number of args.
-            _denest_subrecord(table_path, next_path, parent_record, value, pk_fks, level)
+            _denest_subrecord(table_path,
+                              prop_path + (prop,),
+                              parent_record,
+                              value,
+                              records_map,
+                              key_properties,
+                              pk_fks,
+                              level)
         elif isinstance(value, list):
             """
             [...]
             """
-            _denest_records(table_path + (prop,),
+            _denest_records(prop_path + (prop,),
                             value,
                             records_map,
                             key_properties,
@@ -204,7 +209,7 @@ def _denest_subrecord(table_path,
             """
             None | <literal>
             """
-            parent_record[SEPARATOR.join(table_path + (prop,))] = value
+            parent_record[SEPARATOR.join(prop_path + (prop,))] = value
 
 
 def _denest_record(table_path, record, records_map, key_properties, pk_fks, level):
@@ -223,7 +228,7 @@ def _denest_record(table_path, record, records_map, key_properties, pk_fks, leve
             {...}
             """
             _denest_subrecord(table_path + (prop,),
-                              prop,
+                              (prop,),
                               denested_record,
                               value,
                               records_map,
@@ -259,12 +264,19 @@ def _denest_record(table_path, record, records_map, key_properties, pk_fks, leve
 def _denest_records(table_path, records, records_map, key_properties, pk_fks=None, level=-1):
     row_index = 0
     """
-    [{...} ...]
+    [{...} ...] | [[...] ...] | [literal ...]
     """
     for record in records:
         if pk_fks:
             record_pk_fks = pk_fks.copy()
             record_pk_fks[SINGER_LEVEL.format(level)] = row_index
+
+            if not isinstance(record, dict):
+                """
+                [...] | literal
+                """
+                record = {SINGER_VALUE: record}
+
             for key, value in record_pk_fks.items():
                 record[key] = value
             row_index += 1
