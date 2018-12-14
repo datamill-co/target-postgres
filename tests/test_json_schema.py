@@ -12,6 +12,42 @@ def test_is_object():
     assert json_schema.is_object({})
 
 
+def test_is_iterable():
+    assert json_schema.is_iterable({'type': 'array', 'items': {'type': 'integer'}})
+    assert json_schema.is_iterable({'type': ['array'], 'items': {'type': ['boolean']}})
+
+
+def test_is_nullable():
+    assert json_schema.is_iterable({'type': ['array', 'null'], 'items': {'type': ['boolean']}})
+    assert not json_schema.is_iterable({'type': ['string']})
+    assert not json_schema.is_nullable({})
+
+
+def test_is_literal():
+    assert json_schema.is_literal({'type': ['integer', 'null']})
+    assert json_schema.is_literal({'type': ['string']})
+    assert not json_schema.is_literal({'type': ['array'], 'items': {'type': ['boolean']}})
+    assert not json_schema.is_literal({})
+
+
+def test_complex_objects__logical_statements():
+    every_type = {
+        'type': ['null', 'integer', 'number', 'boolean', 'string', 'array', 'object'],
+        'items': {'type': 'integer'},
+        'format': 'date-time',
+        'properties': {
+            'a': {'type': 'integer'},
+            'b': {'type': 'number'},
+            'c': {'type': 'boolean'}
+        }
+    }
+
+    assert json_schema.is_iterable(every_type)
+    assert json_schema.is_nullable(every_type)
+    assert json_schema.is_iterable(every_type)
+    assert json_schema.is_object(every_type)
+
+
 def test_simplify__empty_becomes_object():
     assert json_schema.simplify({}) == {'properties': {}, 'type': ['object']}
 
@@ -34,6 +70,37 @@ def test_simplify__types_into_arrays():
 
 
 def test_simplify__complex():
+    assert \
+        json_schema.simplify({
+            'properties': {
+                'every_type': {
+                    'type': ['null', 'integer', 'number', 'boolean', 'string', 'array', 'object'],
+                    'items': {'type': 'integer'},
+                    'format': 'date-time',
+                    'properties': {
+                        'i': {'type': 'integer'},
+                        'n': {'type': 'number'},
+                        'b': {'type': 'boolean'}
+                    }
+                }
+            }
+        }) \
+        == {
+            'type': ['object'],
+            'properties': {
+                'every_type': {
+                    'type': ['null', 'integer', 'number', 'boolean', 'string', 'array', 'object'],
+                    'items': {'type': ['integer']},
+                    'format': 'date-time',
+                    'properties': {
+                        'i': {'type': ['integer']},
+                        'n': {'type': ['number']},
+                        'b': {'type': ['boolean']}
+                    }
+                }
+            }
+        }
+
     assert \
         json_schema.simplify({
             'type': ['null', 'array'],

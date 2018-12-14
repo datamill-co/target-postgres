@@ -31,9 +31,9 @@ SEPARATOR = '__'
 
 def to_table_schema(path, level, keys, properties):
     for key in keys:
-        if not key in properties:
-            raise Exception('Unknown key "{}" found for table "{}"'.format(
-                key, path
+        if not (key,) in properties:
+            raise Exception('Unknown key "{}" found for table "{}". Known fields are: {}'.format(
+                key, path, properties
             ))
 
     return {'type': 'TABLE_SCHEMA',
@@ -81,9 +81,24 @@ def _add_singer_columns(schema, key_properties):
         }
 
 
+def _literal_only_schema(schema):
+    ret = deepcopy(schema)
+
+    ret_type = json_schema.get_type(ret)
+
+    if json_schema.is_object(ret):
+        ret_type.remove(json_schema.OBJECT)
+    if json_schema.is_iterable(ret):
+        ret_type.remove(json_schema.ARRAY)
+
+    ret['type'] = ret_type
+
+    return ret
+
+
 def _denest_schema_helper(table_path,
                           table_json_schema,
-                          not_null,
+                          nullable,
                           top_level_schema,
                           key_prop_schemas,
                           subtables,
@@ -92,24 +107,24 @@ def _denest_schema_helper(table_path,
         if json_schema.is_object(item_json_schema):
             _denest_schema_helper(table_path + (prop,),
                                   item_json_schema,
-                                  not_null,
+                                  nullable,
                                   top_level_schema,
                                   key_prop_schemas,
                                   subtables,
                                   level)
-        elif json_schema.is_iterable(item_json_schema):
+
+        if json_schema.is_iterable(item_json_schema):
             _create_subtable(table_path + (prop,),
                              item_json_schema,
                              key_prop_schemas,
                              subtables,
                              level + 1)
-        else:
-            if not not_null and not json_schema.is_nullable(item_json_schema):
+
+        if json_schema.is_literal(item_json_schema):
+            if nullable and not json_schema.is_nullable(item_json_schema):
                 item_json_schema['type'].append('null')
 
-            column_name = SEPARATOR.join(table_path + (prop,))
-
-            top_level_schema[column_name] = item_json_schema
+            top_level_schema[table_path + (prop,)] = _literal_only_schema(item_json_schema)
 
 
 def _create_subtable(table_path, table_json_schema, key_prop_schemas, subtables, level):
@@ -132,7 +147,7 @@ def _create_subtable(table_path, table_json_schema, key_prop_schemas, subtables,
             'type': ['integer']
         }
 
-    new_schema = {'type': ['object'],
+    new_schema = {'type': [json_schema.OBJECT],
                   'properties': new_properties,
                   'level': level,
                   'key_properties': key_properties}
@@ -147,23 +162,38 @@ def _denest_schema(table_path, table_json_schema, key_prop_schemas, subtables, l
     for prop, item_json_schema in table_json_schema['properties'].items():
 
         if json_schema.is_object(item_json_schema):
-            not_null = 'null' not in item_json_schema['type']
             _denest_schema_helper(table_path + (prop,),
                                   item_json_schema,
-                                  not_null,
+                                  json_schema.is_nullable(item_json_schema),
                                   new_properties,
                                   key_prop_schemas,
                                   subtables,
                                   level)
-        elif json_schema.is_iterable(item_json_schema):
+
+        if json_schema.is_iterable(item_json_schema):
             _create_subtable(table_path + (prop,),
                              item_json_schema,
                              key_prop_schemas,
                              subtables,
                              level + 1)
-        else:
-            new_properties[prop] = item_json_schema
+
+        if json_schema.is_literal(item_json_schema):
+            new_properties[(prop,)] = _literal_only_schema(item_json_schema)
+
     table_json_schema['properties'] = new_properties
+
+
+_PYTHON_TYPE_TO_JSON_SCHEMA = {
+    int: json_schema.INTEGER,
+    float: json_schema.NUMBER,
+    bool: json_schema.BOOLEAN,
+    str: json_schema.STRING,
+    None: None
+}
+
+
+def _json_schema_type(x):
+    return _PYTHON_TYPE_TO_JSON_SCHEMA[type(x)]
 
 
 def _denest_subrecord(table_path,
@@ -195,6 +225,7 @@ def _denest_subrecord(table_path,
                               key_properties,
                               pk_fks,
                               level)
+
         elif isinstance(value, list):
             """
             [...]
@@ -205,11 +236,18 @@ def _denest_subrecord(table_path,
                             key_properties,
                             pk_fks=pk_fks,
                             level=level + 1)
+
+        elif value is None:
+            """
+            None
+            """
+            continue
+
         else:
             """
-            None | <literal>
+            <literal>
             """
-            parent_record[SEPARATOR.join(prop_path + (prop,))] = value
+            parent_record[prop_path + (prop,)] = (_json_schema_type(value), value)
 
 
 def _denest_record(table_path, record, records_map, key_properties, pk_fks, level):
@@ -235,6 +273,7 @@ def _denest_record(table_path, record, records_map, key_properties, pk_fks, leve
                               key_properties,
                               pk_fks,
                               level)
+
         elif isinstance(value, list):
             """
             [...]
@@ -245,16 +284,18 @@ def _denest_record(table_path, record, records_map, key_properties, pk_fks, leve
                             key_properties,
                             pk_fks=pk_fks,
                             level=level + 1)
-        elif value is None:  ## nulls mess up nested objects
+
+        elif value is None:
             """
             None
             """
             continue
+
         else:
             """
             <literal>
             """
-            denested_record[prop] = value
+            denested_record[(prop,)] = (_json_schema_type(value), value)
 
     if table_path not in records_map:
         records_map[table_path] = []
@@ -368,32 +409,39 @@ class SQLInterface:
         """
         raise NotImplementedError('`canonicalize_identifier` not implemented.')
 
-    def _canonicalize_identifier(self, name, schema, existing_columns_raw_names, existing_columns):
+    def _canonicalize_column_identifier(self, path, schema, mappings):
         """"""
-        raw_canonicalized_column_name = self.canonicalize_identifier(name)
+
+        from_type__to_name = {}
+        existing_paths = set()
+        existing_column_names = set()
+
+        for m in mappings:
+            from_type__to_name[(m['from'], json_schema.sql_shorthand(m))] = m['to']
+            existing_paths.add(m['from'])
+            existing_column_names.add(m['to'])
+
+        ## MAPPING EXISTS, NO CANONICALIZATION NECESSARY
+        if (path, json_schema.sql_shorthand(schema)) in from_type__to_name:
+            return from_type__to_name[(path, json_schema.sql_shorthand(schema))]
+
+        raw_canonicalized_column_name = self.canonicalize_identifier(SEPARATOR.join(path))
         canonicalized_column_name = raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH]
-        canonicalized_typed_column_name = _mapping_name(
-            raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH - 3], schema)
 
-        ## NAME IS ALREADY CANONICALIZED
-        if name == raw_canonicalized_column_name \
-                and raw_canonicalized_column_name == canonicalized_column_name:
-            return canonicalized_column_name, canonicalized_typed_column_name
-
-        ## COLUMN WILL BE SPLIT
-        if name in existing_columns_raw_names:
-            return canonicalized_column_name, canonicalized_typed_column_name
+        raw_suffix = ''
+        ## NO TYPE MATCH
+        if path in existing_paths:
+            raw_suffix = SEPARATOR + json_schema.sql_shorthand(schema)
+            canonicalized_column_name = raw_canonicalized_column_name[
+                                        :self.IDENTIFIER_FIELD_LENGTH - len(raw_suffix)] + raw_suffix
 
         i = 0
         ## NAME COLLISION
-        while (canonicalized_column_name in existing_columns
-               or canonicalized_typed_column_name in existing_columns):
+        while canonicalized_column_name in existing_column_names:
             i += 1
-            suffix = SEPARATOR + str(i)
+            suffix = raw_suffix + SEPARATOR + str(i)
             canonicalized_column_name = raw_canonicalized_column_name[
                                         :self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix
-            canonicalized_typed_column_name = _mapping_name(
-                raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH - 3 - len(suffix)], schema) + suffix
 
             # TODO: logger warn
             ##raise Exception(
@@ -404,7 +452,7 @@ class SQLInterface:
             ##        table_name
             ##    ))
 
-        return canonicalized_column_name, canonicalized_typed_column_name
+        return canonicalized_column_name
 
     def add_table(self, connection, schema, metadata):
         """
@@ -522,22 +570,22 @@ class SQLInterface:
         """
         raise NotImplementedError('`make_column_nullable` not implemented.')
 
-    def add_column_mapping(self, connection, table_name, name, mapped_name, schema):
+    def add_column_mapping(self, connection, table_name, from_path, to_name, schema):
         """
-        Given column `name` add a column mapping to `mapped_name` for `schema`. A column mapping is an entry
+        Given column path `from_path` add a column mapping to `to_name` for `schema`. A column mapping is an entry
         in the TABLE_SCHEMA which reads:
 
         {...
-         'mappings': {...
-           `mapped_name`: {'type': `json_schema.get_type(schema)`,
-                           'from': `name`}
-         }
+         'mappings': [...
+           `to_name`: {'type': `json_schema.get_type(schema)`,
+                       'from': `path`}
+         ]
          ...}
 
         :param connection: remote connection, type left to be determined by implementing class
         :param table_name: string
-        :param name: string
-        :param mapped_name: string
+        :param from_path: (string, ...)
+        :param to_name: string
         :param schema: JSON Object Schema
         :return: None
         """
@@ -554,19 +602,13 @@ class SQLInterface:
         """
         raise NotImplementedError('`remove_column_mapping` not implemented.')
 
-    def _get_mapping(self, existing_schema, field, schema):
-        if 'mappings' not in existing_schema:
-            return None
+    def _get_mapping(self, existing_schema, path, schema):
+        for to, mapping in existing_schema.get('mappings', {}).items():
+            if tuple(mapping['from']) == path \
+                    and json_schema.sql_shorthand(mapping) == json_schema.sql_shorthand(schema):
+                return to
 
-        inverted_mappings = dict([((mapping['from'],
-                                    json_schema.sql_shorthand(mapping)),
-                                   to_field)
-                                  for (to_field, mapping) in existing_schema['mappings'].items()])
-
-        return inverted_mappings.get(
-            (field,
-             json_schema.sql_shorthand(schema)),
-            None)
+        return None
 
     def upsert_table_helper(self, connection, schema, metadata):
         """
@@ -593,171 +635,191 @@ class SQLInterface:
 
         self.add_key_properties(connection, table_name, schema.get('key_properties', None))
 
-        new_columns = schema['schema']['properties']
-        existing_columns = existing_schema['schema']['properties']
-        existing_columns_raw_names = [v['from'] for v in existing_schema.get('mappings', {}).values()]
+        ## Only process columns which have single, nullable, types
+        single_type_columns = []
+        for column_name__or__path, column_schema in schema['schema']['properties'].items():
+            column_path = column_name__or__path
+            if isinstance(column_name__or__path, str):
+                column_path = (column_name__or__path,)
+
+            single_type_column_schema = deepcopy(column_schema)
+            column_types = json_schema.get_type(single_type_column_schema)
+            make_nullable = json_schema.is_nullable(column_schema)
+
+            for type in column_types:
+                if type == json_schema.NULL:
+                    continue
+
+                single_type_column_schema['type'] = [type]
+
+                if make_nullable:
+                    single_type_columns.append((column_path, json_schema.make_nullable(single_type_column_schema)))
+                else:
+                    single_type_columns.append((column_path, single_type_column_schema))
+
+        ## Process new columns against existing
+        raw_mappings = existing_schema.get('mappings', {})
+
+        mappings = []
+
+        for to, m in raw_mappings.items():
+            mappings.append({'from': tuple(m['from']), 'to': to, 'type': m['type']})
+
         table_empty = self.is_table_empty(connection, table_name)
 
-        for raw_column_name, column_schema in new_columns.items():
-            canonicalized_column_name, canonicalized_typed_column_name = self._canonicalize_identifier(
-                raw_column_name, column_schema, existing_columns_raw_names, existing_columns
-            )
+        for column_path, column_schema in single_type_columns:
+            canonicalized_column_name = self._canonicalize_column_identifier(column_path, column_schema, mappings)
             nullable_column_schema = json_schema.make_nullable(column_schema)
 
+            ## NEW COLUMN
+            if not column_path in [m['from'] for m in mappings]:
+                ### NON EMPTY TABLE
+                if not table_empty:
+                    ## TODO: Use self.logger to warn
+                    # self.logger.warning('Forcing new column `{}.{}.{}` to be nullable due to table not empty.'.format(
+                    #     self.postgres_schema,
+                    #     table_name,
+                    #     column_name))
+                    column_schema = nullable_column_schema
+
+                self.add_column(connection,
+                                table_name,
+                                canonicalized_column_name,
+                                column_schema)
+                self.add_column_mapping(connection,
+                                        table_name,
+                                        column_path,
+                                        canonicalized_column_name,
+                                        column_schema)
+                mappings.append(
+                    {'from': column_path,
+                     'to': canonicalized_column_name,
+                     'type': json_schema.get_type(column_schema)})
+
+                continue
+
             ## EXISTING COLUMNS
-            if canonicalized_column_name in existing_columns \
-                    and json_schema.to_sql(column_schema) \
-                    == json_schema.to_sql(existing_columns[canonicalized_column_name]):
-                pass
-            ###
-            elif canonicalized_typed_column_name in existing_columns \
-                    and json_schema.to_sql(column_schema) \
-                    == json_schema.to_sql(existing_columns[canonicalized_typed_column_name]):
-                pass
-            ###
-            elif canonicalized_column_name in existing_columns \
-                    and json_schema.to_sql(nullable_column_schema) \
-                    == json_schema.to_sql(existing_columns[canonicalized_column_name]):
-                pass
-            ###
-            elif canonicalized_typed_column_name in existing_columns \
-                    and json_schema.to_sql(nullable_column_schema) \
-                    == json_schema.to_sql(existing_columns[canonicalized_typed_column_name]):
-                pass
+            ### SCHEMAS MATCH
+            if [True for m in mappings if
+                m['from'] == column_path and json_schema.to_sql(m) == json_schema.to_sql(column_schema)]:
+                continue
+            ### NULLABLE SCHEMAS MATCH
+            ###  New column _is not_ nullable, existing column _is_
+            if [True for m in mappings if
+                m['from'] == column_path and json_schema.to_sql(m) == json_schema.to_sql(nullable_column_schema)]:
+                continue
 
-            ## NULL COMPATIBILITY
-            elif canonicalized_column_name in existing_columns \
-                    and json_schema.to_sql(nullable_column_schema) == json_schema.to_sql(
-                json_schema.make_nullable(existing_columns[canonicalized_column_name])):
-
+            ### NULL COMPATIBILITY
+            ###  New column _is_ nullable, existing column is _not_
+            non_null_original_column = [m for m in mappings if
+                                        m['from'] == column_path and json_schema.sql_shorthand(
+                                            m) == json_schema.sql_shorthand(column_schema)]
+            if non_null_original_column:
                 ## MAKE NULLABLE
                 self.make_column_nullable(connection,
                                           table_name,
                                           canonicalized_column_name)
-                existing_columns[canonicalized_column_name] = json_schema.make_nullable(
-                    existing_columns[canonicalized_column_name])
+                self.drop_column_mapping(connection, table_name, canonicalized_column_name)
+                self.add_column_mapping(connection,
+                                        table_name,
+                                        column_path,
+                                        canonicalized_column_name,
+                                        nullable_column_schema)
 
-            ## FIRST DUPLICATE TYPE
-            elif canonicalized_column_name in existing_columns:
+                mappings = [m for m in mappings if not (m['from'] == column_path and json_schema.sql_shorthand(
+                    m) == json_schema.sql_shorthand(column_schema))]
+                mappings.append({'from': column_path,
+                                 'to': canonicalized_column_name,
+                                 'type': json_schema.get_type(nullable_column_schema)})
 
-                if self._get_mapping(existing_schema, raw_column_name, existing_columns[canonicalized_column_name]):
-                    self.drop_column_mapping(connection, table_name, canonicalized_column_name)
+                continue
 
-                ## column_name -> column_name__<current-type>, column_name__<new-type>
-                existing_column_mapping = _mapping_name(canonicalized_column_name,
-                                                        existing_columns[canonicalized_column_name])
+            ### FIRST MULTI TYPE
+            ###  New column matches existing column path, but the types are incompatible
+            duplicate_paths = [m for m in mappings if m['from'] == column_path]
+
+            if 1 == len(duplicate_paths):
+
+                existing_mapping = duplicate_paths[0]
+                existing_column_name = existing_mapping['to']
+
+                if existing_column_name:
+                    self.drop_column_mapping(connection, table_name, existing_column_name)
 
                 ## Update existing properties
-                existing_columns[existing_column_mapping] = json_schema.make_nullable(
-                    existing_columns[canonicalized_column_name])
-                existing_columns[canonicalized_typed_column_name] = json_schema.make_nullable(column_schema)
+                mappings = [m for m in mappings if m['from'] != column_path]
+                mappings.append({'from': column_path,
+                                 'to': canonicalized_column_name,
+                                 'type': json_schema.get_type(nullable_column_schema)})
+
+                existing_column_new_normalized_name = self._canonicalize_column_identifier(column_path,
+                                                                                           existing_mapping,
+                                                                                           mappings)
+                mappings.append({'from': column_path,
+                                 'to': existing_column_new_normalized_name,
+                                 'type': json_schema.get_type(json_schema.make_nullable(existing_mapping))})
 
                 ## Add new columns
                 ### NOTE: all migrated columns will be nullable and remain that way
 
                 #### Table Metadata
-                self.add_column_mapping(connection, table_name, raw_column_name,
-                                        existing_column_mapping,
-                                        existing_columns[existing_column_mapping])
-                self.add_column_mapping(connection, table_name, raw_column_name,
-                                        canonicalized_typed_column_name,
-                                        existing_columns[canonicalized_typed_column_name])
+                self.add_column_mapping(connection,
+                                        table_name,
+                                        column_path,
+                                        existing_column_new_normalized_name,
+                                        json_schema.make_nullable(existing_mapping))
+                self.add_column_mapping(connection,
+                                        table_name,
+                                        column_path,
+                                        canonicalized_column_name,
+                                        nullable_column_schema)
 
                 #### Columns
                 self.add_column(connection,
                                 table_name,
-                                existing_column_mapping,
-                                existing_columns[existing_column_mapping])
+                                existing_column_new_normalized_name,
+                                json_schema.make_nullable(existing_mapping))
 
                 self.add_column(connection,
                                 table_name,
-                                canonicalized_typed_column_name,
-                                existing_columns[canonicalized_typed_column_name])
+                                canonicalized_column_name,
+                                nullable_column_schema)
 
                 ## Migrate existing data
                 self.migrate_column(connection,
                                     table_name,
-                                    canonicalized_column_name,
-                                    existing_column_mapping)
+                                    existing_mapping['to'],
+                                    existing_column_new_normalized_name)
 
                 ## Drop existing column
                 self.drop_column(connection,
                                  table_name,
-                                 canonicalized_column_name)
+                                 existing_mapping['to'])
 
-                ## Remove column (field) from existing_properties
-                del existing_columns[canonicalized_column_name]
-
-            ## MULTI DUPLICATE TYPE
-            elif raw_column_name in existing_columns_raw_names:
+            ## REST MULTI TYPE
+            elif 1 < len(duplicate_paths):
 
                 ## Add new column
-                self.add_column_mapping(connection, table_name, raw_column_name,
-                                        canonicalized_typed_column_name,
+                self.add_column_mapping(connection,
+                                        table_name,
+                                        column_path,
+                                        canonicalized_column_name,
                                         nullable_column_schema)
-                existing_columns_raw_names.append(canonicalized_typed_column_name)
-
-                self.add_column(connection,
-                                table_name,
-                                canonicalized_typed_column_name,
-                                nullable_column_schema)
-
-                ## Update existing properties
-                existing_columns[canonicalized_typed_column_name] = nullable_column_schema
-
-            ## NEW COLUMN, VALID NAME, EMPTY TABLE
-            elif canonicalized_column_name == raw_column_name and table_empty:
-
-                self.add_column(connection,
-                                table_name,
-                                canonicalized_column_name,
-                                column_schema)
-                existing_columns[canonicalized_column_name] = column_schema
-
-            ## NEW COLUMN, VALID NAME
-            #             self.logger.warning('Forcing new column `{}.{}.{}` to be nullable due to table not empty.'.format(
-            #                 self.postgres_schema,
-            #                 table_name,
-            #                 column_name))
-            elif canonicalized_column_name == raw_column_name:
-
                 self.add_column(connection,
                                 table_name,
                                 canonicalized_column_name,
                                 nullable_column_schema)
-                existing_columns[canonicalized_column_name] = nullable_column_schema
 
-            ## NEW COLUMN, INVALID NAME, EMPTY TABLE
-            elif canonicalized_column_name != raw_column_name and table_empty:
-
-                self.add_column_mapping(connection, table_name, raw_column_name, canonicalized_column_name,
-                                        column_schema)
-                existing_columns_raw_names.append(canonicalized_column_name)
-                self.add_column(connection,
-                                table_name,
-                                canonicalized_column_name,
-                                column_schema)
-                existing_columns[canonicalized_column_name] = column_schema
-
-            ## NEW COLUMN, INVALID NAME
-            elif canonicalized_column_name != raw_column_name:
-
-                self.add_column_mapping(connection, table_name, raw_column_name, canonicalized_column_name,
-                                        nullable_column_schema)
-                existing_columns_raw_names.append(canonicalized_column_name)
-                self.add_column(connection,
-                                table_name,
-                                canonicalized_column_name,
-                                nullable_column_schema)
-                existing_columns[canonicalized_column_name] = nullable_column_schema
+                mappings.append({'from': column_path,
+                                 'to': canonicalized_column_name,
+                                 'type': json_schema.get_type(nullable_column_schema)})
 
             ## UNKNOWN
             else:
                 raise Exception(
-                    'UNKNOWN: Cannot handle merging column `{}` (canonicalized as: `{}`, canonicalized with type as: `{}`) in table `{}`.'.format(
-                        raw_column_name,
+                    'UNKNOWN: Cannot handle merging column `{}` (canonicalized as: `{}`) in table `{}`.'.format(
+                        column_path,
                         canonicalized_column_name,
-                        canonicalized_typed_column_name,
                         table_name
                     ))
 
@@ -807,22 +869,40 @@ class SQLInterface:
 
         return writeable_batches
 
-    def _serialize_table_record_field_name(self, remote_schema, streamed_schema, field):
+    def _serialize_table_record_field_name(self, remote_schema, streamed_schema, path, json_schema_type):
         """
         Returns the appropriate remote field (column) name for `field`.
 
         :param remote_schema: TABLE_SCHEMA(remote)
         :param streamed_schema: TABLE_SCHEMA(local)
-        :param field: string
+        :param path: (string, ...)
+        :value_json_schema_type: string
         :return: string
         """
 
-        if field in streamed_schema['schema']['properties']:
-            return self._get_mapping(remote_schema,
-                                     field,
-                                     streamed_schema['schema']['properties'][field]) \
-                   or field
-        return field
+        json_schema_type = json_schema_type or json_schema.get_type(streamed_schema['schema']['properties'][path])
+
+        mapping = self._get_mapping(remote_schema,
+                                    path,
+                                    {'type': json_schema_type})
+
+        if not mapping is None:
+            return mapping
+
+        ## Numbers are valid as `float` OR `int`
+        ##  ie, 123.0 and 456 are valid 'number's
+        if json_schema.INTEGER in json_schema_type:
+            mapping = self._get_mapping(remote_schema,
+                                        path,
+                                        {'type': json_schema.NUMBER})
+
+            if not mapping is None:
+                return mapping
+
+        raise Exception('Unknown column path: {} for table: {}'.format(
+            path,
+            remote_schema['path']
+        ))
 
     def serialize_table_record_null_value(
             self, remote_schema, streamed_schema, field, value):
@@ -863,54 +943,54 @@ class SQLInterface:
 
         :param remote_schema: TABLE_SCHEMA(remote)
         :param streamed_schema: TABLE_SCHEMA(local)
-        :param records: [{...}, ...]
+        :param records: [{(path_0, path_1, ...): (_json_schema_type, value), ...}, ...]
         :return: [{...}, ...]
         """
 
-        datetime_fields = [k for k, v in streamed_schema['schema']['properties'].items()
-                           if v.get('format') == 'date-time']
+        datetime_paths = [k for k, v in streamed_schema['schema']['properties'].items()
+                          if v.get('format') == 'date-time']
 
-        default_fields = {k: v.get('default') for k, v in streamed_schema['schema']['properties'].items()
-                          if v.get('default') is not None}
-
-        ## Get remote fields and streamed fields.
-        ### `remote_fields` determine which keys are allowed to be serialized into `serialized_rows`
-        ### but the `streamed_schema` might have fields which are not present in remote due to
-        ### `parse_table_record_serialize_field_name`
-        remote_fields = set(remote_schema['schema']['properties'].keys())
-        fields = remote_fields.union(set(streamed_schema['schema']['properties'].keys()))
+        default_paths = {k: v.get('default') for k, v in streamed_schema['schema']['properties'].items()
+                         if v.get('default') is not None}
 
         ## Get the default NULL value so we can assign row values when value is _not_ NULL
         NULL_DEFAULT = self.serialize_table_record_null_value(remote_schema, streamed_schema, None, None)
 
         serialized_rows = []
+
+        remote_fields = set(remote_schema['schema']['properties'].keys())
         default_row = dict([(field, NULL_DEFAULT) for field in remote_fields])
 
+        paths = streamed_schema['schema']['properties'].keys()
         for record in records:
+
             row = deepcopy(default_row)
 
-            for field in fields:
-                value = record.get(field, None)
+            for path in paths:
+                json_schema_type, value = record.get(path, (None, None))
 
                 ## Serialize fields which are not present but have default values set
-                if field in default_fields \
+                if path in default_paths \
                         and value is None:
-                    value = default_fields[field]
+                    value = default_paths[path]
+                    json_schema_type = _json_schema_type(value)
 
                 ## Serialize datetime to compatible format
-                if field in datetime_fields \
+                if path in datetime_paths \
+                        and json_schema_type == json_schema.STRING \
                         and value is not None:
-                    value = self.serialize_table_record_datetime_value(remote_schema, streamed_schema, field,
+                    value = self.serialize_table_record_datetime_value(remote_schema, streamed_schema, path,
                                                                        value)
 
                 ## Serialize NULL default value
-                value = self.serialize_table_record_null_value(remote_schema, streamed_schema, field, value)
+                value = self.serialize_table_record_null_value(remote_schema, streamed_schema, path, value)
 
-                field_name = self._serialize_table_record_field_name(remote_schema, streamed_schema, field)
+                field_name = self._serialize_table_record_field_name(remote_schema, streamed_schema, path,
+                                                                     json_schema_type)
 
                 if field_name in remote_fields \
-                        and not field_name in row \
-                        or row[field_name] == NULL_DEFAULT:
+                        and (not field_name in row
+                             or row[field_name] == NULL_DEFAULT):
                     row[field_name] = value
 
             serialized_rows.append(row)
