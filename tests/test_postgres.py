@@ -7,11 +7,12 @@ from psycopg2 import sql
 import psycopg2.extras
 import pytest
 
-from fixtures import CatStream, CONFIG, db_cleanup, InvalidCatStream, NestedStream, TEST_DB
+from fixtures import CatStream, CONFIG, db_cleanup, InvalidCatStream, MultiTypeStream, NestedStream, TEST_DB
 from target_postgres import json_schema
 from target_postgres import postgres
 from target_postgres import singer_stream
 from target_postgres import TargetError, main
+
 
 ## TODO: create and test more fake streams
 ## TODO: test invalid data against JSON Schema
@@ -26,8 +27,10 @@ def assert_columns_equal(cursor, table_name, expected_column_tuples):
     assert (not columns and not expected_column_tuples) \
            or set(columns) == expected_column_tuples
 
+
 def get_count_sql(table_name):
     return 'SELECT count(*) FROM "public"."{}"'.format(table_name)
+
 
 def get_pk_key(pks, obj, subrecord=False):
     pk_parts = []
@@ -38,6 +41,7 @@ def get_pk_key(pks, obj, subrecord=False):
             if key[:11] == '_sdc_level_':
                 pk_parts.append(str(value))
     return ':'.join(pk_parts)
+
 
 def flatten_record(old_obj, subtables, subpks, new_obj=None, current_path=None, level=0):
     if not new_obj:
@@ -72,6 +76,7 @@ def flatten_record(old_obj, subtables, subpks, new_obj=None, current_path=None, 
             new_obj[next_path] = value
     return new_obj
 
+
 def assert_record(a, b, subtables, subpks):
     a_flat = flatten_record(a, subtables, subpks)
     for prop, value in a_flat.items():
@@ -82,6 +87,7 @@ def assert_record(a, b, subtables, subpks):
             assert value == b[prop].isoformat()[:19]
         else:
             assert value == b[prop]
+
 
 def assert_records(conn, records, table_name, pks, match_pks=False):
     if not isinstance(pks, list):
@@ -173,7 +179,6 @@ def test_loading__invalid__records__threshold():
 
 
 def test_loading__invalid__default_null_value__non_nullable_column():
-
     class NullDefaultCatStream(CatStream):
 
         def generate_record(self):
@@ -254,7 +259,8 @@ def test_loading__nested_tables(db_cleanup):
             cur.execute(get_count_sql('root__array_scalar'))
             assert 50 == cur.fetchone()[0]
 
-            cur.execute(get_count_sql('root__object_of_object_0__object_of_object_1__object_of_object_2__array_scalar'[:63]))
+            cur.execute(
+                get_count_sql('root__object_of_object_0__object_of_object_1__object_of_object_2__array_scalar'[:63]))
             assert 50 == cur.fetchone()[0]
 
             cur.execute(get_count_sql('root__array_of_array'))
@@ -317,7 +323,6 @@ def test_loading__nested_tables(db_cleanup):
                                      ('_sdc_level_2_id', 'bigint', 'NO'),
                                      ('_sdc_value', 'bigint', 'NO')
                                  })
-
 
 
 def test_loading__new_non_null_column(db_cleanup):
@@ -501,7 +506,8 @@ def test_loading__column_type_change(db_cleanup):
             assert cat_count == len([x for x in persisted_records if x[0] is not None])
             assert cat_count == len([x for x in persisted_records if x[1] is not None])
             assert cat_count == len([x for x in persisted_records if x[2] is not None])
-            assert 0 == len([x for x in persisted_records if x[0] is not None and x[1] is not None and x[2] is not None])
+            assert 0 == len(
+                [x for x in persisted_records if x[0] is not None and x[1] is not None and x[2] is not None])
             assert 0 == len([x for x in persisted_records if x[0] is None and x[1] is None and x[2] is None])
 
 
@@ -548,7 +554,8 @@ def test_loading__column_type_change__nullable(db_cleanup):
 
     stream = NameNullCatStream(cat_count)
     stream.schema = deepcopy(stream.schema)
-    stream.schema['schema']['properties']['name'] = json_schema.make_nullable(stream.schema['schema']['properties']['name'])
+    stream.schema['schema']['properties']['name'] = json_schema.make_nullable(
+        stream.schema['schema']['properties']['name'])
 
     main(CONFIG, input_stream=stream)
 
@@ -621,6 +628,50 @@ def test_loading__column_type_change__nullable(db_cleanup):
             assert 3 * cat_count == len(persisted_records)
             assert 2 * cat_count == len([x for x in persisted_records if x[0] is not None])
             assert cat_count == len([x for x in persisted_records if x[0] is None])
+
+
+def test_loading__multi_types_columns(db_cleanup):
+    stream_count = 50
+    main(CONFIG, input_stream=MultiTypeStream(stream_count))
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_columns_equal(cur,
+                                 'root',
+                                 {
+                                     ('_sdc_primary_key', 'text', 'NO'),
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('every_type__i', 'bigint', 'YES'),
+                                     ('every_type__f', 'double precision', 'YES'),
+                                     ('every_type__b', 'boolean', 'YES'),
+                                     ('every_type__s', 'timestamp with time zone', 'YES'),
+                                     ('every_type__i__1', 'bigint', 'YES'),
+                                     ('every_type__f__1', 'double precision', 'YES'),
+                                     ('every_type__b__1', 'boolean', 'YES'),
+                                     ('number_which_only_comes_as_integer', 'double precision', 'NO')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'root__every_type',
+                                 {
+                                     ('_sdc_source_key__sdc_primary_key', 'text', 'NO'),
+                                     ('_sdc_level_0_id', 'bigint', 'NO'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_value', 'bigint', 'NO'),
+                                 })
+
+            cur.execute(sql.SQL('SELECT {} FROM {}').format(
+                sql.Identifier('number_which_only_comes_as_integer'),
+                sql.Identifier('root')
+            ))
+            persisted_records = cur.fetchall()
+
+            ## Assert that the column is has migrated data
+            assert stream_count == len(persisted_records)
+            assert stream_count == len([x for x in persisted_records if isinstance(x[0], float)])
 
 
 def test_loading__invalid__table_name__stream(db_cleanup):
@@ -988,8 +1039,10 @@ def test_loading__invalid_column_name__column_type_change(db_cleanup):
             assert cat_count == len([x for x in persisted_records if x[0] is not None])
             assert cat_count == len([x for x in persisted_records if x[1] is not None])
             assert cat_count == len([x for x in persisted_records if x[2] is not None])
-            assert 0 == len([x for x in persisted_records if x[0] is not None and x[1] is not None and x[2] is not None])
+            assert 0 == len(
+                [x for x in persisted_records if x[0] is not None and x[1] is not None and x[2] is not None])
             assert 0 == len([x for x in persisted_records if x[0] is None and x[1] is None and x[2] is None])
+
 
 def test_loading__invalid__column_type_change__pks():
     main(CONFIG, input_stream=CatStream(20))
@@ -1082,6 +1135,7 @@ def test_nested_delete_on_parent(db_cleanup):
 
     assert low_nested < high_nested
 
+
 def test_full_table_replication(db_cleanup):
     stream = CatStream(110, version=0, nested_count=3)
     main(CONFIG, input_stream=stream)
@@ -1125,6 +1179,7 @@ def test_full_table_replication(db_cleanup):
     assert version_2_count == 120
     assert version_2_sub_count == 240
 
+
 def test_deduplication_newer_rows(db_cleanup):
     stream = CatStream(100, nested_count=3, duplicates=2)
     main(CONFIG, input_stream=stream)
@@ -1147,6 +1202,7 @@ def test_deduplication_newer_rows(db_cleanup):
     for record in dup_cat_records:
         assert record[0] == stream.sequence + 200
 
+
 def test_deduplication_older_rows(db_cleanup):
     stream = CatStream(100, nested_count=2, duplicates=2, duplicate_sequence_delta=-100)
     main(CONFIG, input_stream=stream)
@@ -1168,6 +1224,7 @@ def test_deduplication_older_rows(db_cleanup):
 
     for record in dup_cat_records:
         assert record[0] == stream.sequence
+
 
 def test_deduplication_existing_new_rows(db_cleanup):
     stream = CatStream(100, nested_count=2)
@@ -1196,8 +1253,10 @@ def test_deduplication_existing_new_rows(db_cleanup):
     assert len(sequences) == 1
     assert sequences[0][0] == original_sequence
 
+
 def mocked_mock_write_batch(stream_buffer):
     records = stream_buffer.flush_buffer()
+
 
 def test_multiple_batches_by_rows(db_cleanup):
     with patch.object(postgres.PostgresTarget,
@@ -1212,6 +1271,7 @@ def test_multiple_batches_by_rows(db_cleanup):
 
         assert mock_write_batch.call_count == 6
 
+
 def test_multiple_batches_by_memory(db_cleanup):
     with patch.object(postgres.PostgresTarget,
                       'write_batch',
@@ -1224,6 +1284,7 @@ def test_multiple_batches_by_memory(db_cleanup):
         main(config, input_stream=stream)
 
         assert mock_write_batch.call_count == 21
+
 
 def test_multiple_batches_upsert(db_cleanup):
     config = CONFIG.copy()
@@ -1251,6 +1312,7 @@ def test_multiple_batches_upsert(db_cleanup):
             cur.execute(get_count_sql('cats__adoption__immunizations'))
             assert cur.fetchone()[0] == 300
         assert_records(conn, stream.records, 'cats', 'id')
+
 
 def test_multiple_batches_by_memory_upsert(db_cleanup):
     config = CONFIG.copy()

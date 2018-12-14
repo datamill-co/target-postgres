@@ -4,6 +4,13 @@ import re
 from jsonschema import Draft4Validator
 from jsonschema.exceptions import SchemaError
 
+NULL = 'null'
+OBJECT = 'object'
+ARRAY = 'array'
+INTEGER = 'integer'
+NUMBER = 'number'
+BOOLEAN = 'boolean'
+STRING = 'string'
 
 class JSONSchemaError(Exception):
     """
@@ -19,7 +26,7 @@ def get_type(schema):
     """
     type = schema.get('type', None)
     if not type:
-        return ['object']
+        return [OBJECT]
 
     if isinstance(type, str):
         return [type]
@@ -74,7 +81,7 @@ def is_object(schema):
     """
 
     return not is_ref(schema) \
-           and ('object' in get_type(schema)
+           and (OBJECT in get_type(schema)
                 or 'properties' in schema
                 or not schema)
 
@@ -87,7 +94,7 @@ def is_iterable(schema):
     """
 
     return not is_ref(schema) \
-           and 'array' in get_type(schema) \
+           and ARRAY in get_type(schema) \
            and 'items' in schema
 
 
@@ -98,7 +105,18 @@ def is_nullable(schema):
     :return: Boolean
     """
 
-    return 'null' in get_type(schema)
+    return NULL in get_type(schema)
+
+
+def is_literal(schema):
+    """
+    Given a JSON Schema compatible dict, returns True when schema's type allows being a literal
+    (ie, 'integer', 'number', etc.)
+    :param schema: dict, JSON Schema
+    :return: Boolean
+    """
+
+    return not {STRING, INTEGER, NUMBER, BOOLEAN}.isdisjoint(set(get_type(schema)))
 
 
 def make_nullable(schema):
@@ -108,39 +126,40 @@ def make_nullable(schema):
     :return: dict, JSON Schema
     """
     type = get_type(schema)
-    if 'null' in type:
+    if NULL in type:
         return schema
 
     ret_schema = deepcopy(schema)
-    ret_schema['type'] = type + ['null']
+    ret_schema['type'] = type + [NULL]
     return ret_schema
 
 
 def _helper_simplify(root_schema, child_schema):
     ret_schema = {}
 
+    ## Refs override all other type definitions
     if is_ref(child_schema):
         try:
             ret_schema = _helper_simplify(root_schema, get_ref(root_schema, child_schema['$ref']))
         except RecursionError:
             raise JSONSchemaError('`$ref` path "{}" is recursive'.format(get_ref(root_schema, child_schema['$ref'])))
 
-    elif is_object(child_schema):
-        properties = {}
-        for field, field_json_schema in child_schema.get('properties', {}).items():
-            properties[field] = _helper_simplify(root_schema, field_json_schema)
-
-        ret_schema = {'type': get_type(child_schema),
-                      'properties': properties}
-
-    elif is_iterable(child_schema):
-        ret_schema = {'type': get_type(child_schema),
-                      'items': _helper_simplify(root_schema, child_schema.get('items', {}))}
     else:
+
         ret_schema = {'type': get_type(child_schema)}
 
-    if 'format' in child_schema:
-        ret_schema['format'] = child_schema.get('format')
+        if is_object(child_schema):
+            properties = {}
+            for field, field_json_schema in child_schema.get('properties', {}).items():
+                properties[field] = _helper_simplify(root_schema, field_json_schema)
+
+            ret_schema['properties'] = properties
+
+        if is_iterable(child_schema):
+            ret_schema['items'] = _helper_simplify(root_schema, child_schema.get('items', {}))
+
+        if 'format' in child_schema:
+            ret_schema['format'] = child_schema.get('format')
 
     if 'default' in child_schema:
         ret_schema['default'] = child_schema.get('default')
@@ -237,7 +256,7 @@ def from_sql(sql_type, nullable):
 
     json_type = [json_type]
     if nullable:
-        json_type.append('null')
+        json_type.append(NULL)
 
     ret_json_schema = {'type': json_type}
     if _format:
@@ -252,9 +271,9 @@ def to_sql(schema):
     ln = len(_type)
     if ln == 1:
         _type = _type[0]
-    if ln == 2 and 'null' in _type:
+    if ln == 2 and NULL in _type:
         not_null = False
-        if _type.index('null') == 0:
+        if _type.index(NULL) == 0:
             _type = _type[1]
         else:
             _type = _type[0]
@@ -281,7 +300,7 @@ def to_sql(schema):
 
 
 _shorthand_mapping = {
-    'null': '',
+    NULL: '',
     'string': 's',
     'number': 'f',
     'integer': 'i',
