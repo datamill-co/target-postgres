@@ -7,7 +7,7 @@ from psycopg2 import sql
 import psycopg2.extras
 import pytest
 
-from fixtures import CatStream, CONFIG, db_cleanup, InvalidCatStream, TEST_DB
+from fixtures import CatStream, CONFIG, db_cleanup, InvalidCatStream, NestedStream, TEST_DB
 from target_postgres import json_schema
 from target_postgres import postgres
 from target_postgres import singer_stream
@@ -228,6 +228,96 @@ def test_loading__simple(db_cleanup):
             record['flea_check_complete'] = False
 
         assert_records(conn, stream.records, 'cats', 'id')
+
+
+## TODO: Complex types defaulted
+# def test_loading__default__complex_type(db_cleanup):
+#     main(CONFIG, input_stream=NestedStream(10))
+#
+#     with psycopg2.connect(**TEST_DB) as conn:
+#         with conn.cursor() as cur:
+#             cur.execute(get_count_sql('root'))
+#             assert 10 == cur.fetchone()[0]
+#
+#             cur.execute(get_count_sql('root__array_scalar_defaulted'))
+#             assert 100 == cur.fetchone()[0]
+
+
+def test_loading__nested_tables(db_cleanup):
+    main(CONFIG, input_stream=NestedStream(10))
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_count_sql('root'))
+            assert 10 == cur.fetchone()[0]
+
+            cur.execute(get_count_sql('root__array_scalar'))
+            assert 50 == cur.fetchone()[0]
+
+            cur.execute(get_count_sql('root__object_of_object_0__object_of_object_1__object_of_object_2__array_scalar'[:63]))
+            assert 50 == cur.fetchone()[0]
+
+            cur.execute(get_count_sql('root__array_of_array'))
+            assert 20 == cur.fetchone()[0]
+
+            cur.execute(get_count_sql('root__array_of_array___sdc_value'))
+            assert 80 == cur.fetchone()[0]
+
+            cur.execute(get_count_sql('root__array_of_array___sdc_value___sdc_value'))
+            assert 200 == cur.fetchone()[0]
+
+            assert_columns_equal(cur,
+                                 'root',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('null', 'bigint', 'YES'),
+                                     ('nested_null__null', 'bigint', 'YES'),
+                                     ('object_of_object_0__object_of_object_1__object_of_object_2__a', 'bigint', 'NO'),
+                                     ('object_of_object_0__object_of_object_1__object_of_object_2__b', 'bigint', 'NO'),
+                                     ('object_of_object_0__object_of_object_1__object_of_object_2__c', 'bigint', 'NO')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'root__object_of_object_0__object_of_object_1__object_of_object_2__array_scalar'[:63],
+                                 {
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_source_key_id', 'bigint', 'NO'),
+                                     ('_sdc_level_0_id', 'bigint', 'NO'),
+                                     ('_sdc_value', 'boolean', 'NO')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'root__array_of_array',
+                                 {
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_source_key_id', 'bigint', 'NO'),
+                                     ('_sdc_level_0_id', 'bigint', 'NO')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'root__array_of_array___sdc_value',
+                                 {
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_source_key_id', 'bigint', 'NO'),
+                                     ('_sdc_level_0_id', 'bigint', 'NO'),
+                                     ('_sdc_level_1_id', 'bigint', 'NO')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'root__array_of_array___sdc_value___sdc_value',
+                                 {
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_source_key_id', 'bigint', 'NO'),
+                                     ('_sdc_level_0_id', 'bigint', 'NO'),
+                                     ('_sdc_level_1_id', 'bigint', 'NO'),
+                                     ('_sdc_level_2_id', 'bigint', 'NO'),
+                                     ('_sdc_value', 'bigint', 'NO')
+                                 })
+
 
 
 def test_loading__new_non_null_column(db_cleanup):

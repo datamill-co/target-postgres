@@ -17,6 +17,7 @@ SINGER_TABLE_VERSION = '_sdc_table_version'
 SINGER_PK = '_sdc_primary_key'
 SINGER_SOURCE_PK_PREFIX = '_sdc_source_key_'
 SINGER_LEVEL = '_sdc_level_{}_id'
+SINGER_VALUE = '_sdc_value'
 
 
 class BufferedSingerStream():
