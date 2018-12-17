@@ -4,28 +4,46 @@ workflows:
   version: 2
   test:
     jobs:
-      - test--11.1
-      - test--9.6.11
-      - test--9.5.15
-      - test--9.4.20
+      - cache
+      - test--11.1:
+          requires:
+            - cache
+      - test--9.6.11:
+          requires:
+            - cache
+      - test--9.5.15:
+          requires:
+            - cache
+      - test--9.4.20:
+          requires:
+            - cache
       - test--tap-github:
           requires:
+            - cache
             - test--11.1
             - test--9.6.11
             - test--9.5.15
             - test--9.4.20
 
+cache: &cache
+  deps-v5-{{ checksum "setup.py" }}
+
+restore__cache: &restore__cache
+  restore_cache:
+    keys:
+      - *cache
+
 test__base: &test__base
   working_directory: /code/
   steps:
     - checkout
-    - restore_cache:
-        keys:
-          - deps-v0.0.0-{{ checksum "setup.py" }}
+    - *restore__cache
 
     - run:
         name: Run Tests
-        command: python setup.py pytest --verbose
+        command: |
+          source venv--target-postgres/bin/activate
+          python setup.py pytest --verbose
         environment:
           POSTGRES_HOST: 'localhost'
           POSTGRES_DATABASE: 'target_postgres_test'
@@ -36,6 +54,47 @@ test__base: &test__base
         destination: raw-test-output
 
 jobs:
+  cache:
+    working_directory: /code/
+    docker:
+      - image: python:3.7.1-stretch
+    steps:
+      - checkout
+      - *restore__cache
+
+      - run:
+          name: Install target-postgres
+          command: |
+            python -m venv venv--target-postgres
+            source venv--target-postgres/bin/activate
+            python setup.py install
+            deactivate
+
+      - run:
+          name: Install tap-github
+          command: |
+            python -m venv venv--tap-github
+            source venv--tap-github/bin/activate
+            pip install tap-github
+            deactivate
+
+      - run:
+          name: Install tap-postgres
+          command: |
+            python -m venv venv--tap-postgres
+            source venv--tap-postgres/bin/activate
+            pip install tap-postgres
+            deactivate
+
+      - save_cache:
+          key: *cache
+          paths:
+            - "./venv--target-postgres"
+            - "./venv--tap-github"
+            - "./venv--tap-postgres"
+            - "/usr/local/bin"
+            - "/usr/local/lib/python3.7/site-packages"
+
   test--11.1:
     <<: *test__base
     docker:
@@ -77,48 +136,43 @@ jobs:
           POSTGRES_DB: target_postgres_test
     steps:
       - checkout
-      - restore_cache:
-          keys:
-            - deps-v0.0.0-{{ checksum "setup.py" }}
+      - *restore__cache
 
       - run:
           name: Setup artifacts folder
           command: mkdir -p /code/artifacts/data
 
       - run:
-          name: Install tap-github
+          name: Setup tap-github
           working_directory: /code/.circleci/integration/tap-github
-          command: |
-            pip install tap-github
-            sed "s/REPLACE_ME/$TAP_GITHUB_TOKEN/" config-template.json > config.json
-
-      - run:
-          name: Install tap-postgres
-          working_directory: /code/.circleci/integration/tap-postgres
-          command: |
-            pip install tap-postgres
-
-      - run:
-          name: Install target-postgres
-          command: |
-            python setup.py install
+          command: sed "s/REPLACE_ME/$TAP_GITHUB_TOKEN/" config-template.json > config.json
 
       - run:
           name: Tap -> Data
-          working_directory: /code/.circleci/integration/tap-github
           command: |
+            source venv--tap-github/bin/activate
+            cd /code/.circleci/integration/tap-github
+
             tap-github --config config.json --properties properties.json > /code/artifacts/data/tap
+
+            deactivate
 
       - run:
           name: Data -> Target
-          working_directory: /code/.circleci/integration
           command: |
+            source venv--target-postgres/bin/activate
+            cd /code/.circleci/integration
+
             cat /code/artifacts/data/tap | target-postgres --config target-config.json
+
+            deactivate
 
       - run:
           name: Target -> Data
-          working_directory: /code/.circleci/integration/tap-postgres
           command: |
+            source venv--tap-postgres/bin/activate
+            cd /code/.circleci/integration/tap-postgres
+
             tap-postgres --config config.json --discover > tmp-properties.json
 
             ## Select _every_ table found in properties.
@@ -126,6 +180,8 @@ jobs:
             sed 's/"row-count": 0,/"row-count": 0,"selected":true,/g' tmp-properties.json > /code/artifacts/data/properties.json
 
             tap-postgres --config config.json --properties /code/artifacts/data/properties.json > /code/artifacts/data/target
+
+            deactivate
 
       - store_artifacts:
           path: /code/artifacts
