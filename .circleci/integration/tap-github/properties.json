@@ -441,11 +441,6 @@
               "integer"
             ]
           },
-          "closed_at": {
-            "type": [
-              "null"
-            ]
-          },
           "labels_url": {
             "type": [
               "null",
@@ -682,11 +677,6 @@
             "type": [
               "null",
               "string"
-            ]
-          },
-          "milestone": {
-            "type": [
-              "null"
             ]
           }
         },
