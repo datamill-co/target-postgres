@@ -91,6 +91,13 @@ jobs:
           command: |
             pip install tap-github
             sed "s/REPLACE_ME/$TAP_GITHUB_TOKEN/" config-template.json > config.json
+
+      - run:
+          name: Install tap-postgres
+          working_directory: /code/.circleci/integration/tap-postgres
+          command: |
+            pip install tap-postgres
+
       - run:
           name: Install target-postgres
           command: |
@@ -107,6 +114,18 @@ jobs:
           working_directory: /code/.circleci/integration
           command: |
             cat /code/artifacts/data/tap | target-postgres --config target-config.json
+
+      - run:
+          name: Target -> Data
+          working_directory: /code/.circleci/integration/tap-postgres
+          command: |
+            tap-postgres --config config.json --discover > tmp-properties.json
+
+            ## Select _every_ table found in properties.
+            ##  row-count seems to only show up inside of the necessary metadata object...easier than multi-line-sed
+            sed 's/"row-count": 0,/"row-count": 0,"selected":true,/g' tmp-properties.json > /code/artifacts/data/properties.json
+
+            tap-postgres --config config.json --properties /code/artifacts/data/properties.json > /code/artifacts/data/target
 
       - store_artifacts:
           path: /code/artifacts
