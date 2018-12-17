@@ -8,6 +8,12 @@ workflows:
       - test--9.6.11
       - test--9.5.15
       - test--9.4.20
+      - test--tap-github:
+          requires:
+            - test--11.1
+            - test--9.6.11
+            - test--9.5.15
+            - test--9.4.20
 
 test__base: &test__base
   working_directory: /code/
@@ -61,3 +67,46 @@ jobs:
       - image: postgres:9.4.20
         environment:
           POSTGRES_DB: target_postgres_test
+
+  test--tap-github:
+    working_directory: /code/
+    docker:
+      - image: python:3.7.1-stretch
+      - image: postgres:9.4.20
+        environment:
+          POSTGRES_DB: target_postgres_test
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - deps-v0.0.0-{{ checksum "setup.py" }}
+
+      - run:
+          name: Setup artifacts folder
+          command: mkdir -p /code/artifacts/data
+
+      - run:
+          name: Install tap-github
+          working_directory: /code/.circleci/integration/tap-github
+          command: |
+            pip install tap-github
+            sed "s/REPLACE_ME/$TAP_GITHUB_TOKEN/" config-template.json > config.json
+      - run:
+          name: Install target-postgres
+          command: |
+            python setup.py install
+
+      - run:
+          name: Tap -> Data
+          working_directory: /code/.circleci/integration/tap-github
+          command: |
+            tap-github --config config.json --properties properties.json > /code/artifacts/data/tap
+
+      - run:
+          name: Data -> Target
+          working_directory: /code/.circleci/integration
+          command: |
+            cat /code/artifacts/data/tap | target-postgres --config target-config.json
+
+      - store_artifacts:
+          path: /code/artifacts
