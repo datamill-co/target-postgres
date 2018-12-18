@@ -95,5 +95,4 @@ ENV/
 ._*
 
 # Singer files
-*.json
 *.txt

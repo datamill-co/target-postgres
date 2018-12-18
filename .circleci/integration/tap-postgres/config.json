@@ -1,0 +1,8 @@
+{
+  "dbname": "target_postgres_test",
+  "host": "localhost",
+  "port":  "5432",
+  "user": "postgres",
+  "password":  null,
+  "default_replication_method": "FULL_TABLE"
+}
