@@ -1,0 +1,4 @@
+{
+  "postgres_database": "target_postgres_test",
+  "postgres_username": "postgres"
+}

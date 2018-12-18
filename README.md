@@ -52,7 +52,7 @@ here.
 | `postgres_host` |`["string", "null"]` | `"localhost"` | |
 | `postgres_port` | `["integer", "null"]`|  `5432` | |
 | `postgres_database` | `["string"]`|  `N/A` | |
-| `postgres_username` | `["string", "null"]` |  `"postgres"` | |
+| `postgres_username` | `["string", "null"]` |  `N/A` | |
 | `postgres_password` | `["string", "null"]`|  `null` | |
 | `postgres_schema` | `["string", "null"]` |  `"public"` | |
 | `invalid_records_detect` | `["boolean", "null"]`| `true` | Include `false` in your config to disable `target-postgres` from crashing on invalid records |
