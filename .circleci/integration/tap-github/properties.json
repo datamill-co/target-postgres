@@ -1502,7 +1502,7 @@
       "stream": "collaborators",
       "tap_stream_id": "collaborators",
       "schema": {
-        "selected": true,
+        "selected": false,
         "type": [
           "null",
           "object"
