@@ -10,7 +10,8 @@ from fixtures import CatStream, CONFIG, db_cleanup, InvalidCatStream, MultiTypeS
 from target_postgres import json_schema
 from target_postgres import postgres
 from target_postgres import singer_stream
-from target_postgres import TargetError, main
+from target_postgres import main
+from target_postgres.sql_main import TargetError
 
 
 ## TODO: create and test more fake streams
