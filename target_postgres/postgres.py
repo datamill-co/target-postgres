@@ -101,11 +101,13 @@ class PostgresTarget(SQLInterface):
                     self.logger.warning('{} - Multiple table versions in stream, only using the latest.'
                                         .format(stream_buffer.stream))
 
+                root_table_name = stream_buffer.stream
+
                 if current_table_version is not None and \
                         target_table_version > current_table_version:
                     root_table_name = stream_buffer.stream + SEPARATOR + str(target_table_version)
-                else:
-                    root_table_name = stream_buffer.stream
+                elif current_table_version:
+                    target_table_version = current_table_version
 
                 if target_table_version is not None:
                     records = list(filter(lambda x: x.get(SINGER_TABLE_VERSION) == target_table_version,
@@ -157,7 +159,7 @@ class PostgresTarget(SQLInterface):
                 if not table_metadata:
                     self.logger.error('{} - Table for stream does not exist'.format(
                         stream_buffer.stream))
-                elif table_metadata.get('version') == version:
+                elif table_metadata.get('version') is not None and table_metadata.get('version') >= version:
                     self.logger.warning('{} - Table version {} already active'.format(
                         stream_buffer.stream,
                         version))
