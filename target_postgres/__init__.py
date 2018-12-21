@@ -25,7 +25,7 @@ def main(config, input_stream=None):
             postgres_target = PostgresTarget(
                 connection,
                 postgres_schema=config.get('postgres_schema', 'public'))
-            sql_main.main(config, postgres_target, input_stream=input_stream)
+            sql_main.stream_to_target(config, postgres_target, input_stream=input_stream)
     except Exception as e:
         LOGGER.critical(e)
         raise e

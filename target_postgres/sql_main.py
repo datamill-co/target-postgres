@@ -125,7 +125,16 @@ def _send_usage_stats():
     except:
         LOGGER.debug('Collection request failed')
 
-def main(config, target, input_stream=None):
+def stream_to_target(config, target, input_stream=None):
+    """
+    Given a `config`, a `target`, and potentially an `input_stream`,
+    stream input to `target`.
+
+    :param config: dict
+    :param target: SQLInterface
+    :param input_stream: iterable (defaults to `stdin`)
+    :return: None
+    """
     streams = {}
     try:
         if not config.get('disable_collection', False):
