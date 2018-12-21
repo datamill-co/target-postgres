@@ -1179,6 +1179,17 @@ def test_full_table_replication(db_cleanup):
     assert version_2_count == 120
     assert version_2_sub_count == 240
 
+    ## Test that an outdated version cannot overwrite
+    stream = CatStream(314, version=1, nested_count=2)
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_count_sql('cats'))
+            older_version_count = cur.fetchone()[0]
+
+    assert older_version_count == version_2_count
+
 
 def test_deduplication_newer_rows(db_cleanup):
     stream = CatStream(100, nested_count=3, duplicates=2)
