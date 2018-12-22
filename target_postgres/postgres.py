@@ -50,7 +50,7 @@ class PostgresTarget(SQLInterface):
 
     def write_batch(self, stream_buffer):
         if stream_buffer.count == 0:
-            return
+            return None
 
         with self.conn.cursor() as cur:
             try:
@@ -58,18 +58,10 @@ class PostgresTarget(SQLInterface):
 
                 cur.execute('BEGIN;')
 
-                processed_records = list(map(partial(self._process_record_message,
-                                                     stream_buffer.use_uuid_pk,
-                                                     self.get_postgres_datetime()),
-                                             stream_buffer.peek_buffer()))
-                versions = set()
-                max_version = None
-                for record in processed_records:
-                    record_version = record.get(SINGER_TABLE_VERSION)
-                    if record_version is not None and \
-                            (max_version is None or record_version > max_version):
-                        max_version = record_version
-                    versions.add(record_version)
+                records = list(map(partial(self._process_record_message,
+                                           stream_buffer.use_uuid_pk,
+                                           self.get_postgres_datetime()),
+                                   stream_buffer.peek_buffer()))
 
                 current_table_schema = self.get_table_schema(cur,
                                                              (stream_buffer.stream,),
@@ -88,45 +80,32 @@ class PostgresTarget(SQLInterface):
                                 stream_buffer.key_properties
                             ))
 
-                if max_version is not None:
-                    target_table_version = max_version
-                else:
-                    target_table_version = None
-
-                if current_table_version is not None and \
-                        min(versions) < current_table_version:
-                    self.logger.warning('{} - Records from an earlier table version detected.'
-                                        .format(stream_buffer.stream))
-                if len(versions) > 1:
-                    self.logger.warning('{} - Multiple table versions in stream, only using the latest.'
-                                        .format(stream_buffer.stream))
+                    for key in stream_buffer.key_properties:
+                        if json_schema.get_type(current_table_schema['schema']['properties'][key]) \
+                                != json_schema.get_type(stream_buffer.schema['properties'][key]):
+                            raise PostgresError(
+                                ('`key_properties` type change detected for "{}". ' +
+                                 'Existing values are: {}. ' +
+                                 'Streamed values are: {}').format(
+                                    key,
+                                    json_schema.get_type(current_table_schema['schema']['properties'][key]),
+                                    json_schema.get_type(stream_buffer.schema['properties'][key])
+                                ))
 
                 root_table_name = stream_buffer.stream
+                target_table_version = current_table_version or stream_buffer.max_version
 
                 if current_table_version is not None and \
-                        target_table_version > current_table_version:
-                    root_table_name = stream_buffer.stream + SEPARATOR + str(target_table_version)
-                elif current_table_version:
-                    target_table_version = current_table_version
+                        stream_buffer.max_version is not None:
+                    if stream_buffer.max_version < current_table_version:
+                        self.logger.warning('{} - Records from an earlier table version detected.'
+                                            .format(stream_buffer.stream))
+                        cur.execute('ROLLBACK;')
+                        return None
 
-                if target_table_version is not None:
-                    records = list(filter(lambda x: x.get(SINGER_TABLE_VERSION) == target_table_version,
-                                          processed_records))
-                else:
-                    records = processed_records
-
-                for key in stream_buffer.key_properties:
-                    if current_table_schema \
-                            and json_schema.get_type(current_table_schema['schema']['properties'][key]) \
-                            != json_schema.get_type(stream_buffer.schema['properties'][key]):
-                        raise PostgresError(
-                            ('`key_properties` type change detected for "{}". ' +
-                             'Existing values are: {}. ' +
-                             'Streamed values are: {}').format(
-                                key,
-                                json_schema.get_type(current_table_schema['schema']['properties'][key]),
-                                json_schema.get_type(stream_buffer.schema['properties'][key])
-                            ))
+                    elif stream_buffer.max_version > current_table_version:
+                        root_table_name = stream_buffer.stream + SEPARATOR + str(stream_buffer.max_version)
+                        target_table_version = stream_buffer.max_version
 
                 self._validate_identifier(root_table_name)
 
@@ -138,8 +117,6 @@ class PostgresTarget(SQLInterface):
                                                                   {'version': target_table_version})
 
                 cur.execute('COMMIT;')
-
-                stream_buffer.flush_buffer()
 
                 return written_batches_details
             except Exception as ex:

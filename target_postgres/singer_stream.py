@@ -84,6 +84,10 @@ class BufferedSingerStream():
 
         return False
 
+    @property
+    def max_version(self):
+        return self.__lifetime_max_version
+
     def __update_version(self, version):
         if version is None or (self.__lifetime_max_version is not None and self.__lifetime_max_version >= version):
             return None

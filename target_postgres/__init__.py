@@ -29,6 +29,7 @@ class TargetError(Exception):
 
 def flush_stream(target, stream_buffer):
     target.write_batch(stream_buffer)
+    stream_buffer.flush_buffer()
 
 def flush_streams(streams, target, force=False):
     for stream_buffer in streams.values():
