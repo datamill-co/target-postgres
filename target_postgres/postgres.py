@@ -4,7 +4,6 @@ import re
 import csv
 import uuid
 import json
-from functools import partial
 
 import arrow
 from psycopg2 import sql
@@ -12,11 +11,7 @@ from psycopg2 import sql
 from target_postgres import json_schema
 from target_postgres.sql_base import SQLInterface, SEPARATOR
 from target_postgres.singer_stream import (
-    SINGER_RECEIVED_AT,
-    SINGER_BATCHED_AT,
     SINGER_SEQUENCE,
-    SINGER_TABLE_VERSION,
-    SINGER_PK,
     SINGER_LEVEL
 )
 
@@ -57,11 +52,6 @@ class PostgresTarget(SQLInterface):
                 self._validate_identifier(stream_buffer.stream)
 
                 cur.execute('BEGIN;')
-
-                records = list(map(partial(self._process_record_message,
-                                           stream_buffer.use_uuid_pk,
-                                           self.get_postgres_datetime()),
-                                   stream_buffer.peek_buffer()))
 
                 current_table_schema = self.get_table_schema(cur,
                                                              (stream_buffer.stream,),
@@ -108,12 +98,11 @@ class PostgresTarget(SQLInterface):
                         target_table_version = stream_buffer.max_version
 
                 self._validate_identifier(root_table_name)
-
                 written_batches_details = self.write_batch_helper(cur,
                                                                   root_table_name,
                                                                   stream_buffer.schema,
                                                                   stream_buffer.key_properties,
-                                                                  records,
+                                                                  stream_buffer.get_batch(),
                                                                   {'version': target_table_version})
 
                 cur.execute('COMMIT;')
@@ -172,27 +161,6 @@ class PostgresTarget(SQLInterface):
                     version)
                 self.logger.exception(message)
                 raise PostgresError(message, ex)
-
-    def _process_record_message(self, use_uuid_pk, batched_at, record_message):
-        record = record_message['record']
-
-        if 'version' in record_message:
-            record[SINGER_TABLE_VERSION] = record_message['version']
-
-        if 'time_extracted' in record_message and record.get(SINGER_RECEIVED_AT) is None:
-            record[SINGER_RECEIVED_AT] = record_message['time_extracted']
-
-        if use_uuid_pk and record.get(SINGER_PK) is None:
-            record[SINGER_PK] = str(uuid.uuid4())
-
-        record[SINGER_BATCHED_AT] = batched_at
-
-        if 'sequence' in record_message:
-            record[SINGER_SEQUENCE] = record_message['sequence']
-        else:
-            record[SINGER_SEQUENCE] = arrow.get().timestamp
-
-        return record
 
     def _validate_identifier(self, identifier):
         if not identifier:
@@ -380,7 +348,7 @@ class PostgresTarget(SQLInterface):
         return value
 
     def serialize_table_record_datetime_value(self, remote_schema, streamed_schema, field, value):
-        return self.get_postgres_datetime(value)
+        return arrow.get(value).format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
 
     def persist_csv_rows(self,
                          cur,
@@ -442,13 +410,6 @@ class PostgresTarget(SQLInterface):
                               csv_rows)
 
         return len(table_batch['records'])
-
-    def get_postgres_datetime(self, *args):
-        if len(args) > 0:
-            parsed_datetime = arrow.get(args[0])
-        else:
-            parsed_datetime = arrow.get()  # defaults to UTC now
-        return parsed_datetime.format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
 
     def add_column(self, cur, table_name, column_name, column_schema):
 
