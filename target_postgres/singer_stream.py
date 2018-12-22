@@ -52,6 +52,7 @@ class BufferedSingerStream():
         self.__buffer = []
         self.__count = 0
         self.__size = 0
+        self.__lifetime_max_version = None
 
     def update_schema(self, schema, key_properties):
         self.validator = Draft4Validator(schema, format_checker=FormatChecker())
@@ -83,8 +84,22 @@ class BufferedSingerStream():
 
         return False
 
+    def __update_version(self, version):
+        if version is None or (self.__lifetime_max_version is not None and self.__lifetime_max_version >= version):
+            return None
+
+        ## TODO: log warning about earlier records detected
+
+        self.flush_buffer()
+        self.__lifetime_max_version = version
+
     def add_record_message(self, record_message):
         add_record = True
+
+        self.__update_version(record_message.get('version'))
+
+        if self.__lifetime_max_version != record_message.get('version'):
+            return None
 
         try:
             self.validator.validate(record_message['record'])
