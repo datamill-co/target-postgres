@@ -14,19 +14,23 @@ from target_postgres import json_schema
 
 LOGGER = singer.get_logger()
 
+
 class TargetError(Exception):
     """
     Raise when there is an Exception streaming data to the target.
     """
 
+
 def _flush_stream(target, stream_buffer):
     target.write_batch(stream_buffer)
     stream_buffer.flush_buffer()
+
 
 def _flush_streams(streams, target, force=False):
     for stream_buffer in streams.values():
         if force or stream_buffer.buffer_full:
             _flush_stream(target, stream_buffer)
+
 
 def _report_invalid_records(streams):
     for stream_buffer in streams.values():
@@ -36,7 +40,9 @@ def _report_invalid_records(streams):
                 stream_buffer.peek_invalid_records()
             ))
 
-def _line_handler(streams, target, invalid_records_detect, invalid_records_threshold, max_batch_rows, max_batch_size, line):
+
+def _line_handler(streams, target, invalid_records_detect, invalid_records_threshold, max_batch_rows, max_batch_size,
+                  line):
     try:
         line_data = json.loads(line)
     except json.decoder.JSONDecodeError:
@@ -107,6 +113,7 @@ def _line_handler(streams, target, invalid_records_detect, invalid_records_thres
             line_data['type'],
             line))
 
+
 def _send_usage_stats():
     try:
         version = pkg_resources.get_distribution('target-postgres').version
@@ -120,10 +127,18 @@ def _send_usage_stats():
             'se_la': version,
         }
         conn.request('GET', '/i?' + urllib.parse.urlencode(params))
-        response = conn.getresponse()
+        conn.getresponse()
         conn.close()
     except:
         LOGGER.debug('Collection request failed')
+
+
+def _async_send_usage_stats():
+    LOGGER.info('Sending version information to singer.io. ' +
+                'To disable sending anonymous usage data, set ' +
+                'the config parameter "disable_collection" to true')
+    threading.Thread(target=_send_usage_stats()).start()
+
 
 def stream_to_target(config, target, input_stream=None):
     """
@@ -138,10 +153,7 @@ def stream_to_target(config, target, input_stream=None):
     streams = {}
     try:
         if not config.get('disable_collection', False):
-            LOGGER.info('Sending version information to singer.io. ' +
-                        'To disable sending anonymous usage data, set ' +
-                        'the config parameter "disable_collection" to true')
-            threading.Thread(target=_send_usage_stats).start()
+            _async_send_usage_stats()
 
         invalid_records_detect = config.get('invalid_records_detect')
         invalid_records_threshold = config.get('invalid_records_threshold')

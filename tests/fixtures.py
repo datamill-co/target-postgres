@@ -13,7 +13,8 @@ from target_postgres.singer_stream import SINGER_SEQUENCE
 CONFIG = {
     'postgres_host': os.environ['POSTGRES_HOST'],
     'postgres_database': os.environ['POSTGRES_DATABASE'],
-    'postgres_username': os.environ['POSTGRES_USERNAME']
+    'postgres_username': os.environ['POSTGRES_USERNAME'],
+    'disable_collection': True
 }
 
 TEST_DB = {

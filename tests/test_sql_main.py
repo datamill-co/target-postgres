@@ -6,7 +6,7 @@ import pytest
 from fixtures import CONFIG, InvalidCatStream
 from target_postgres import singer_stream
 from target_postgres.sql_base import SQLInterface
-from target_postgres.sql_main import stream_to_target
+from target_postgres import sql_main
 
 
 class Target(SQLInterface):
@@ -26,8 +26,8 @@ class Target(SQLInterface):
 
 def test_loading__invalid__records():
     with pytest.raises(singer_stream.SingerStreamError, match=r'.*'):
-        stream_to_target(CONFIG, None,
-                         input_stream=InvalidCatStream(1))
+        sql_main.stream_to_target(CONFIG, None,
+                                  input_stream=InvalidCatStream(1))
 
 
 def test_loading__invalid__records__disable():
@@ -36,7 +36,7 @@ def test_loading__invalid__records__disable():
 
     target = Target()
 
-    stream_to_target(config, target, input_stream=InvalidCatStream(100))
+    sql_main.stream_to_target(config, target, input_stream=InvalidCatStream(100))
 
     ## Since all `cat`s records were invalid, we could not persist them, hence, no calls made to `write_batch`
     assert len(target.calls['write_batch']) == 1
@@ -50,6 +50,24 @@ def test_loading__invalid__records__threshold():
     target = Target()
 
     with pytest.raises(singer_stream.SingerStreamError, match=r'.*.10*'):
-        stream_to_target(config, target, input_stream=InvalidCatStream(20))
+        sql_main.stream_to_target(config, target, input_stream=InvalidCatStream(20))
 
     assert len(target.calls['write_batch']) == 0
+
+
+def test_usage_stats():
+    config = deepcopy(CONFIG)
+    assert config['disable_collection']
+
+    with patch.object(sql_main,
+                      '_async_send_usage_stats') as mock:
+        target = Target()
+        sql_main.stream_to_target(config, target, input_stream=InvalidCatStream(0))
+
+        assert mock.call_count == 0
+
+        config['disable_collection'] = False
+        target = Target()
+        sql_main.stream_to_target(config, target, input_stream=InvalidCatStream(0))
+
+        assert mock.call_count == 1
