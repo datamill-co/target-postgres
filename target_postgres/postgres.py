@@ -4,7 +4,6 @@ import re
 import csv
 import uuid
 import json
-from functools import partial
 
 import arrow
 from psycopg2 import sql
@@ -12,11 +11,7 @@ from psycopg2 import sql
 from target_postgres import json_schema
 from target_postgres.sql_base import SQLInterface, SEPARATOR
 from target_postgres.singer_stream import (
-    SINGER_RECEIVED_AT,
-    SINGER_BATCHED_AT,
     SINGER_SEQUENCE,
-    SINGER_TABLE_VERSION,
-    SINGER_PK,
     SINGER_LEVEL
 )
 
@@ -50,26 +45,13 @@ class PostgresTarget(SQLInterface):
 
     def write_batch(self, stream_buffer):
         if stream_buffer.count == 0:
-            return
+            return None
 
         with self.conn.cursor() as cur:
             try:
                 self._validate_identifier(stream_buffer.stream)
 
                 cur.execute('BEGIN;')
-
-                processed_records = list(map(partial(self._process_record_message,
-                                                     stream_buffer.use_uuid_pk,
-                                                     self.get_postgres_datetime()),
-                                             stream_buffer.peek_buffer()))
-                versions = set()
-                max_version = None
-                for record in processed_records:
-                    record_version = record.get(SINGER_TABLE_VERSION)
-                    if record_version is not None and \
-                            (max_version is None or record_version > max_version):
-                        max_version = record_version
-                    versions.add(record_version)
 
                 current_table_schema = self.get_table_schema(cur,
                                                              (stream_buffer.stream,),
@@ -88,56 +70,42 @@ class PostgresTarget(SQLInterface):
                                 stream_buffer.key_properties
                             ))
 
-                if max_version is not None:
-                    target_table_version = max_version
-                else:
-                    target_table_version = None
+                    for key in stream_buffer.key_properties:
+                        if json_schema.get_type(current_table_schema['schema']['properties'][key]) \
+                                != json_schema.get_type(stream_buffer.schema['properties'][key]):
+                            raise PostgresError(
+                                ('`key_properties` type change detected for "{}". ' +
+                                 'Existing values are: {}. ' +
+                                 'Streamed values are: {}').format(
+                                    key,
+                                    json_schema.get_type(current_table_schema['schema']['properties'][key]),
+                                    json_schema.get_type(stream_buffer.schema['properties'][key])
+                                ))
+
+                root_table_name = stream_buffer.stream
+                target_table_version = current_table_version or stream_buffer.max_version
 
                 if current_table_version is not None and \
-                        min(versions) < current_table_version:
-                    self.logger.warning('{} - Records from an earlier table version detected.'
-                                        .format(stream_buffer.stream))
-                if len(versions) > 1:
-                    self.logger.warning('{} - Multiple table versions in stream, only using the latest.'
-                                        .format(stream_buffer.stream))
+                        stream_buffer.max_version is not None:
+                    if stream_buffer.max_version < current_table_version:
+                        self.logger.warning('{} - Records from an earlier table version detected.'
+                                            .format(stream_buffer.stream))
+                        cur.execute('ROLLBACK;')
+                        return None
 
-                if current_table_version is not None and \
-                        target_table_version > current_table_version:
-                    root_table_name = stream_buffer.stream + SEPARATOR + str(target_table_version)
-                else:
-                    root_table_name = stream_buffer.stream
-
-                if target_table_version is not None:
-                    records = list(filter(lambda x: x.get(SINGER_TABLE_VERSION) == target_table_version,
-                                          processed_records))
-                else:
-                    records = processed_records
-
-                for key in stream_buffer.key_properties:
-                    if current_table_schema \
-                            and json_schema.get_type(current_table_schema['schema']['properties'][key]) \
-                            != json_schema.get_type(stream_buffer.schema['properties'][key]):
-                        raise PostgresError(
-                            ('`key_properties` type change detected for "{}". ' +
-                             'Existing values are: {}. ' +
-                             'Streamed values are: {}').format(
-                                key,
-                                json_schema.get_type(current_table_schema['schema']['properties'][key]),
-                                json_schema.get_type(stream_buffer.schema['properties'][key])
-                            ))
+                    elif stream_buffer.max_version > current_table_version:
+                        root_table_name = stream_buffer.stream + SEPARATOR + str(stream_buffer.max_version)
+                        target_table_version = stream_buffer.max_version
 
                 self._validate_identifier(root_table_name)
-
                 written_batches_details = self.write_batch_helper(cur,
                                                                   root_table_name,
                                                                   stream_buffer.schema,
                                                                   stream_buffer.key_properties,
-                                                                  records,
+                                                                  stream_buffer.get_batch(),
                                                                   {'version': target_table_version})
 
                 cur.execute('COMMIT;')
-
-                stream_buffer.flush_buffer()
 
                 return written_batches_details
             except Exception as ex:
@@ -157,7 +125,7 @@ class PostgresTarget(SQLInterface):
                 if not table_metadata:
                     self.logger.error('{} - Table for stream does not exist'.format(
                         stream_buffer.stream))
-                elif table_metadata.get('version') == version:
+                elif table_metadata.get('version') is not None and table_metadata.get('version') >= version:
                     self.logger.warning('{} - Table version {} already active'.format(
                         stream_buffer.stream,
                         version))
@@ -193,27 +161,6 @@ class PostgresTarget(SQLInterface):
                     version)
                 self.logger.exception(message)
                 raise PostgresError(message, ex)
-
-    def _process_record_message(self, use_uuid_pk, batched_at, record_message):
-        record = record_message['record']
-
-        if 'version' in record_message:
-            record[SINGER_TABLE_VERSION] = record_message['version']
-
-        if 'time_extracted' in record_message and record.get(SINGER_RECEIVED_AT) is None:
-            record[SINGER_RECEIVED_AT] = record_message['time_extracted']
-
-        if use_uuid_pk and record.get(SINGER_PK) is None:
-            record[SINGER_PK] = str(uuid.uuid4())
-
-        record[SINGER_BATCHED_AT] = batched_at
-
-        if 'sequence' in record_message:
-            record[SINGER_SEQUENCE] = record_message['sequence']
-        else:
-            record[SINGER_SEQUENCE] = arrow.get().timestamp
-
-        return record
 
     def _validate_identifier(self, identifier):
         if not identifier:
@@ -401,7 +348,7 @@ class PostgresTarget(SQLInterface):
         return value
 
     def serialize_table_record_datetime_value(self, remote_schema, streamed_schema, field, value):
-        return self.get_postgres_datetime(value)
+        return arrow.get(value).format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
 
     def persist_csv_rows(self,
                          cur,
@@ -463,13 +410,6 @@ class PostgresTarget(SQLInterface):
                               csv_rows)
 
         return len(table_batch['records'])
-
-    def get_postgres_datetime(self, *args):
-        if len(args) > 0:
-            parsed_datetime = arrow.get(args[0])
-        else:
-            parsed_datetime = arrow.get()  # defaults to UTC now
-        return parsed_datetime.format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
 
     def add_column(self, cur, table_name, column_name, column_schema):
 
