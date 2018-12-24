@@ -1,3 +1,6 @@
+import uuid
+
+import arrow
 from jsonschema import Draft4Validator, FormatChecker
 from jsonschema.exceptions import ValidationError
 
@@ -52,6 +55,7 @@ class BufferedSingerStream():
         self.__buffer = []
         self.__count = 0
         self.__size = 0
+        self.__lifetime_max_version = None
 
     def update_schema(self, schema, key_properties):
         self.validator = Draft4Validator(schema, format_checker=FormatChecker())
@@ -83,8 +87,26 @@ class BufferedSingerStream():
 
         return False
 
+    @property
+    def max_version(self):
+        return self.__lifetime_max_version
+
+    def __update_version(self, version):
+        if version is None or (self.__lifetime_max_version is not None and self.__lifetime_max_version >= version):
+            return None
+
+        ## TODO: log warning about earlier records detected
+
+        self.flush_buffer()
+        self.__lifetime_max_version = version
+
     def add_record_message(self, record_message):
         add_record = True
+
+        self.__update_version(record_message.get('version'))
+
+        if self.__lifetime_max_version != record_message.get('version'):
+            return None
 
         try:
             self.validator.validate(record_message['record'])
@@ -105,6 +127,33 @@ class BufferedSingerStream():
 
     def peek_buffer(self):
         return self.__buffer
+
+    def get_batch(self):
+        current_time = arrow.get().format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
+
+        records = []
+        for record_message in self.peek_buffer():
+            record = record_message['record']
+
+            if 'version' in record_message:
+                record[SINGER_TABLE_VERSION] = record_message['version']
+
+            if 'time_extracted' in record_message and record.get(SINGER_RECEIVED_AT) is None:
+                record[SINGER_RECEIVED_AT] = record_message['time_extracted']
+
+            if self.use_uuid_pk and record.get(SINGER_PK) is None:
+                record[SINGER_PK] = str(uuid.uuid4())
+
+            record[SINGER_BATCHED_AT] = current_time
+
+            if 'sequence' in record_message:
+                record[SINGER_SEQUENCE] = record_message['sequence']
+            else:
+                record[SINGER_SEQUENCE] = arrow.get().timestamp
+
+            records.append(record)
+
+        return records
 
     def flush_buffer(self):
         _buffer = self.__buffer

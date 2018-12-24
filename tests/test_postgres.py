@@ -1,6 +1,5 @@
 from copy import deepcopy
 from datetime import datetime
-from unittest.mock import patch
 
 import psycopg2
 from psycopg2 import sql
@@ -1179,6 +1178,17 @@ def test_full_table_replication(db_cleanup):
     assert version_2_count == 120
     assert version_2_sub_count == 240
 
+    ## Test that an outdated version cannot overwrite
+    stream = CatStream(314, version=1, nested_count=2)
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(get_count_sql('cats'))
+            older_version_count = cur.fetchone()[0]
+
+    assert older_version_count == version_2_count
+
 
 def test_deduplication_newer_rows(db_cleanup):
     stream = CatStream(100, nested_count=3, duplicates=2)
@@ -1252,38 +1262,6 @@ def test_deduplication_existing_new_rows(db_cleanup):
 
     assert len(sequences) == 1
     assert sequences[0][0] == original_sequence
-
-
-def mocked_mock_write_batch(stream_buffer):
-    records = stream_buffer.flush_buffer()
-
-
-def test_multiple_batches_by_rows(db_cleanup):
-    with patch.object(postgres.PostgresTarget,
-                      'write_batch',
-                      side_effect=mocked_mock_write_batch) as mock_write_batch:
-        config = CONFIG.copy()
-        config['max_batch_rows'] = 20
-        config['batch_detection_threshold'] = 5
-
-        stream = CatStream(100)
-        main(config, input_stream=stream)
-
-        assert mock_write_batch.call_count == 6
-
-
-def test_multiple_batches_by_memory(db_cleanup):
-    with patch.object(postgres.PostgresTarget,
-                      'write_batch',
-                      side_effect=mocked_mock_write_batch) as mock_write_batch:
-        config = CONFIG.copy()
-        config['max_batch_size'] = 1024
-        config['batch_detection_threshold'] = 5
-
-        stream = CatStream(100)
-        main(config, input_stream=stream)
-
-        assert mock_write_batch.call_count == 21
 
 
 def test_multiple_batches_upsert(db_cleanup):
