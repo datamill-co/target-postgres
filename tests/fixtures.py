@@ -430,6 +430,15 @@ def clear_db():
                         'commit;')
 
 
+def assert_columns_equal(connection, target, table_name, expected_columns):
+    table_schema = target.get_table_schema(connection, (), table_name)
+
+    if not table_schema and not expected_columns:
+        assert True
+    else:
+        assert table_schema['schema']['properties'] == expected_columns
+
+
 @pytest.fixture
 def db_cleanup():
     clear_db()
