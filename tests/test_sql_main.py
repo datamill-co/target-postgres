@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from fixtures import CONFIG, InvalidCatStream
+from tests.fixtures import CONFIG, InvalidCatStream
 from target_postgres import singer_stream
 from target_postgres.sql_base import SQLInterface
 from target_postgres import sql_main

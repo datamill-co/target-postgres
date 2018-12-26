@@ -3,7 +3,7 @@ import re
 import pytest
 
 from target_postgres import json_schema
-from fixtures import CATS_SCHEMA
+from tests.fixtures import CATS_SCHEMA
 
 
 def test_is_object():

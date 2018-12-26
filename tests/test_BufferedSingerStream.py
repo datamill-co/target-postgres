@@ -1,7 +1,7 @@
 import pytest
 
 from target_postgres.singer_stream import BufferedSingerStream, SingerStreamError
-from fixtures import CatStream, InvalidCatStream, CATS_SCHEMA
+from tests.fixtures import CatStream, InvalidCatStream, CATS_SCHEMA
 
 
 def test_init():

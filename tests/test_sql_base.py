@@ -1,14 +1,12 @@
 from copy import deepcopy
-import re
 
-import pytest
 import singer
 
 from target_postgres import json_schema
 from target_postgres.sql_base import SQLInterface
 
-from fixtures import CatStream, CONFIG, MultiTypeStream, NestedStream
-from target_postgres.sql_main import TargetError, stream_to_target
+from tests.fixtures import CatStream, CONFIG, MultiTypeStream, NestedStream, assert_columns_equal
+from target_postgres.sql_main import stream_to_target
 
 RESERVED_NULL_DEFAULT = 'NULL'
 
