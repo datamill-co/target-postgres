@@ -115,21 +115,13 @@ def assert_tables_equal(target, expected_table_names):
     assert set(target.tables.keys()) == set(expected_table_names)
 
 
-def assert_columns_equal(target, table_name, expected_columns):
-    table_schema = target.get_table_schema(None, (), table_name)
-
-    if not table_schema and not expected_columns:
-        assert True
-    else:
-        assert table_schema['schema']['properties'] == expected_columns
-
-
 def test_loading__simple():
     target = FakeSchemaTarget()
 
     stream_to_target(CONFIG, target, input_stream=CatStream(100))
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'cats',
                          {
                              '_sdc_batched_at': {'type': ['string', 'null'],
@@ -150,7 +142,8 @@ def test_loading__simple():
                              'pattern': {'type': ['string', 'null']}
                          })
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'cats__adoption__immunizations',
                          {
                              '_sdc_level_0_id': {'type': ['integer']},
@@ -187,7 +180,8 @@ def test_loading__nested_tables():
                                  'root__array_of_array___sdc_value',
                                  'root__array_of_array___sdc_value___sdc_value'])
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'root',
                          {
                              '_sdc_batched_at': {'type': ['string', 'null'],
@@ -204,7 +198,8 @@ def test_loading__nested_tables():
                              'object_of_object_0__object_of_object_1__object___2': {'type': ['integer']}
                          })
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'root__object_of_object_0__object_of_object_1__object_of_object_2__array_scalar'[:50],
                          {
                              '_sdc_sequence': {'type': ['integer', 'null']},
@@ -213,7 +208,8 @@ def test_loading__nested_tables():
                              '_sdc_value': {'type': ['boolean']}
                          })
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'root__array_of_array',
                          {
                              '_sdc_sequence': {'type': ['integer', 'null']},
@@ -221,7 +217,8 @@ def test_loading__nested_tables():
                              '_sdc_level_0_id': {'type': ['integer']}
                          })
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'root__array_of_array___sdc_value',
                          {
                              '_sdc_sequence': {'type': ['integer', 'null']},
@@ -230,7 +227,8 @@ def test_loading__nested_tables():
                              '_sdc_level_1_id': {'type': ['integer']}
                          })
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'root__array_of_array___sdc_value___sdc_value',
                          {
                              '_sdc_sequence': {'type': ['integer', 'null']},
@@ -260,7 +258,8 @@ def test_loading__new_non_null_column():
 
     stream_to_target(CONFIG, target, input_stream=non_null_stream)
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'cats',
                          {
                              '_sdc_batched_at': {'type': ['string', 'null'],
@@ -288,7 +287,8 @@ def test_loading__column_type_change():
     target = FakeSchemaTarget()
     stream_to_target(CONFIG, target, input_stream=CatStream(cat_count))
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'cats',
                          {
                              '_sdc_batched_at': {'type': ['string', 'null'],
@@ -322,7 +322,8 @@ def test_loading__column_type_change():
 
     stream_to_target(CONFIG, target, input_stream=stream)
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'cats',
                          {
                              '_sdc_batched_at': {'type': ['string', 'null'],
@@ -371,7 +372,8 @@ def test_loading__column_type_change():
 
     stream_to_target(CONFIG, target, input_stream=stream)
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'cats',
                          {
                              '_sdc_batched_at': {'type': ['string', 'null'],
@@ -418,7 +420,8 @@ def test_loading__column_type_change__nullable():
     target = FakeSchemaTarget()
     stream_to_target(CONFIG, target, input_stream=CatStream(cat_count))
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'cats',
                          {
                              '_sdc_batched_at': {'type': ['string', 'null'],
@@ -464,7 +467,8 @@ def test_loading__column_type_change__nullable():
 
     stream_to_target(CONFIG, target, input_stream=stream)
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'cats',
                          {
                              '_sdc_batched_at': {'type': ['string', 'null'],
@@ -505,7 +509,8 @@ def test_loading__column_type_change__nullable():
 
     stream_to_target(CONFIG, target, input_stream=NameNonNullCatStream(cat_count))
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'cats',
                          {
                              '_sdc_batched_at': {'type': ['string', 'null'],
@@ -544,7 +549,8 @@ def test_loading__multi_types_columns():
     target = FakeSchemaTarget()
     stream_to_target(CONFIG, target, input_stream=MultiTypeStream(stream_count))
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'root',
                          {
                              '_sdc_primary_key': {'type': ['string']},
@@ -565,7 +571,8 @@ def test_loading__multi_types_columns():
                              'number_which_only_comes_as_integer': {'type': ['number']}
                          })
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'root__every_type',
                          {
                              '_sdc_source_key__sdc_primary_key': {'type': ['string']},
@@ -639,7 +646,8 @@ def test_loading__invalid__table_name__nested():
                                  ('cats__adoption__' + sub_table_name),
                                  ('cats__adoption__' + sub_table_name + '__1')])
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'cats',
                          {
                              '_sdc_batched_at': {'type': ['string', 'null'],
@@ -667,13 +675,16 @@ def test_loading__invalid__table_name__nested():
         'date_administered': {'format': 'date-time', 'type': ['string', 'null']},
         'type': {'type': ['string', 'null']}
     }
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          ('cats__adoption__' + sub_table_name),
                          subtable_columns)
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          ('cats__adoption__' + invalid_name.lower()),
                          subtable_columns)
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          ('cats__adoption__' + sub_table_name + '__1'),
                          subtable_columns)
 
@@ -723,7 +734,8 @@ def test_loading__invalid_column_name():
 
     stream_to_target(CONFIG, target, input_stream=duplicate_name_too_long_stream)
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'cats',
                          {
                              '_sdc_batched_at': {'type': ['string', 'null'],
@@ -788,7 +800,8 @@ def test_loading__invalid_column_name__duplicate_name_handling():
     for i in range(10, 100):
         expected_columns['x' * 46 + '__' + str(i)] = {'type': ['integer', 'null']}
 
-    assert_columns_equal(target, 'cats', expected_columns)
+    assert_columns_equal(None,
+                         target, 'cats', expected_columns)
 
 
 def test_loading__invalid_column_name__column_type_change():
@@ -803,7 +816,8 @@ def test_loading__invalid_column_name__column_type_change():
 
     stream_to_target(CONFIG, target, input_stream=stream)
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'cats',
                          {
                              '_sdc_batched_at': {'type': ['string', 'null'],
@@ -849,7 +863,8 @@ def test_loading__invalid_column_name__column_type_change():
 
     stream_to_target(CONFIG, target, input_stream=stream)
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'cats',
                          {
                              '_sdc_batched_at': {'type': ['string', 'null'],
@@ -899,7 +914,8 @@ def test_loading__invalid_column_name__column_type_change():
 
     stream_to_target(CONFIG, target, input_stream=stream)
 
-    assert_columns_equal(target,
+    assert_columns_equal(None,
+                         target,
                          'cats',
                          {
                              '_sdc_batched_at': {'type': ['string', 'null'],
