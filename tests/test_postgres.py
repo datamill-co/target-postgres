@@ -7,8 +7,7 @@ import psycopg2.extras
 import pytest
 import singer
 
-from tests import fixtures
-from tests.fixtures import CatStream, CONFIG, db_cleanup, MultiTypeStream, NestedStream, TEST_DB
+from tests.fixtures import CatStream, CONFIG, db_cleanup, MultiTypeStream, NestedStream, TEST_DB, assert_columns_equal
 from target_postgres import json_schema
 from target_postgres import postgres
 from target_postgres import singer_stream
@@ -19,16 +18,6 @@ from target_postgres.sql_main import TargetError
 ## TODO: create and test more fake streams
 ## TODO: test invalid data against JSON Schema
 ## TODO: test compound pk
-
-def assert_columns_equal(cursor, table_name, expected_column_tuples):
-    cursor.execute("SELECT column_name, data_type, is_nullable FROM information_schema.columns " + \
-                   "WHERE table_schema = 'public' and table_name = '{}';".format(
-                       table_name))
-    columns = cursor.fetchall()
-
-    assert (not columns and not expected_column_tuples) \
-           or set(columns) == expected_column_tuples
-
 
 def get_count_sql(table_name):
     return 'SELECT count(*) FROM "public"."{}"'.format(table_name)
@@ -171,66 +160,38 @@ def test_loading__simple(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'cats',
-                                          {
-                                              '_sdc_batched_at': {'type': ['string', 'null'],
-                                                                  'format': 'date-time'},
-                                              '_sdc_received_at': {'type': ['string', 'null'],
-                                                                   'format': 'date-time'},
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_table_version': {'type': ['integer', 'null']},
-                                              'adoption__adopted_on': {'type': ['string', 'null'],
-                                                                       'format': 'date-time'},
-                                              'adoption__was_foster': {'type': ['boolean', 'null']},
-                                              'age': {'type': ['integer', 'null']},
-                                              'id': {'type': ['integer']},
-                                              'name': {'type': ['string']},
-                                              'paw_size': {'type': ['integer']},
-                                              'paw_colour': {'type': ['string']},
-                                              'flea_check_complete': {'type': ['boolean']},
-                                              'pattern': {'type': ['string', 'null']}
-                                          })
-
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'cats__adoption__immunizations',
-                                          {
-                                              '_sdc_level_0_id': {'type': ['integer']},
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_source_key_id': {'type': ['integer']},
-                                              'date_administered': {'type': ['string', 'null'],
-                                                                    'format': 'date-time'},
-                                              'type': {'type': ['string', 'null']}
-                                          })
-
             assert_columns_equal(cur,
+                                 postgres.PostgresTarget(conn),
                                  'cats',
                                  {
-                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_table_version', 'bigint', 'YES'),
-                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                                     ('adoption__was_foster', 'boolean', 'YES'),
-                                     ('age', 'bigint', 'YES'),
-                                     ('id', 'bigint', 'NO'),
-                                     ('name', 'text', 'NO'),
-                                     ('paw_size', 'bigint', 'NO'),
-                                     ('paw_colour', 'text', 'NO'),
-                                     ('flea_check_complete', 'boolean', 'NO'),
-                                     ('pattern', 'text', 'YES')
+                                     '_sdc_batched_at': {'type': ['string', 'null'],
+                                                         'format': 'date-time'},
+                                     '_sdc_received_at': {'type': ['string', 'null'],
+                                                          'format': 'date-time'},
+                                     '_sdc_sequence': {'type': ['integer', 'null']},
+                                     '_sdc_table_version': {'type': ['integer', 'null']},
+                                     'adoption__adopted_on': {'type': ['string', 'null'],
+                                                              'format': 'date-time'},
+                                     'adoption__was_foster': {'type': ['boolean', 'null']},
+                                     'age': {'type': ['integer', 'null']},
+                                     'id': {'type': ['integer']},
+                                     'name': {'type': ['string']},
+                                     'paw_size': {'type': ['integer']},
+                                     'paw_colour': {'type': ['string']},
+                                     'flea_check_complete': {'type': ['boolean']},
+                                     'pattern': {'type': ['string', 'null']}
                                  })
 
             assert_columns_equal(cur,
+                                 postgres.PostgresTarget(conn),
                                  'cats__adoption__immunizations',
                                  {
-                                     ('_sdc_level_0_id', 'bigint', 'NO'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_source_key_id', 'bigint', 'NO'),
-                                     ('date_administered', 'timestamp with time zone', 'YES'),
-                                     ('type', 'text', 'YES')
+                                     '_sdc_level_0_id': {'type': ['integer']},
+                                     '_sdc_sequence': {'type': ['integer', 'null']},
+                                     '_sdc_source_key_id': {'type': ['integer']},
+                                     'date_administered': {'type': ['string', 'null'],
+                                                           'format': 'date-time'},
+                                     'type': {'type': ['string', 'null']}
                                  })
 
             cur.execute(get_count_sql('cats'))
@@ -242,158 +203,6 @@ def test_loading__simple(db_cleanup):
             record['flea_check_complete'] = False
 
         assert_records(conn, stream.records, 'cats', 'id')
-
-
-## TODO: Complex types defaulted
-# def test_loading__default__complex_type(db_cleanup):
-#     main(CONFIG, input_stream=NestedStream(10))
-#
-#     with psycopg2.connect(**TEST_DB) as conn:
-#         with conn.cursor() as cur:
-#             cur.execute(get_count_sql('root'))
-#             assert 10 == cur.fetchone()[0]
-#
-#             cur.execute(get_count_sql('root__array_scalar_defaulted'))
-#             assert 100 == cur.fetchone()[0]
-
-
-def test_loading__nested_tables(db_cleanup):
-    main(CONFIG, input_stream=NestedStream(10))
-
-    with psycopg2.connect(**TEST_DB) as conn:
-        with conn.cursor() as cur:
-            cur.execute(get_count_sql('root'))
-            assert 10 == cur.fetchone()[0]
-
-            cur.execute(get_count_sql('root__array_scalar'))
-            assert 50 == cur.fetchone()[0]
-
-            cur.execute(
-                get_count_sql('root__object_of_object_0__object_of_object_1__object_of_object_2__array_scalar'[:63]))
-            assert 50 == cur.fetchone()[0]
-
-            cur.execute(get_count_sql('root__array_of_array'))
-            assert 20 == cur.fetchone()[0]
-
-            cur.execute(get_count_sql('root__array_of_array___sdc_value'))
-            assert 80 == cur.fetchone()[0]
-
-            cur.execute(get_count_sql('root__array_of_array___sdc_value___sdc_value'))
-            assert 200 == cur.fetchone()[0]
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'root',
-                                          {
-                                              '_sdc_batched_at': {'type': ['string', 'null'],
-                                                                  'format': 'date-time'},
-                                              '_sdc_received_at': {'type': ['string', 'null'],
-                                                                   'format': 'date-time'},
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_table_version': {'type': ['integer', 'null']},
-                                              'id': {'type': ['integer']},
-                                              'null': {'type': ['integer', 'null']},
-                                              'nested_null__null': {'type': ['integer', 'null']},
-                                              'object_of_object_0__object_of_object_1__object_of_object_2__a': {
-                                                  'type': ['integer']},
-                                              'object_of_object_0__object_of_object_1__object_of_object_2__b': {
-                                                  'type': ['integer']},
-                                              'object_of_object_0__object_of_object_1__object_of_object_2__c': {
-                                                  'type': ['integer']}
-                                          })
-
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'root__object_of_object_0__object_of_object_1__object_of_object_2__array_scalar'[
-                                          :63],
-                                          {
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_source_key_id': {'type': ['integer']},
-                                              '_sdc_level_0_id': {'type': ['integer']},
-                                              '_sdc_value': {'type': ['boolean']}
-                                          })
-
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'root__array_of_array',
-                                          {
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_source_key_id': {'type': ['integer']},
-                                              '_sdc_level_0_id': {'type': ['integer']}
-                                          })
-
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'root__array_of_array___sdc_value',
-                                          {
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_source_key_id': {'type': ['integer']},
-                                              '_sdc_level_0_id': {'type': ['integer']},
-                                              '_sdc_level_1_id': {'type': ['integer']}
-                                          })
-
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'root__array_of_array___sdc_value___sdc_value',
-                                          {
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_source_key_id': {'type': ['integer']},
-                                              '_sdc_level_0_id': {'type': ['integer']},
-                                              '_sdc_level_1_id': {'type': ['integer']},
-                                              '_sdc_level_2_id': {'type': ['integer']},
-                                              '_sdc_value': {'type': ['integer']}
-                                          })
-
-            assert_columns_equal(cur,
-                                 'root',
-                                 {
-                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_table_version', 'bigint', 'YES'),
-                                     ('id', 'bigint', 'NO'),
-                                     ('null', 'bigint', 'YES'),
-                                     ('nested_null__null', 'bigint', 'YES'),
-                                     ('object_of_object_0__object_of_object_1__object_of_object_2__a', 'bigint', 'NO'),
-                                     ('object_of_object_0__object_of_object_1__object_of_object_2__b', 'bigint', 'NO'),
-                                     ('object_of_object_0__object_of_object_1__object_of_object_2__c', 'bigint', 'NO')
-                                 })
-
-            assert_columns_equal(cur,
-                                 'root__object_of_object_0__object_of_object_1__object_of_object_2__array_scalar'[:63],
-                                 {
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_source_key_id', 'bigint', 'NO'),
-                                     ('_sdc_level_0_id', 'bigint', 'NO'),
-                                     ('_sdc_value', 'boolean', 'NO')
-                                 })
-
-            assert_columns_equal(cur,
-                                 'root__array_of_array',
-                                 {
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_source_key_id', 'bigint', 'NO'),
-                                     ('_sdc_level_0_id', 'bigint', 'NO')
-                                 })
-
-            assert_columns_equal(cur,
-                                 'root__array_of_array___sdc_value',
-                                 {
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_source_key_id', 'bigint', 'NO'),
-                                     ('_sdc_level_0_id', 'bigint', 'NO'),
-                                     ('_sdc_level_1_id', 'bigint', 'NO')
-                                 })
-
-            assert_columns_equal(cur,
-                                 'root__array_of_array___sdc_value___sdc_value',
-                                 {
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_source_key_id', 'bigint', 'NO'),
-                                     ('_sdc_level_0_id', 'bigint', 'NO'),
-                                     ('_sdc_level_1_id', 'bigint', 'NO'),
-                                     ('_sdc_level_2_id', 'bigint', 'NO'),
-                                     ('_sdc_value', 'bigint', 'NO')
-                                 })
 
 
 def test_loading__new_non_null_column(db_cleanup):
@@ -415,46 +224,27 @@ def test_loading__new_non_null_column(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'cats',
-                                          {
-                                              '_sdc_batched_at': {'type': ['string', 'null'],
-                                                                  'format': 'date-time'},
-                                              '_sdc_received_at': {'type': ['string', 'null'],
-                                                                   'format': 'date-time'},
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_table_version': {'type': ['integer', 'null']},
-                                              'adoption__adopted_on': {'type': ['string', 'null'],
-                                                                       'format': 'date-time'},
-                                              'adoption__was_foster': {'type': ['boolean', 'null']},
-                                              'age': {'type': ['integer', 'null']},
-                                              'id': {'type': ['integer']},
-                                              'name': {'type': ['string']},
-                                              'paw_size': {'type': ['integer']},
-                                              'paw_colour': {'type': ['string']},
-                                              'paw_toe_count': {'type': ['integer', 'null']},
-                                              'flea_check_complete': {'type': ['boolean']},
-                                              'pattern': {'type': ['string', 'null']}
-                                          })
-
             assert_columns_equal(cur,
+                                 postgres.PostgresTarget(conn),
                                  'cats',
                                  {
-                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_table_version', 'bigint', 'YES'),
-                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                                     ('adoption__was_foster', 'boolean', 'YES'),
-                                     ('age', 'bigint', 'YES'),
-                                     ('id', 'bigint', 'NO'),
-                                     ('name', 'text', 'NO'),
-                                     ('paw_size', 'bigint', 'NO'),
-                                     ('paw_colour', 'text', 'NO'),
-                                     ('paw_toe_count', 'bigint', 'YES'),
-                                     ('flea_check_complete', 'boolean', 'NO'),
-                                     ('pattern', 'text', 'YES')
+                                     '_sdc_batched_at': {'type': ['string', 'null'],
+                                                         'format': 'date-time'},
+                                     '_sdc_received_at': {'type': ['string', 'null'],
+                                                          'format': 'date-time'},
+                                     '_sdc_sequence': {'type': ['integer', 'null']},
+                                     '_sdc_table_version': {'type': ['integer', 'null']},
+                                     'adoption__adopted_on': {'type': ['string', 'null'],
+                                                              'format': 'date-time'},
+                                     'adoption__was_foster': {'type': ['boolean', 'null']},
+                                     'age': {'type': ['integer', 'null']},
+                                     'id': {'type': ['integer']},
+                                     'name': {'type': ['string']},
+                                     'paw_size': {'type': ['integer']},
+                                     'paw_colour': {'type': ['string']},
+                                     'paw_toe_count': {'type': ['integer', 'null']},
+                                     'flea_check_complete': {'type': ['boolean']},
+                                     'pattern': {'type': ['string', 'null']}
                                  })
 
             cur.execute(sql.SQL('SELECT {}, {} FROM {}').format(
@@ -477,44 +267,26 @@ def test_loading__column_type_change(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'cats',
-                                          {
-                                              '_sdc_batched_at': {'type': ['string', 'null'],
-                                                                  'format': 'date-time'},
-                                              '_sdc_received_at': {'type': ['string', 'null'],
-                                                                   'format': 'date-time'},
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_table_version': {'type': ['integer', 'null']},
-                                              'adoption__adopted_on': {'type': ['string', 'null'],
-                                                                       'format': 'date-time'},
-                                              'adoption__was_foster': {'type': ['boolean', 'null']},
-                                              'age': {'type': ['integer', 'null']},
-                                              'id': {'type': ['integer']},
-                                              'name': {'type': ['string']},
-                                              'paw_size': {'type': ['integer']},
-                                              'paw_colour': {'type': ['string']},
-                                              'flea_check_complete': {'type': ['boolean']},
-                                              'pattern': {'type': ['string', 'null']}
-                                          })
-
             assert_columns_equal(cur,
+                                 postgres.PostgresTarget(conn),
                                  'cats',
                                  {
-                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_table_version', 'bigint', 'YES'),
-                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                                     ('adoption__was_foster', 'boolean', 'YES'),
-                                     ('age', 'bigint', 'YES'),
-                                     ('id', 'bigint', 'NO'),
-                                     ('name', 'text', 'NO'),
-                                     ('paw_size', 'bigint', 'NO'),
-                                     ('paw_colour', 'text', 'NO'),
-                                     ('flea_check_complete', 'boolean', 'NO'),
-                                     ('pattern', 'text', 'YES')
+                                     '_sdc_batched_at': {'type': ['string', 'null'],
+                                                         'format': 'date-time'},
+                                     '_sdc_received_at': {'type': ['string', 'null'],
+                                                          'format': 'date-time'},
+                                     '_sdc_sequence': {'type': ['integer', 'null']},
+                                     '_sdc_table_version': {'type': ['integer', 'null']},
+                                     'adoption__adopted_on': {'type': ['string', 'null'],
+                                                              'format': 'date-time'},
+                                     'adoption__was_foster': {'type': ['boolean', 'null']},
+                                     'age': {'type': ['integer', 'null']},
+                                     'id': {'type': ['integer']},
+                                     'name': {'type': ['string']},
+                                     'paw_size': {'type': ['integer']},
+                                     'paw_colour': {'type': ['string']},
+                                     'flea_check_complete': {'type': ['boolean']},
+                                     'pattern': {'type': ['string', 'null']}
                                  })
 
             cur.execute(sql.SQL('SELECT {} FROM {}').format(
@@ -542,46 +314,27 @@ def test_loading__column_type_change(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'cats',
-                                          {
-                                              '_sdc_batched_at': {'type': ['string', 'null'],
-                                                                  'format': 'date-time'},
-                                              '_sdc_received_at': {'type': ['string', 'null'],
-                                                                   'format': 'date-time'},
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_table_version': {'type': ['integer', 'null']},
-                                              'adoption__adopted_on': {'type': ['string', 'null'],
-                                                                       'format': 'date-time'},
-                                              'adoption__was_foster': {'type': ['boolean', 'null']},
-                                              'age': {'type': ['integer', 'null']},
-                                              'id': {'type': ['integer']},
-                                              'name__s': {'type': ['string', 'null']},
-                                              'name__b': {'type': ['boolean', 'null']},
-                                              'paw_size': {'type': ['integer']},
-                                              'paw_colour': {'type': ['string']},
-                                              'flea_check_complete': {'type': ['boolean']},
-                                              'pattern': {'type': ['string', 'null']}
-                                          })
-
             assert_columns_equal(cur,
+                                 postgres.PostgresTarget(conn),
                                  'cats',
                                  {
-                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_table_version', 'bigint', 'YES'),
-                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                                     ('adoption__was_foster', 'boolean', 'YES'),
-                                     ('age', 'bigint', 'YES'),
-                                     ('id', 'bigint', 'NO'),
-                                     ('name__s', 'text', 'YES'),
-                                     ('name__b', 'boolean', 'YES'),
-                                     ('paw_size', 'bigint', 'NO'),
-                                     ('paw_colour', 'text', 'NO'),
-                                     ('flea_check_complete', 'boolean', 'NO'),
-                                     ('pattern', 'text', 'YES')
+                                     '_sdc_batched_at': {'type': ['string', 'null'],
+                                                         'format': 'date-time'},
+                                     '_sdc_received_at': {'type': ['string', 'null'],
+                                                          'format': 'date-time'},
+                                     '_sdc_sequence': {'type': ['integer', 'null']},
+                                     '_sdc_table_version': {'type': ['integer', 'null']},
+                                     'adoption__adopted_on': {'type': ['string', 'null'],
+                                                              'format': 'date-time'},
+                                     'adoption__was_foster': {'type': ['boolean', 'null']},
+                                     'age': {'type': ['integer', 'null']},
+                                     'id': {'type': ['integer']},
+                                     'name__s': {'type': ['string', 'null']},
+                                     'name__b': {'type': ['boolean', 'null']},
+                                     'paw_size': {'type': ['integer']},
+                                     'paw_colour': {'type': ['string']},
+                                     'flea_check_complete': {'type': ['boolean']},
+                                     'pattern': {'type': ['string', 'null']}
                                  })
 
             cur.execute(sql.SQL('SELECT {}, {} FROM {}').format(
@@ -612,48 +365,28 @@ def test_loading__column_type_change(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'cats',
-                                          {
-                                              '_sdc_batched_at': {'type': ['string', 'null'],
-                                                                  'format': 'date-time'},
-                                              '_sdc_received_at': {'type': ['string', 'null'],
-                                                                   'format': 'date-time'},
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_table_version': {'type': ['integer', 'null']},
-                                              'adoption__adopted_on': {'type': ['string', 'null'],
-                                                                       'format': 'date-time'},
-                                              'adoption__was_foster': {'type': ['boolean', 'null']},
-                                              'age': {'type': ['integer', 'null']},
-                                              'id': {'type': ['integer']},
-                                              'name__s': {'type': ['string', 'null']},
-                                              'name__b': {'type': ['boolean', 'null']},
-                                              'name__i': {'type': ['integer', 'null']},
-                                              'paw_size': {'type': ['integer']},
-                                              'paw_colour': {'type': ['string']},
-                                              'flea_check_complete': {'type': ['boolean']},
-                                              'pattern': {'type': ['string', 'null']}
-                                          })
-
             assert_columns_equal(cur,
+                                 postgres.PostgresTarget(conn),
                                  'cats',
                                  {
-                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_table_version', 'bigint', 'YES'),
-                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                                     ('adoption__was_foster', 'boolean', 'YES'),
-                                     ('age', 'bigint', 'YES'),
-                                     ('id', 'bigint', 'NO'),
-                                     ('name__s', 'text', 'YES'),
-                                     ('name__b', 'boolean', 'YES'),
-                                     ('name__i', 'bigint', 'YES'),
-                                     ('paw_size', 'bigint', 'NO'),
-                                     ('paw_colour', 'text', 'NO'),
-                                     ('flea_check_complete', 'boolean', 'NO'),
-                                     ('pattern', 'text', 'YES')
+                                     '_sdc_batched_at': {'type': ['string', 'null'],
+                                                         'format': 'date-time'},
+                                     '_sdc_received_at': {'type': ['string', 'null'],
+                                                          'format': 'date-time'},
+                                     '_sdc_sequence': {'type': ['integer', 'null']},
+                                     '_sdc_table_version': {'type': ['integer', 'null']},
+                                     'adoption__adopted_on': {'type': ['string', 'null'],
+                                                              'format': 'date-time'},
+                                     'adoption__was_foster': {'type': ['boolean', 'null']},
+                                     'age': {'type': ['integer', 'null']},
+                                     'id': {'type': ['integer']},
+                                     'name__s': {'type': ['string', 'null']},
+                                     'name__b': {'type': ['boolean', 'null']},
+                                     'name__i': {'type': ['integer', 'null']},
+                                     'paw_size': {'type': ['integer']},
+                                     'paw_colour': {'type': ['string']},
+                                     'flea_check_complete': {'type': ['boolean']},
+                                     'pattern': {'type': ['string', 'null']}
                                  })
 
             cur.execute(sql.SQL('SELECT {}, {}, {} FROM {}').format(
@@ -680,44 +413,26 @@ def test_loading__column_type_change__nullable(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'cats',
-                                          {
-                                              '_sdc_batched_at': {'type': ['string', 'null'],
-                                                                  'format': 'date-time'},
-                                              '_sdc_received_at': {'type': ['string', 'null'],
-                                                                   'format': 'date-time'},
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_table_version': {'type': ['integer', 'null']},
-                                              'adoption__adopted_on': {'type': ['string', 'null'],
-                                                                       'format': 'date-time'},
-                                              'adoption__was_foster': {'type': ['boolean', 'null']},
-                                              'age': {'type': ['integer', 'null']},
-                                              'id': {'type': ['integer']},
-                                              'name': {'type': ['string']},
-                                              'paw_size': {'type': ['integer']},
-                                              'paw_colour': {'type': ['string']},
-                                              'flea_check_complete': {'type': ['boolean']},
-                                              'pattern': {'type': ['string', 'null']}
-                                          })
-
             assert_columns_equal(cur,
+                                 postgres.PostgresTarget(conn),
                                  'cats',
                                  {
-                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_table_version', 'bigint', 'YES'),
-                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                                     ('adoption__was_foster', 'boolean', 'YES'),
-                                     ('age', 'bigint', 'YES'),
-                                     ('id', 'bigint', 'NO'),
-                                     ('name', 'text', 'NO'),
-                                     ('paw_size', 'bigint', 'NO'),
-                                     ('paw_colour', 'text', 'NO'),
-                                     ('flea_check_complete', 'boolean', 'NO'),
-                                     ('pattern', 'text', 'YES')
+                                     '_sdc_batched_at': {'type': ['string', 'null'],
+                                                         'format': 'date-time'},
+                                     '_sdc_received_at': {'type': ['string', 'null'],
+                                                          'format': 'date-time'},
+                                     '_sdc_sequence': {'type': ['integer', 'null']},
+                                     '_sdc_table_version': {'type': ['integer', 'null']},
+                                     'adoption__adopted_on': {'type': ['string', 'null'],
+                                                              'format': 'date-time'},
+                                     'adoption__was_foster': {'type': ['boolean', 'null']},
+                                     'age': {'type': ['integer', 'null']},
+                                     'id': {'type': ['integer']},
+                                     'name': {'type': ['string']},
+                                     'paw_size': {'type': ['integer']},
+                                     'paw_colour': {'type': ['string']},
+                                     'flea_check_complete': {'type': ['boolean']},
+                                     'pattern': {'type': ['string', 'null']}
                                  })
 
             cur.execute(sql.SQL('SELECT {} FROM {}').format(
@@ -746,44 +461,26 @@ def test_loading__column_type_change__nullable(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'cats',
-                                          {
-                                              '_sdc_batched_at': {'type': ['string', 'null'],
-                                                                  'format': 'date-time'},
-                                              '_sdc_received_at': {'type': ['string', 'null'],
-                                                                   'format': 'date-time'},
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_table_version': {'type': ['integer', 'null']},
-                                              'adoption__adopted_on': {'type': ['string', 'null'],
-                                                                       'format': 'date-time'},
-                                              'adoption__was_foster': {'type': ['boolean', 'null']},
-                                              'age': {'type': ['integer', 'null']},
-                                              'id': {'type': ['integer']},
-                                              'name': {'type': ['string', 'null']},
-                                              'paw_size': {'type': ['integer']},
-                                              'paw_colour': {'type': ['string']},
-                                              'flea_check_complete': {'type': ['boolean']},
-                                              'pattern': {'type': ['string', 'null']}
-                                          })
-
             assert_columns_equal(cur,
+                                 postgres.PostgresTarget(conn),
                                  'cats',
                                  {
-                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_table_version', 'bigint', 'YES'),
-                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                                     ('adoption__was_foster', 'boolean', 'YES'),
-                                     ('age', 'bigint', 'YES'),
-                                     ('id', 'bigint', 'NO'),
-                                     ('name', 'text', 'YES'),
-                                     ('paw_size', 'bigint', 'NO'),
-                                     ('paw_colour', 'text', 'NO'),
-                                     ('flea_check_complete', 'boolean', 'NO'),
-                                     ('pattern', 'text', 'YES')
+                                     '_sdc_batched_at': {'type': ['string', 'null'],
+                                                         'format': 'date-time'},
+                                     '_sdc_received_at': {'type': ['string', 'null'],
+                                                          'format': 'date-time'},
+                                     '_sdc_sequence': {'type': ['integer', 'null']},
+                                     '_sdc_table_version': {'type': ['integer', 'null']},
+                                     'adoption__adopted_on': {'type': ['string', 'null'],
+                                                              'format': 'date-time'},
+                                     'adoption__was_foster': {'type': ['boolean', 'null']},
+                                     'age': {'type': ['integer', 'null']},
+                                     'id': {'type': ['integer']},
+                                     'name': {'type': ['string', 'null']},
+                                     'paw_size': {'type': ['integer']},
+                                     'paw_colour': {'type': ['string']},
+                                     'flea_check_complete': {'type': ['boolean']},
+                                     'pattern': {'type': ['string', 'null']}
                                  })
 
             cur.execute(sql.SQL('SELECT {} FROM {}').format(
@@ -807,44 +504,26 @@ def test_loading__column_type_change__nullable(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'cats',
-                                          {
-                                              '_sdc_batched_at': {'type': ['string', 'null'],
-                                                                  'format': 'date-time'},
-                                              '_sdc_received_at': {'type': ['string', 'null'],
-                                                                   'format': 'date-time'},
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_table_version': {'type': ['integer', 'null']},
-                                              'adoption__adopted_on': {'type': ['string', 'null'],
-                                                                       'format': 'date-time'},
-                                              'adoption__was_foster': {'type': ['boolean', 'null']},
-                                              'age': {'type': ['integer', 'null']},
-                                              'id': {'type': ['integer']},
-                                              'name': {'type': ['string', 'null']},
-                                              'paw_size': {'type': ['integer']},
-                                              'paw_colour': {'type': ['string']},
-                                              'flea_check_complete': {'type': ['boolean']},
-                                              'pattern': {'type': ['string', 'null']}
-                                          })
-
             assert_columns_equal(cur,
+                                 postgres.PostgresTarget(conn),
                                  'cats',
                                  {
-                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_table_version', 'bigint', 'YES'),
-                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                                     ('adoption__was_foster', 'boolean', 'YES'),
-                                     ('age', 'bigint', 'YES'),
-                                     ('id', 'bigint', 'NO'),
-                                     ('name', 'text', 'YES'),
-                                     ('paw_size', 'bigint', 'NO'),
-                                     ('paw_colour', 'text', 'NO'),
-                                     ('flea_check_complete', 'boolean', 'NO'),
-                                     ('pattern', 'text', 'YES')
+                                     '_sdc_batched_at': {'type': ['string', 'null'],
+                                                         'format': 'date-time'},
+                                     '_sdc_received_at': {'type': ['string', 'null'],
+                                                          'format': 'date-time'},
+                                     '_sdc_sequence': {'type': ['integer', 'null']},
+                                     '_sdc_table_version': {'type': ['integer', 'null']},
+                                     'adoption__adopted_on': {'type': ['string', 'null'],
+                                                              'format': 'date-time'},
+                                     'adoption__was_foster': {'type': ['boolean', 'null']},
+                                     'age': {'type': ['integer', 'null']},
+                                     'id': {'type': ['integer']},
+                                     'name': {'type': ['string', 'null']},
+                                     'paw_size': {'type': ['integer']},
+                                     'paw_colour': {'type': ['string']},
+                                     'flea_check_complete': {'type': ['boolean']},
+                                     'pattern': {'type': ['string', 'null']}
                                  })
 
             cur.execute(sql.SQL('SELECT {} FROM {}').format(
@@ -865,62 +544,36 @@ def test_loading__multi_types_columns(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'root',
-                                          {
-                                              '_sdc_primary_key': {'type': ['string']},
-                                              '_sdc_batched_at': {'type': ['string', 'null'],
-                                                                  'format': 'date-time'},
-                                              '_sdc_received_at': {'type': ['string', 'null'],
-                                                                   'format': 'date-time'},
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_table_version': {'type': ['integer', 'null']},
-                                              'every_type__i': {'type': ['integer', 'null']},
-                                              'every_type__f': {'type': ['number', 'null']},
-                                              'every_type__b': {'type': ['boolean', 'null']},
-                                              'every_type__s': {'type': ['string', 'null'],
-                                                                'format': 'date-time'},
-                                              'every_type__i__1': {'type': ['integer', 'null']},
-                                              'every_type__f__1': {'type': ['number', 'null']},
-                                              'every_type__b__1': {'type': ['boolean', 'null']},
-                                              'number_which_only_comes_as_integer': {'type': ['number']}
-                                          })
-
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'root__every_type',
-                                          {
-                                              '_sdc_source_key__sdc_primary_key': {'type': ['string']},
-                                              '_sdc_level_0_id': {'type': ['integer']},
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_value': {'type': ['integer']},
-                                          })
             assert_columns_equal(cur,
+                                 postgres.PostgresTarget(conn),
                                  'root',
                                  {
-                                     ('_sdc_primary_key', 'text', 'NO'),
-                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_table_version', 'bigint', 'YES'),
-                                     ('every_type__i', 'bigint', 'YES'),
-                                     ('every_type__f', 'double precision', 'YES'),
-                                     ('every_type__b', 'boolean', 'YES'),
-                                     ('every_type__s', 'timestamp with time zone', 'YES'),
-                                     ('every_type__i__1', 'bigint', 'YES'),
-                                     ('every_type__f__1', 'double precision', 'YES'),
-                                     ('every_type__b__1', 'boolean', 'YES'),
-                                     ('number_which_only_comes_as_integer', 'double precision', 'NO')
+                                     '_sdc_primary_key': {'type': ['string']},
+                                     '_sdc_batched_at': {'type': ['string', 'null'],
+                                                         'format': 'date-time'},
+                                     '_sdc_received_at': {'type': ['string', 'null'],
+                                                          'format': 'date-time'},
+                                     '_sdc_sequence': {'type': ['integer', 'null']},
+                                     '_sdc_table_version': {'type': ['integer', 'null']},
+                                     'every_type__i': {'type': ['integer', 'null']},
+                                     'every_type__f': {'type': ['number', 'null']},
+                                     'every_type__b': {'type': ['boolean', 'null']},
+                                     'every_type__s': {'type': ['string', 'null'],
+                                                       'format': 'date-time'},
+                                     'every_type__i__1': {'type': ['integer', 'null']},
+                                     'every_type__f__1': {'type': ['number', 'null']},
+                                     'every_type__b__1': {'type': ['boolean', 'null']},
+                                     'number_which_only_comes_as_integer': {'type': ['number']}
                                  })
 
             assert_columns_equal(cur,
+                                 postgres.PostgresTarget(conn),
                                  'root__every_type',
                                  {
-                                     ('_sdc_source_key__sdc_primary_key', 'text', 'NO'),
-                                     ('_sdc_level_0_id', 'bigint', 'NO'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_value', 'bigint', 'NO'),
+                                     '_sdc_source_key__sdc_primary_key': {'type': ['string']},
+                                     '_sdc_level_0_id': {'type': ['integer']},
+                                     '_sdc_sequence': {'type': ['integer', 'null']},
+                                     '_sdc_value': {'type': ['integer']},
                                  })
 
             cur.execute(sql.SQL('SELECT {} FROM {}').format(
@@ -1016,27 +669,27 @@ def test_loading__invalid__table_name__nested(db_cleanup):
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
             target = postgres.PostgresTarget(conn)
-            fixtures.assert_columns_equal(cur,
-                                          target,
-                                          'cats',
-                                          {
-                                              '_sdc_batched_at': {'type': ['string', 'null'],
-                                                                  'format': 'date-time'},
-                                              '_sdc_received_at': {'type': ['string', 'null'],
-                                                                   'format': 'date-time'},
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_table_version': {'type': ['integer', 'null']},
-                                              'adoption__adopted_on': {'type': ['string', 'null'],
-                                                                       'format': 'date-time'},
-                                              'adoption__was_foster': {'type': ['boolean', 'null']},
-                                              'age': {'type': ['integer', 'null']},
-                                              'id': {'type': ['integer']},
-                                              'name': {'type': ['string']},
-                                              'paw_size': {'type': ['integer']},
-                                              'paw_colour': {'type': ['string']},
-                                              'flea_check_complete': {'type': ['boolean']},
-                                              'pattern': {'type': ['string', 'null']}
-                                          })
+            assert_columns_equal(cur,
+                                 target,
+                                 'cats',
+                                 {
+                                     '_sdc_batched_at': {'type': ['string', 'null'],
+                                                         'format': 'date-time'},
+                                     '_sdc_received_at': {'type': ['string', 'null'],
+                                                          'format': 'date-time'},
+                                     '_sdc_sequence': {'type': ['integer', 'null']},
+                                     '_sdc_table_version': {'type': ['integer', 'null']},
+                                     'adoption__adopted_on': {'type': ['string', 'null'],
+                                                              'format': 'date-time'},
+                                     'adoption__was_foster': {'type': ['boolean', 'null']},
+                                     'age': {'type': ['integer', 'null']},
+                                     'id': {'type': ['integer']},
+                                     'name': {'type': ['string']},
+                                     'paw_size': {'type': ['integer']},
+                                     'paw_colour': {'type': ['string']},
+                                     'flea_check_complete': {'type': ['boolean']},
+                                     'pattern': {'type': ['string', 'null']}
+                                 })
 
             subtable_columns = {
                 '_sdc_sequence': {'type': ['integer', 'null']},
@@ -1045,35 +698,18 @@ def test_loading__invalid__table_name__nested(db_cleanup):
                 'date_administered': {'format': 'date-time', 'type': ['string', 'null']},
                 'type': {'type': ['string', 'null']}
             }
-            fixtures.assert_columns_equal(cur,
-                                          target,
-                                          'cats__adoption__immunizations',
-                                          subtable_columns)
-            fixtures.assert_columns_equal(cur,
-                                          target,
-                                          'cats__adoption__invalid_non_conflicting',
-                                          subtable_columns)
-            fixtures.assert_columns_equal(cur,
-                                          target,
-                                          'cats__adoption__immunizations__1',
-                                          subtable_columns)
             assert_columns_equal(cur,
-                                 'cats',
-                                 {
-                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_table_version', 'bigint', 'YES'),
-                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                                     ('adoption__was_foster', 'boolean', 'YES'),
-                                     ('age', 'bigint', 'YES'),
-                                     ('id', 'bigint', 'NO'),
-                                     ('name', 'text', 'NO'),
-                                     ('paw_size', 'bigint', 'NO'),
-                                     ('paw_colour', 'text', 'NO'),
-                                     ('flea_check_complete', 'boolean', 'NO'),
-                                     ('pattern', 'text', 'YES')
-                                 })
+                                 target,
+                                 'cats__adoption__immunizations',
+                                 subtable_columns)
+            assert_columns_equal(cur,
+                                 target,
+                                 'cats__adoption__invalid_non_conflicting',
+                                 subtable_columns)
+            assert_columns_equal(cur,
+                                 target,
+                                 'cats__adoption__immunizations__1',
+                                 subtable_columns)
 
             cur.execute(get_count_sql('cats'))
             assert 2 * cat_count == cur.fetchone()[0]
@@ -1088,183 +724,6 @@ def test_loading__invalid__table_name__nested(db_cleanup):
             assert conflicting_name_count == cur.fetchone()[0]
 
 
-def test_loading__invalid_column_name(db_cleanup):
-    non_alphanumeric_stream = CatStream(100)
-    non_alphanumeric_stream.schema = deepcopy(non_alphanumeric_stream.schema)
-    non_alphanumeric_stream.schema['schema']['properties']['!!!invalid_name'] = \
-        non_alphanumeric_stream.schema['schema']['properties']['age']
-
-    main(CONFIG, input_stream=non_alphanumeric_stream)
-
-    non_lowercase_stream = CatStream(100)
-    non_lowercase_stream.schema = deepcopy(non_lowercase_stream.schema)
-    non_lowercase_stream.schema['schema']['properties']['INVALID_name'] = \
-        non_lowercase_stream.schema['schema']['properties']['age']
-
-    main(CONFIG, input_stream=non_lowercase_stream)
-
-    duplicate_non_lowercase_stream_1 = CatStream(100)
-    duplicate_non_lowercase_stream_1.schema = deepcopy(duplicate_non_lowercase_stream_1.schema)
-    duplicate_non_lowercase_stream_1.schema['schema']['properties']['invalid!NAME'] = \
-        duplicate_non_lowercase_stream_1.schema['schema']['properties']['age']
-
-    main(CONFIG, input_stream=duplicate_non_lowercase_stream_1)
-
-    duplicate_non_lowercase_stream_2 = CatStream(100)
-    duplicate_non_lowercase_stream_2.schema = deepcopy(duplicate_non_lowercase_stream_2.schema)
-    duplicate_non_lowercase_stream_2.schema['schema']['properties']['invalid#NAME'] = \
-        duplicate_non_lowercase_stream_2.schema['schema']['properties']['age']
-
-    main(CONFIG, input_stream=duplicate_non_lowercase_stream_2)
-
-    duplicate_non_lowercase_stream_3 = CatStream(100)
-    duplicate_non_lowercase_stream_3.schema = deepcopy(duplicate_non_lowercase_stream_3.schema)
-    duplicate_non_lowercase_stream_3.schema['schema']['properties']['invalid%NAmE'] = \
-        duplicate_non_lowercase_stream_3.schema['schema']['properties']['age']
-
-    main(CONFIG, input_stream=duplicate_non_lowercase_stream_3)
-
-    name_too_long_stream = CatStream(100)
-    name_too_long_stream.schema = deepcopy(name_too_long_stream.schema)
-    name_too_long_stream.schema['schema']['properties']['x' * 1000] = \
-        name_too_long_stream.schema['schema']['properties']['age']
-
-    main(CONFIG, input_stream=name_too_long_stream)
-
-    duplicate_name_too_long_stream = CatStream(100)
-    duplicate_name_too_long_stream.schema = deepcopy(duplicate_name_too_long_stream.schema)
-    duplicate_name_too_long_stream.schema['schema']['properties']['x' * 100] = \
-        duplicate_name_too_long_stream.schema['schema']['properties']['age']
-
-    main(CONFIG, input_stream=duplicate_name_too_long_stream)
-
-    with psycopg2.connect(**TEST_DB) as conn:
-        with conn.cursor() as cur:
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'cats',
-                                          {
-                                              '_sdc_batched_at': {'type': ['string', 'null'],
-                                                                  'format': 'date-time'},
-                                              '_sdc_received_at': {'type': ['string', 'null'],
-                                                                   'format': 'date-time'},
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_table_version': {'type': ['integer', 'null']},
-                                              'adoption__adopted_on': {'type': ['string', 'null'],
-                                                                       'format': 'date-time'},
-                                              'adoption__was_foster': {'type': ['boolean', 'null']},
-                                              'age': {'type': ['integer', 'null']},
-                                              'id': {'type': ['integer']},
-                                              'name': {'type': ['string']},
-                                              'paw_size': {'type': ['integer']},
-                                              'paw_colour': {'type': ['string']},
-                                              '___invalid_name': {'type': ['integer', 'null']},
-                                              'invalid_name': {'type': ['integer', 'null']},
-                                              'invalid_name__1': {'type': ['integer', 'null']},
-                                              'invalid_name__2': {'type': ['integer', 'null']},
-                                              'invalid_name__3': {'type': ['integer', 'null']},
-                                              ('x' * 63): {'type': ['integer', 'null']},
-                                              ('x' * 60 + '__1'): {'type': ['integer', 'null']},
-                                              'flea_check_complete': {'type': ['boolean']},
-                                              'pattern': {'type': ['string', 'null']}
-                                          })
-
-            assert_columns_equal(cur,
-                                 'cats',
-                                 {
-                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_table_version', 'bigint', 'YES'),
-                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                                     ('adoption__was_foster', 'boolean', 'YES'),
-                                     ('age', 'bigint', 'YES'),
-                                     ('id', 'bigint', 'NO'),
-                                     ('name', 'text', 'NO'),
-                                     ('paw_size', 'bigint', 'NO'),
-                                     ('paw_colour', 'text', 'NO'),
-                                     ('___invalid_name', 'bigint', 'YES'),
-                                     ('invalid_name', 'bigint', 'YES'),
-                                     ('invalid_name__1', 'bigint', 'YES'),
-                                     ('invalid_name__2', 'bigint', 'YES'),
-                                     ('invalid_name__3', 'bigint', 'YES'),
-                                     ('x' * 63, 'bigint', 'YES'),
-                                     (('x' * 60 + '__1'), 'bigint', 'YES'),
-                                     ('flea_check_complete', 'boolean', 'NO'),
-                                     ('pattern', 'text', 'YES')
-                                 })
-
-
-def test_loading__invalid_column_name__duplicate_name_handling(db_cleanup):
-    for i in range(101):
-        name_too_long_stream = CatStream(100)
-        name_too_long_stream.schema = deepcopy(name_too_long_stream.schema)
-        name_too_long_stream.schema['schema']['properties']['x' * (100 + i)] = \
-            name_too_long_stream.schema['schema']['properties']['age']
-
-        main(CONFIG, input_stream=name_too_long_stream)
-
-    expected_columns = {
-        '_sdc_batched_at': {'type': ['string', 'null'],
-                            'format': 'date-time'},
-        '_sdc_received_at': {'type': ['string', 'null'],
-                             'format': 'date-time'},
-        '_sdc_sequence': {'type': ['integer', 'null']},
-        '_sdc_table_version': {'type': ['integer', 'null']},
-        'adoption__adopted_on': {'type': ['string', 'null'],
-                                 'format': 'date-time'},
-        'adoption__was_foster': {'type': ['boolean', 'null']},
-        'age': {'type': ['integer', 'null']},
-        'id': {'type': ['integer']},
-        'name': {'type': ['string']},
-        'paw_size': {'type': ['integer']},
-        'paw_colour': {'type': ['string']},
-        ('x' * 63): {'type': ['integer', 'null']},
-        ('x' * 58 + '__100'): {'type': ['integer', 'null']},
-        'flea_check_complete': {'type': ['boolean']},
-        'pattern': {'type': ['string', 'null']}
-    }
-
-    for i in range(1, 10):
-        expected_columns['x' * 60 + '__' + str(i)] = {'type': ['integer', 'null']}
-    for i in range(10, 100):
-        expected_columns['x' * 59 + '__' + str(i)] = {'type': ['integer', 'null']}
-
-    with psycopg2.connect(**TEST_DB) as conn:
-        with conn.cursor() as cur:
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'cats',
-                                          expected_columns)
-
-    expected_columns = {
-        ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-        ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-        ('_sdc_sequence', 'bigint', 'YES'),
-        ('_sdc_table_version', 'bigint', 'YES'),
-        ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-        ('adoption__was_foster', 'boolean', 'YES'),
-        ('age', 'bigint', 'YES'),
-        ('id', 'bigint', 'NO'),
-        ('name', 'text', 'NO'),
-        ('paw_size', 'bigint', 'NO'),
-        ('paw_colour', 'text', 'NO'),
-        ('x' * 63, 'bigint', 'YES'),
-        (('x' * 58 + '__100'), 'bigint', 'YES'),
-        ('flea_check_complete', 'boolean', 'NO'),
-        ('pattern', 'text', 'YES')
-    }
-
-    for i in range(1, 10):
-        expected_columns.add((('x' * 60 + '__' + str(i)), 'bigint', 'YES'))
-    for i in range(10, 100):
-        expected_columns.add((('x' * 59 + '__' + str(i)), 'bigint', 'YES'))
-
-    with psycopg2.connect(**TEST_DB) as conn:
-        with conn.cursor() as cur:
-            assert_columns_equal(cur, 'cats', expected_columns)
-
-
 def test_loading__invalid_column_name__column_type_change(db_cleanup):
     invalid_column_name = 'INVALID!name'
     cat_count = 20
@@ -1277,46 +736,27 @@ def test_loading__invalid_column_name__column_type_change(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'cats',
-                                          {
-                                              '_sdc_batched_at': {'type': ['string', 'null'],
-                                                                  'format': 'date-time'},
-                                              '_sdc_received_at': {'type': ['string', 'null'],
-                                                                   'format': 'date-time'},
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_table_version': {'type': ['integer', 'null']},
-                                              'adoption__adopted_on': {'type': ['string', 'null'],
-                                                                       'format': 'date-time'},
-                                              'adoption__was_foster': {'type': ['boolean', 'null']},
-                                              'age': {'type': ['integer', 'null']},
-                                              'id': {'type': ['integer']},
-                                              'name': {'type': ['string']},
-                                              'paw_size': {'type': ['integer']},
-                                              'paw_colour': {'type': ['string']},
-                                              'invalid_name': {'type': ['string']},
-                                              'flea_check_complete': {'type': ['boolean']},
-                                              'pattern': {'type': ['string', 'null']}
-                                          })
-
             assert_columns_equal(cur,
+                                 postgres.PostgresTarget(conn),
                                  'cats',
                                  {
-                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_table_version', 'bigint', 'YES'),
-                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                                     ('adoption__was_foster', 'boolean', 'YES'),
-                                     ('age', 'bigint', 'YES'),
-                                     ('id', 'bigint', 'NO'),
-                                     ('name', 'text', 'NO'),
-                                     ('paw_size', 'bigint', 'NO'),
-                                     ('paw_colour', 'text', 'NO'),
-                                     ('invalid_name', 'text', 'NO'),
-                                     ('flea_check_complete', 'boolean', 'NO'),
-                                     ('pattern', 'text', 'YES')
+                                     '_sdc_batched_at': {'type': ['string', 'null'],
+                                                         'format': 'date-time'},
+                                     '_sdc_received_at': {'type': ['string', 'null'],
+                                                          'format': 'date-time'},
+                                     '_sdc_sequence': {'type': ['integer', 'null']},
+                                     '_sdc_table_version': {'type': ['integer', 'null']},
+                                     'adoption__adopted_on': {'type': ['string', 'null'],
+                                                              'format': 'date-time'},
+                                     'adoption__was_foster': {'type': ['boolean', 'null']},
+                                     'age': {'type': ['integer', 'null']},
+                                     'id': {'type': ['integer']},
+                                     'name': {'type': ['string']},
+                                     'paw_size': {'type': ['integer']},
+                                     'paw_colour': {'type': ['string']},
+                                     'invalid_name': {'type': ['string']},
+                                     'flea_check_complete': {'type': ['boolean']},
+                                     'pattern': {'type': ['string', 'null']}
                                  })
 
             cur.execute(sql.SQL('SELECT {} FROM {}').format(
@@ -1344,48 +784,28 @@ def test_loading__invalid_column_name__column_type_change(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'cats',
-                                          {
-                                              '_sdc_batched_at': {'type': ['string', 'null'],
-                                                                  'format': 'date-time'},
-                                              '_sdc_received_at': {'type': ['string', 'null'],
-                                                                   'format': 'date-time'},
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_table_version': {'type': ['integer', 'null']},
-                                              'adoption__adopted_on': {'type': ['string', 'null'],
-                                                                       'format': 'date-time'},
-                                              'adoption__was_foster': {'type': ['boolean', 'null']},
-                                              'age': {'type': ['integer', 'null']},
-                                              'id': {'type': ['integer']},
-                                              'name': {'type': ['string']},
-                                              'paw_size': {'type': ['integer']},
-                                              'paw_colour': {'type': ['string']},
-                                              'invalid_name__s': {'type': ['string', 'null']},
-                                              'invalid_name__b': {'type': ['boolean', 'null']},
-                                              'flea_check_complete': {'type': ['boolean']},
-                                              'pattern': {'type': ['string', 'null']}
-                                          })
-
             assert_columns_equal(cur,
+                                 postgres.PostgresTarget(conn),
                                  'cats',
                                  {
-                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_table_version', 'bigint', 'YES'),
-                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                                     ('adoption__was_foster', 'boolean', 'YES'),
-                                     ('age', 'bigint', 'YES'),
-                                     ('id', 'bigint', 'NO'),
-                                     ('name', 'text', 'NO'),
-                                     ('paw_size', 'bigint', 'NO'),
-                                     ('paw_colour', 'text', 'NO'),
-                                     ('invalid_name__s', 'text', 'YES'),
-                                     ('invalid_name__b', 'boolean', 'YES'),
-                                     ('flea_check_complete', 'boolean', 'NO'),
-                                     ('pattern', 'text', 'YES')
+                                     '_sdc_batched_at': {'type': ['string', 'null'],
+                                                         'format': 'date-time'},
+                                     '_sdc_received_at': {'type': ['string', 'null'],
+                                                          'format': 'date-time'},
+                                     '_sdc_sequence': {'type': ['integer', 'null']},
+                                     '_sdc_table_version': {'type': ['integer', 'null']},
+                                     'adoption__adopted_on': {'type': ['string', 'null'],
+                                                              'format': 'date-time'},
+                                     'adoption__was_foster': {'type': ['boolean', 'null']},
+                                     'age': {'type': ['integer', 'null']},
+                                     'id': {'type': ['integer']},
+                                     'name': {'type': ['string']},
+                                     'paw_size': {'type': ['integer']},
+                                     'paw_colour': {'type': ['string']},
+                                     'invalid_name__s': {'type': ['string', 'null']},
+                                     'invalid_name__b': {'type': ['boolean', 'null']},
+                                     'flea_check_complete': {'type': ['boolean']},
+                                     'pattern': {'type': ['string', 'null']}
                                  })
 
             cur.execute(sql.SQL('SELECT {}, {} FROM {}').format(
@@ -1416,50 +836,29 @@ def test_loading__invalid_column_name__column_type_change(db_cleanup):
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            fixtures.assert_columns_equal(cur,
-                                          postgres.PostgresTarget(conn),
-                                          'cats',
-                                          {
-                                              '_sdc_batched_at': {'type': ['string', 'null'],
-                                                                  'format': 'date-time'},
-                                              '_sdc_received_at': {'type': ['string', 'null'],
-                                                                   'format': 'date-time'},
-                                              '_sdc_sequence': {'type': ['integer', 'null']},
-                                              '_sdc_table_version': {'type': ['integer', 'null']},
-                                              'adoption__adopted_on': {'type': ['string', 'null'],
-                                                                       'format': 'date-time'},
-                                              'adoption__was_foster': {'type': ['boolean', 'null']},
-                                              'age': {'type': ['integer', 'null']},
-                                              'id': {'type': ['integer']},
-                                              'name': {'type': ['string']},
-                                              'paw_size': {'type': ['integer']},
-                                              'paw_colour': {'type': ['string']},
-                                              'invalid_name__s': {'type': ['string', 'null']},
-                                              'invalid_name__b': {'type': ['boolean', 'null']},
-                                              'invalid_name__i': {'type': ['integer', 'null']},
-                                              'flea_check_complete': {'type': ['boolean']},
-                                              'pattern': {'type': ['string', 'null']}
-                                          })
-
             assert_columns_equal(cur,
+                                 postgres.PostgresTarget(conn),
                                  'cats',
                                  {
-                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_table_version', 'bigint', 'YES'),
-                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
-                                     ('adoption__was_foster', 'boolean', 'YES'),
-                                     ('age', 'bigint', 'YES'),
-                                     ('id', 'bigint', 'NO'),
-                                     ('name', 'text', 'NO'),
-                                     ('paw_size', 'bigint', 'NO'),
-                                     ('paw_colour', 'text', 'NO'),
-                                     ('invalid_name__s', 'text', 'YES'),
-                                     ('invalid_name__b', 'boolean', 'YES'),
-                                     ('invalid_name__i', 'bigint', 'YES'),
-                                     ('flea_check_complete', 'boolean', 'NO'),
-                                     ('pattern', 'text', 'YES')
+                                     '_sdc_batched_at': {'type': ['string', 'null'],
+                                                         'format': 'date-time'},
+                                     '_sdc_received_at': {'type': ['string', 'null'],
+                                                          'format': 'date-time'},
+                                     '_sdc_sequence': {'type': ['integer', 'null']},
+                                     '_sdc_table_version': {'type': ['integer', 'null']},
+                                     'adoption__adopted_on': {'type': ['string', 'null'],
+                                                              'format': 'date-time'},
+                                     'adoption__was_foster': {'type': ['boolean', 'null']},
+                                     'age': {'type': ['integer', 'null']},
+                                     'id': {'type': ['integer']},
+                                     'name': {'type': ['string']},
+                                     'paw_size': {'type': ['integer']},
+                                     'paw_colour': {'type': ['string']},
+                                     'invalid_name__s': {'type': ['string', 'null']},
+                                     'invalid_name__b': {'type': ['boolean', 'null']},
+                                     'invalid_name__i': {'type': ['integer', 'null']},
+                                     'flea_check_complete': {'type': ['boolean']},
+                                     'pattern': {'type': ['string', 'null']}
                                  })
 
             cur.execute(sql.SQL('SELECT {}, {}, {} FROM {}').format(

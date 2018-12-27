@@ -2,9 +2,10 @@ import json
 
 import psycopg2
 import psycopg2.extras
+import singer
 
-from tests.fixtures import CONFIG, db_cleanup, TEST_DB
-from target_postgres import main
+from tests.fixtures import CONFIG, db_cleanup, TEST_DB, assert_columns_equal
+from target_postgres import main, postgres
 
 
 def assert_tables_equal(cursor, expected_table_names):
@@ -15,16 +16,6 @@ def assert_tables_equal(cursor, expected_table_names):
 
     assert (not tables and not expected_table_names) \
            or set(tables) == expected_table_names
-
-
-def assert_columns_equal(cursor, table_name, expected_column_tuples):
-    cursor.execute("SELECT column_name, data_type, is_nullable FROM information_schema.columns " + \
-                   "WHERE table_schema = 'public' and table_name = '{}';".format(
-                       table_name))
-    columns = cursor.fetchall()
-
-    assert (not columns and not expected_column_tuples) \
-           or set(columns) == expected_column_tuples
 
 
 class BigCommerceStream:
@@ -341,27 +332,32 @@ def test_bigcommerce__sandbox(db_cleanup):
 
             ## form_fields should not show up as it can only be `null`
             assert_columns_equal(cur,
+                                 postgres.PostgresTarget(conn),
                                  'customers',
                                  {
-                                     ('_sdc_table_version', 'bigint', 'YES'),
-                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
-                                     ('_sdc_sequence', 'bigint', 'YES'),
-                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
-                                     ('id', 'bigint', 'NO'),
-                                     ('date_modified', 'timestamp with time zone', 'NO'),
-                                     ('store_credit', 'text', 'YES'),
-                                     ('notes', 'text', 'YES'),
-                                     ('tax_exempt_category', 'text', 'YES'),
-                                     ('email', 'text', 'YES'),
-                                     ('company', 'text', 'YES'),
-                                     ('customer_group_id', 'bigint', 'YES'),
-                                     ('registration_ip_address', 'text', 'YES'),
-                                     ('date_created', 'timestamp with time zone', 'NO'),
-                                     ('accepts_marketing', 'boolean', 'YES'),
-                                     ('addresses__resource', 'text', 'YES'),
-                                     ('reset_pass_on_login', 'boolean', 'YES'),
-                                     ('addresses__url', 'text', 'YES'),
-                                     ('first_name', 'text', 'YES'),
-                                     ('phone', 'text', 'YES'),
-                                     ('last_name', 'text', 'YES')
+                                     '_sdc_table_version': {'type': ['integer', 'null']},
+                                     '_sdc_received_at': {'type': ['string', 'null'],
+                                                          'format': 'date-time'},
+                                     '_sdc_sequence': {'type': ['integer', 'null']},
+                                     '_sdc_batched_at': {'type': ['string', 'null'],
+                                                         'format': 'date-time'},
+                                     'id': {'type': ['integer']},
+                                     'date_modified': {'type': ['string'],
+                                                       'format': 'date-time'},
+                                     'store_credit': {'type': ['string', 'null']},
+                                     'notes': {'type': ['string', 'null']},
+                                     'tax_exempt_category': {'type': ['string', 'null']},
+                                     'email': {'type': ['string', 'null']},
+                                     'company': {'type': ['string', 'null']},
+                                     'customer_group_id': {'type': ['integer', 'null']},
+                                     'registration_ip_address': {'type': ['string', 'null']},
+                                     'date_created': {'type': ['string'],
+                                                      'format': 'date-time'},
+                                     'accepts_marketing': {'type': ['boolean', 'null']},
+                                     'addresses__resource': {'type': ['string', 'null']},
+                                     'reset_pass_on_login': {'type': ['boolean', 'null']},
+                                     'addresses__url': {'type': ['string', 'null']},
+                                     'first_name': {'type': ['string', 'null']},
+                                     'phone': {'type': ['string', 'null']},
+                                     'last_name': {'type': ['string', 'null']}
                                  })

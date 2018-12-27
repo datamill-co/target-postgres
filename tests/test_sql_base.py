@@ -8,16 +8,23 @@ from target_postgres.sql_base import SQLInterface
 from tests.fixtures import CatStream, CONFIG, MultiTypeStream, NestedStream, assert_columns_equal
 from target_postgres.sql_main import stream_to_target
 
-RESERVED_NULL_DEFAULT = 'NULL'
 
+class FakeLastWriteWinsTarget(SQLInterface):
+    """
+    Makes a simple SQLInterface Target which makes the records
+    persisted the latest written each time.
 
-class FakeSchemaTarget(SQLInterface):
+    Does not support upserting records, etc.
+    """
     IDENTIFIER_FIELD_LENGTH = 50
 
     def __init__(self):
         self.logger = singer.get_logger()
         self.tables = {}
         self.table_mappings = []
+
+    def activate_version(self, stream_buffer, version):
+        return None
 
     def write_batch(self, stream_buffer):
         return self.write_batch_helper(None,
@@ -28,7 +35,7 @@ class FakeSchemaTarget(SQLInterface):
                                        {})
 
     def write_table_batch(self, _connection, table_batch, metadata):
-        self.tables[table_batch['remote_schema']['name']]['records'] = table_batch['records']
+        self.tables[table_batch['remote_schema']['name']]['records'] += table_batch['records']
         return len(table_batch['records'])
 
     def add_table(self, _connection, name, metadata):
@@ -63,8 +70,6 @@ class FakeSchemaTarget(SQLInterface):
         return identifier.lower()
 
     def serialize_table_record_null_value(self, remote_schema, streamed_schema, field, value):
-        if value is None:
-            return RESERVED_NULL_DEFAULT
         return value
 
     def serialize_table_record_datetime_value(self, remote_schema, streamed_schema, field, value):
@@ -77,6 +82,9 @@ class FakeSchemaTarget(SQLInterface):
             schema['format'] = column_schema['format']
 
         self.tables[table_name]['columns'][column_name] = schema
+
+        for record in self.tables[table_name]['records']:
+            record[column_name] = None
 
     def migrate_column(self, _connection, table_name, from_column, to_column):
         for record in self.tables[table_name]['records']:
@@ -115,8 +123,16 @@ def assert_tables_equal(target, expected_table_names):
     assert set(target.tables.keys()) == set(expected_table_names)
 
 
+def get_records(target, table_name):
+    return target.tables[table_name]['records']
+
+
+def get_count(target, table_name):
+    return len(get_records(target, table_name))
+
+
 def test_loading__simple():
-    target = FakeSchemaTarget()
+    target = FakeLastWriteWinsTarget()
 
     stream_to_target(CONFIG, target, input_stream=CatStream(100))
 
@@ -154,6 +170,8 @@ def test_loading__simple():
                              'type': {'type': ['string', 'null']}
                          })
 
+    assert get_count(target, 'cats') == 100
+
 
 ## TODO: Complex types defaulted
 # def test_loading__default__complex_type():
@@ -169,16 +187,34 @@ def test_loading__simple():
 
 
 def test_loading__nested_tables():
-    target = FakeSchemaTarget()
+    target = FakeLastWriteWinsTarget()
 
     stream_to_target(CONFIG, target, input_stream=NestedStream(10))
 
     assert_tables_equal(target, ['root',
                                  'root__array_scalar',
-                                 'root__object_of_object_0__object_of_object_1__obje',
+                                 'root__object_of_object_0__object_of_object_1__object_of_object_2__array_scalar'[:50],
                                  'root__array_of_array',
                                  'root__array_of_array___sdc_value',
                                  'root__array_of_array___sdc_value___sdc_value'])
+
+    assert get_count(target, 'root') \
+           == 10
+
+    assert get_count(target, 'root__array_scalar') \
+           == 50
+
+    assert get_count(target,'root__object_of_object_0__object_of_object_1__object_of_object_2__array_scalar'[:50]) \
+           == 50
+
+    assert get_count(target, 'root__array_of_array') \
+           == 20
+
+    assert get_count(target, 'root__array_of_array___sdc_value') \
+           == 80
+
+    assert get_count(target, 'root__array_of_array___sdc_value___sdc_value') \
+           == 200
 
     assert_columns_equal(None,
                          target,
@@ -242,7 +278,7 @@ def test_loading__nested_tables():
 
 def test_loading__new_non_null_column():
     cat_count = 50
-    target = FakeSchemaTarget()
+    target = FakeLastWriteWinsTarget()
     stream_to_target(CONFIG, target, input_stream=CatStream(cat_count))
 
     class NonNullStream(CatStream):
@@ -281,11 +317,18 @@ def test_loading__new_non_null_column():
                              'pattern': {'type': ['string', 'null']}
                          })
 
+    ## Assert that the split columns before/after new non-null data
+    assert 2 * cat_count == get_count(target, 'cats')
+    assert cat_count == len([x for x in get_records(target, 'cats') if x['paw_toe_count'] is None])
+    assert cat_count == len([x for x in get_records(target, 'cats') if x['paw_toe_count'] is not None])
+
 
 def test_loading__column_type_change():
     cat_count = 20
-    target = FakeSchemaTarget()
+    target = FakeLastWriteWinsTarget()
     stream_to_target(CONFIG, target, input_stream=CatStream(cat_count))
+
+    target_keys = set([(x['id'], x['name']) for x in get_records(target, 'cats')])
 
     assert_columns_equal(None,
                          target,
@@ -345,20 +388,6 @@ def test_loading__column_type_change():
                              'pattern': {'type': ['string', 'null']}
                          })
 
-    ## TODO: Records assertions
-    # cur.execute(sql.SQL('SELECT {}, {} FROM {}').format(
-    #     sql.Identifier('name__s'),
-    #     sql.Identifier('name__b'),
-    #     sql.Identifier('cats')
-    # ))
-    # persisted_records = cur.fetchall()
-    #
-    # ## Assert that the split columns migrated data/persisted new data
-    # assert 2 * cat_count == len(persisted_records)
-    # assert cat_count == len([x for x in persisted_records if x[0] is not None])
-    # assert cat_count == len([x for x in persisted_records if x[1] is not None])
-    # assert 0 == len([x for x in persisted_records if x[0] is not None and x[1] is not None])
-
     class NameIntegerCatStream(CatStream):
         def generate_record(self):
             record = CatStream.generate_record(self)
@@ -396,28 +425,42 @@ def test_loading__column_type_change():
                              'pattern': {'type': ['string', 'null']}
                          })
 
-    ## TODO: Records assertions
-    # cur.execute(sql.SQL('SELECT {}, {}, {} FROM {}').format(
-    #     sql.Identifier('name__s'),
-    #     sql.Identifier('name__b'),
-    #     sql.Identifier('name__i'),
-    #     sql.Identifier('cats')
-    # ))
-    # persisted_records = cur.fetchall()
-    #
-    # ## Assert that the split columns migrated data/persisted new data
-    # assert 3 * cat_count == len(persisted_records)
-    # assert cat_count == len([x for x in persisted_records if x[0] is not None])
-    # assert cat_count == len([x for x in persisted_records if x[1] is not None])
-    # assert cat_count == len([x for x in persisted_records if x[2] is not None])
-    # assert 0 == len(
-    #     [x for x in persisted_records if x[0] is not None and x[1] is not None and x[2] is not None])
-    # assert 0 == len([x for x in persisted_records if x[0] is None and x[1] is None and x[2] is None])
+    ## Assert that the split columns migrated data/persisted new data
+    assert not [x for x in get_records(target, 'cats') if 'name' in x]
+
+    assert 3 * cat_count == get_count(target, 'cats')
+
+    assert cat_count == len([[x['name__s'], x['name__b'], x['name__i']]
+                             for x in get_records(target, 'cats')
+                             if x['name__s'] is not None])
+    assert cat_count == len([[x['name__s'], x['name__b'], x['name__i']]
+                             for x in get_records(target, 'cats')
+                             if x['name__b'] is not None])
+    assert cat_count == len([[x['name__s'], x['name__b'], x['name__i']]
+                             for x in get_records(target, 'cats')
+                             if x['name__i'] is not None])
+
+    for record in get_records(target, 'cats'):
+        if record['name__s'] is not None:
+            assert (record['id'], record['name__s']) in target_keys
+
+    more_than_one_split_column_has_values = []
+
+    for record in get_records(target, 'cats'):
+        split_values = set([record['name__s'], record['name__b'], record['name__i']])
+
+        # Either the values which are in the split columns are exclusive, and hence something like:
+        ## {v, None}
+        ## or, None is not present, or there are more than 2 values present
+        if len(split_values) > 2 or None not in split_values:
+            more_than_one_split_column_has_values.append(split_values)
+
+    assert 0 == len(more_than_one_split_column_has_values)
 
 
 def test_loading__column_type_change__nullable():
     cat_count = 20
-    target = FakeSchemaTarget()
+    target = FakeLastWriteWinsTarget()
     stream_to_target(CONFIG, target, input_stream=CatStream(cat_count))
 
     assert_columns_equal(None,
@@ -441,17 +484,6 @@ def test_loading__column_type_change__nullable():
                              'flea_check_complete': {'type': ['boolean']},
                              'pattern': {'type': ['string', 'null']}
                          })
-
-    ## TODO: Records assertions
-    # cur.execute(sql.SQL('SELECT {} FROM {}').format(
-    #     sql.Identifier('name'),
-    #     sql.Identifier('cats')
-    # ))
-    # persisted_records = cur.fetchall()
-    #
-    # ## Assert that the original data is present
-    # assert cat_count == len(persisted_records)
-    # assert cat_count == len([x for x in persisted_records if x[0] is not None])
 
     class NameNullCatStream(CatStream):
         def generate_record(self):
@@ -489,18 +521,6 @@ def test_loading__column_type_change__nullable():
                              'pattern': {'type': ['string', 'null']}
                          })
 
-    ## TODO: Records assertions
-    # cur.execute(sql.SQL('SELECT {} FROM {}').format(
-    #     sql.Identifier('name'),
-    #     sql.Identifier('cats')
-    # ))
-    # persisted_records = cur.fetchall()
-    #
-    # ## Assert that the column is has migrated data
-    # assert 2 * cat_count == len(persisted_records)
-    # assert cat_count == len([x for x in persisted_records if x[0] is not None])
-    # assert cat_count == len([x for x in persisted_records if x[0] is None])
-
     class NameNonNullCatStream(CatStream):
         def generate_record(self):
             record = CatStream.generate_record(self)
@@ -531,22 +551,15 @@ def test_loading__column_type_change__nullable():
                              'pattern': {'type': ['string', 'null']}
                          })
 
-    ## TODO: Records assertions
-    # cur.execute(sql.SQL('SELECT {} FROM {}').format(
-    #     sql.Identifier('name'),
-    #     sql.Identifier('cats')
-    # ))
-    # persisted_records = cur.fetchall()
-    #
-    # ## Assert that the column is has migrated data
-    # assert 3 * cat_count == len(persisted_records)
-    # assert 2 * cat_count == len([x for x in persisted_records if x[0] is not None])
-    # assert cat_count == len([x for x in persisted_records if x[0] is None])
+    ## Assert that the column is has migrated data
+    assert 3 * cat_count == get_count(target, 'cats')
+    assert 2 * cat_count == len([x for x in get_records(target, 'cats') if x['name'] is not None])
+    assert cat_count == len([x for x in get_records(target, 'cats') if x['name'] is None])
 
 
 def test_loading__multi_types_columns():
     stream_count = 50
-    target = FakeSchemaTarget()
+    target = FakeLastWriteWinsTarget()
     stream_to_target(CONFIG, target, input_stream=MultiTypeStream(stream_count))
 
     assert_columns_equal(None,
@@ -581,16 +594,10 @@ def test_loading__multi_types_columns():
                              '_sdc_value': {'type': ['integer']},
                          })
 
-    ## TODO: Records assertions
-    # cur.execute(sql.SQL('SELECT {} FROM {}').format(
-    #     sql.Identifier('number_which_only_comes_as_integer'),
-    #     sql.Identifier('root')
-    # ))
-    # persisted_records = cur.fetchall()
-    #
-    # ## Assert that the column is has migrated data
-    # assert stream_count == len(persisted_records)
-    # assert stream_count == len([x for x in persisted_records if isinstance(x[0], float)])
+    ## Assert that the column is has migrated data
+    assert stream_count == len([x
+                                for x in get_records(target, 'root')
+                                if isinstance(x['number_which_only_comes_as_integer'], int)])
 
 
 def test_loading__invalid__table_name__nested():
@@ -598,7 +605,7 @@ def test_loading__invalid__table_name__nested():
     sub_table_name = 'immunizations'
     invalid_name = 'INValID!NON{conflicting'
 
-    target = FakeSchemaTarget()
+    target = FakeLastWriteWinsTarget()
 
     class InvalidNameSubTableCatStream(CatStream):
         immunizations_count = 0
@@ -618,6 +625,7 @@ def test_loading__invalid__table_name__nested():
     stream_to_target(CONFIG, target, input_stream=stream)
 
     immunizations_count = stream.immunizations_count
+    invalid_name_count = stream.immunizations_count
 
     conflicting_name = sub_table_name.upper()
 
@@ -640,6 +648,7 @@ def test_loading__invalid__table_name__nested():
     stream_to_target(CONFIG, target, input_stream=stream)
 
     immunizations_count += stream.immunizations_count
+    conflicting_name_count = stream.immunizations_count
 
     assert_tables_equal(target, ['cats',
                                  ('cats__adoption__' + invalid_name.lower()),
@@ -688,9 +697,17 @@ def test_loading__invalid__table_name__nested():
                          ('cats__adoption__' + sub_table_name + '__1'),
                          subtable_columns)
 
+    assert 2 * cat_count == get_count(target, 'cats')
+
+    assert immunizations_count == get_count(target, ('cats__adoption__' + sub_table_name))
+
+    assert invalid_name_count == get_count(target, ('cats__adoption__' + invalid_name.lower()))
+
+    assert conflicting_name_count == get_count(target, ('cats__adoption__' + sub_table_name + '__1'))
+
 
 def test_loading__invalid_column_name():
-    target = FakeSchemaTarget()
+    target = FakeLastWriteWinsTarget()
 
     non_lowercase_stream = CatStream(100)
     non_lowercase_stream.schema = deepcopy(non_lowercase_stream.schema)
@@ -764,7 +781,7 @@ def test_loading__invalid_column_name():
 
 
 def test_loading__invalid_column_name__duplicate_name_handling():
-    target = FakeSchemaTarget()
+    target = FakeLastWriteWinsTarget()
 
     for i in range(101):
         name_too_long_stream = CatStream(100)
@@ -805,7 +822,7 @@ def test_loading__invalid_column_name__duplicate_name_handling():
 
 
 def test_loading__invalid_column_name__column_type_change():
-    target = FakeSchemaTarget()
+    target = FakeLastWriteWinsTarget()
 
     invalid_column_name = 'INVALID!name'
     cat_count = 20
@@ -839,16 +856,9 @@ def test_loading__invalid_column_name__column_type_change():
                              'pattern': {'type': ['string', 'null']}
                          })
 
-    ## TODO: Records assertions
-    # cur.execute(sql.SQL('SELECT {} FROM {}').format(
-    #     sql.Identifier('invalid_name'),
-    #     sql.Identifier('cats')
-    # ))
-    # persisted_records = cur.fetchall()
-    #
-    # ## Assert that the original data is present
-    # assert cat_count == len(persisted_records)
-    # assert cat_count == len([x for x in persisted_records if x[0] is not None])
+    ## Assert that the original data is present
+    assert cat_count == len(get_records(target, 'cats'))
+    assert cat_count == len([x for x in get_records(target, 'cats') if x['invalid!name'] is not None])
 
     class BooleanCatStream(CatStream):
         def generate_record(self):
@@ -887,19 +897,14 @@ def test_loading__invalid_column_name__column_type_change():
                              'pattern': {'type': ['string', 'null']}
                          })
 
-    ## TODO: Records assertions
-    # cur.execute(sql.SQL('SELECT {}, {} FROM {}').format(
-    #     sql.Identifier('invalid!name__s'),
-    #     sql.Identifier('invalid!name__b'),
-    #     sql.Identifier('cats')
-    # ))
-    # persisted_records = cur.fetchall()
-    #
-    # ## Assert that the split columns migrated data/persisted new data
-    # assert 2 * cat_count == len(persisted_records)
-    # assert cat_count == len([x for x in persisted_records if x[0] is not None])
-    # assert cat_count == len([x for x in persisted_records if x[1] is not None])
-    # assert 0 == len([x for x in persisted_records if x[0] is not None and x[1] is not None])
+    ## Assert that the split columns migrated data/persisted new data
+    assert 2 * cat_count == len(get_records(target, 'cats'))
+    assert cat_count == len([x for x in get_records(target, 'cats') if x['invalid!name__s'] is not None])
+    assert cat_count == len([x for x in get_records(target, 'cats') if x['invalid!name__b'] is not None])
+    assert 0 == len([x
+                     for x in get_records(target, 'cats')
+                     if x['invalid!name__s'] is not None
+                     and x['invalid!name__b'] is not None])
 
     class IntegerCatStream(CatStream):
         def generate_record(self):
@@ -939,20 +944,13 @@ def test_loading__invalid_column_name__column_type_change():
                              'pattern': {'type': ['string', 'null']}
                          })
 
-    ## TODO: Records assertions
-    # cur.execute(sql.SQL('SELECT {}, {}, {} FROM {}').format(
-    #     sql.Identifier('invalid!name__s'),
-    #     sql.Identifier('invalid!name__b'),
-    #     sql.Identifier('invalid!name__i'),
-    #     sql.Identifier('cats')
-    # ))
-    # persisted_records = cur.fetchall()
-    #
-    # ## Assert that the split columns migrated data/persisted new data
-    # assert 3 * cat_count == len(persisted_records)
-    # assert cat_count == len([x for x in persisted_records if x[0] is not None])
-    # assert cat_count == len([x for x in persisted_records if x[1] is not None])
-    # assert cat_count == len([x for x in persisted_records if x[2] is not None])
-    # assert 0 == len(
-    #     [x for x in persisted_records if x[0] is not None and x[1] is not None and x[2] is not None])
-    # assert 0 == len([x for x in persisted_records if x[0] is None and x[1] is None and x[2] is None])
+    ## Assert that the split columns migrated data/persisted new data
+    assert 3 * cat_count == len(get_records(target, 'cats'))
+    assert cat_count == len([x for x in get_records(target, 'cats') if x['invalid!name__s'] is not None])
+    assert cat_count == len([x for x in get_records(target, 'cats') if x['invalid!name__b'] is not None])
+    assert cat_count == len([x for x in get_records(target, 'cats') if x['invalid!name__i'] is not None])
+    assert 0 == len([x
+                     for x in get_records(target, 'cats')
+                     if x['invalid!name__s'] is not None
+                     and x['invalid!name__b'] is not None
+                     and x['invalid!name__i'] is not None])
