@@ -57,6 +57,7 @@ here.
 | `postgres_schema` | `["string", "null"]` |  `"public"` | |
 | `invalid_records_detect` | `["boolean", "null"]`| `true` | Include `false` in your config to disable `target-postgres` from crashing on invalid records |
 | `invalid_records_threshold` | `["integer", "null"]` | `0` | Include a positive value `n` in your config to allow for `target-postgres` to encounter at most `n` invalid records per stream before giving up. |
+| `disable_collection` | `["string", "null"]` | `false` | Include `true` in your config to disable [Singer Usage Logging](#usage-logging).
 
 ### Supported Versions
 
@@ -123,6 +124,13 @@ To disable anonymous data collection set `disable_collection` to `true` in the c
 
 `target-postgres` utilizes [setup.py](https://python-packaging.readthedocs.io/en/latest/index.html) for package
 management, and [PyTest](https://docs.pytest.org/en/latest/contents.html) for testing.
+
+### Documentation
+
+See also:
+
+- [DECISIONS](./DECISIONS.md): A document containing high level explanations of various decisions and decision making paradigms. A good place to request more explanation/clarification on confusing things found herein.
+- [TableMetadata](./docs/TableMetadata.md): A document detailing some of the metadata necessary for `TargetPostgres` to function correctly on the Remote
 
 ### Docker
 
