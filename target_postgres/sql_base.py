@@ -14,6 +14,8 @@
 
 from copy import deepcopy
 
+import singer
+
 from target_postgres import json_schema
 from target_postgres.singer_stream import (
     SINGER_BATCHED_AT,
@@ -352,6 +354,7 @@ class SQLInterface:
     """
 
     IDENTIFIER_FIELD_LENGTH = NotImplementedError('`IDENTIFIER_FIELD_LENGTH` not implemented.')
+    LOGGER = singer.get_logger()
 
     def _get_streamed_table_schemas(self, schema, key_properties):
         """

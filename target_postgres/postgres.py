@@ -38,9 +38,8 @@ class PostgresTarget(SQLInterface):
     # TODO: Figure out way to `SELECT` value from commands
     IDENTIFIER_FIELD_LENGTH = 63
 
-    def __init__(self, connection, logger, *args, postgres_schema='public', **kwargs):
+    def __init__(self, connection, *args, postgres_schema='public', **kwargs):
         self.conn = connection
-        self.logger = logger
         self.postgres_schema = postgres_schema
 
     def write_batch(self, stream_buffer):
@@ -88,7 +87,7 @@ class PostgresTarget(SQLInterface):
                 if current_table_version is not None and \
                         stream_buffer.max_version is not None:
                     if stream_buffer.max_version < current_table_version:
-                        self.logger.warning('{} - Records from an earlier table version detected.'
+                        self.LOGGER.warning('{} - Records from an earlier table version detected.'
                                             .format(stream_buffer.stream))
                         cur.execute('ROLLBACK;')
                         return None
@@ -111,7 +110,7 @@ class PostgresTarget(SQLInterface):
             except Exception as ex:
                 cur.execute('ROLLBACK;')
                 message = 'Exception writing records'
-                self.logger.exception(message)
+                self.LOGGER.exception(message)
                 raise PostgresError(message, ex)
 
     def activate_version(self, stream_buffer, version):
@@ -123,10 +122,10 @@ class PostgresTarget(SQLInterface):
                                                           stream_buffer.stream)
 
                 if not table_metadata:
-                    self.logger.error('{} - Table for stream does not exist'.format(
+                    self.LOGGER.error('{} - Table for stream does not exist'.format(
                         stream_buffer.stream))
                 elif table_metadata.get('version') is not None and table_metadata.get('version') >= version:
-                    self.logger.warning('{} - Table version {} already active'.format(
+                    self.LOGGER.warning('{} - Table version {} already active'.format(
                         stream_buffer.stream,
                         version))
                 else:
@@ -159,7 +158,7 @@ class PostgresTarget(SQLInterface):
                 message = '{} - Exception activating table version {}'.format(
                     stream_buffer.stream,
                     version)
-                self.logger.exception(message)
+                self.LOGGER.exception(message)
                 raise PostgresError(message, ex)
 
     def _validate_identifier(self, identifier):
@@ -467,7 +466,7 @@ class PostgresTarget(SQLInterface):
                 comment_meta = json.loads(comment)
             except Exception as ex:
                 message = 'Could not load table comment metadata'
-                self.logger.exception(message)
+                self.LOGGER.exception(message)
                 raise PostgresError(message, ex)
         else:
             comment_meta = None
