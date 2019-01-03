@@ -438,22 +438,25 @@ class SQLInterface:
             canonicalized_column_name = raw_canonicalized_column_name[
                                         :self.IDENTIFIER_FIELD_LENGTH - len(raw_suffix)] + raw_suffix
 
+            self.LOGGER.warning(
+                'FIELD COLLISION: Field `{}` exists in remote already. No compatible type found. Appending type suffix: `{}`'.format(
+                    path,
+                    canonicalized_column_name
+                ))
+
         i = 0
         ## NAME COLLISION
         while canonicalized_column_name in existing_column_names:
+            self.LOGGER.warning(
+                'NAME COLLISION: Field `{}` collided with `{}` in remote. Adding new integer suffix...'.format(
+                    path,
+                    canonicalized_column_name
+                ))
+
             i += 1
             suffix = raw_suffix + SEPARATOR + str(i)
             canonicalized_column_name = raw_canonicalized_column_name[
                                         :self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix
-
-            # TODO: logger warn
-            ##raise Exception(
-            ##    'NAME COLLISION: Cannot handle merging column `{}` (canonicalized as: `{}`, canonicalized with type as: `{}`) in table `{}`.'.format(
-            ##        raw_column_name,
-            ##        canonicalized_column_name,
-            ##        canonicalized_typed_column_name,
-            ##        table_name
-            ##    ))
 
         return canonicalized_column_name
 
@@ -501,19 +504,16 @@ class SQLInterface:
         i = 0
         ## NAME COLLISION
         while canonicalized_name in to_from:
+            self.LOGGER.warning(
+                'NAME COLLISION: Table `{}` collided with `{}` in remote. Adding new integer suffix...'.format(
+                    from_path,
+                    canonicalized_name
+                ))
+
             i += 1
             suffix = SEPARATOR + str(i)
             canonicalized_name = raw_canonicalized_name[
                                  :self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix
-
-            # TODO: logger warn
-            ##raise Exception(
-            ##    'NAME COLLISION: Cannot handle merging column `{}` (canonicalized as: `{}`, canonicalized with type as: `{}`) in table `{}`.'.format(
-            ##        raw_column_name,
-            ##        canonicalized_column_name,
-            ##        canonicalized_typed_column_name,
-            ##        table_name
-            ##    ))
 
         return {'exists': False, 'to': canonicalized_name}
 
@@ -678,11 +678,10 @@ class SQLInterface:
             if not column_path in [m['from'] for m in mappings]:
                 ### NON EMPTY TABLE
                 if not table_empty:
-                    ## TODO: Use self.logger to warn
-                    # self.logger.warning('Forcing new column `{}.{}.{}` to be nullable due to table not empty.'.format(
-                    #     self.postgres_schema,
-                    #     table_name,
-                    #     column_name))
+                    self.LOGGER.warning(
+                        'NOT EMPTY: Forcing new column `{}` in table `{}` to be nullable due to table not empty.'.format(
+                            column_path,
+                            table_name))
                     column_schema = nullable_column_schema
 
                 self.add_column(connection,
