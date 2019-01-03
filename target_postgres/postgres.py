@@ -74,8 +74,8 @@ class PostgresTarget(SQLInterface):
                             ))
 
                     for key in stream_buffer.key_properties:
-                        if json_schema.get_type(current_table_schema['schema']['properties'][key]) \
-                                != json_schema.get_type(stream_buffer.schema['properties'][key]):
+                        if json_schema.to_sql(current_table_schema['schema']['properties'][key]) \
+                                != json_schema.to_sql(stream_buffer.schema['properties'][key]):
                             raise PostgresError(
                                 ('`key_properties` type change detected for "{}". ' +
                                  'Existing values are: {}. ' +
