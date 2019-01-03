@@ -13,6 +13,7 @@
 #
 
 from copy import deepcopy
+import datetime
 
 import singer
 
@@ -29,6 +30,10 @@ from target_postgres.singer_stream import (
 )
 
 SEPARATOR = '__'
+
+
+def _duration_millis(start):
+    return (datetime.datetime.now() - start).total_seconds() * 1000
 
 
 def to_table_schema(path, level, keys, properties):
@@ -1025,14 +1030,41 @@ class SQLInterface:
         :return: {'records_persisted': int,
                   'rows_persisted': int}
         """
-        records_persisted = len(records)
+        batch__timing_start = datetime.datetime.now()
+
+        self.LOGGER.info('Writing batch with {} records for `{}` with `key_properties`: `{}`'.format(
+            len(records),
+            root_table_name,
+            key_properties
+        ))
+
         rows_persisted = 0
         for table_batch in self._get_table_batches(schema, key_properties, records):
             table_batch['streamed_schema']['path'] = (root_table_name,) + table_batch['streamed_schema']['path']
+
+            table_batch__schema__timing_start = datetime.datetime.now()
+
+            self.LOGGER.info('Writing table batch schema for `{}`'.format(
+                table_batch['streamed_schema']['path']
+            ))
+
             remote_schema = self.upsert_table_helper(connection,
                                                      table_batch['streamed_schema'],
                                                      metadata)
-            rows_persisted += self.write_table_batch(
+
+            self.LOGGER.info('Table batch schema written in {} millis for `{}`'.format(
+                _duration_millis(table_batch__schema__timing_start),
+                table_batch['streamed_schema']['path']
+            ))
+
+            table_batch__records__timing_start = datetime.datetime.now()
+
+            self.LOGGER.info('Writing table batch with {} rows for `{}`'.format(
+                len(table_batch['records']),
+                table_batch['streamed_schema']['path']
+            ))
+
+            batch_rows_persisted = self.write_table_batch(
                 connection,
                 {'remote_schema': remote_schema,
                  'records': self._serialize_table_records(remote_schema,
@@ -1040,8 +1072,24 @@ class SQLInterface:
                                                           table_batch['records'])},
                 metadata)
 
+            self.LOGGER.info('Table batch with {} rows wrote {} rows in {} millis for {}'.format(
+                len(table_batch['records']),
+                batch_rows_persisted,
+                _duration_millis(table_batch__records__timing_start),
+                table_batch['streamed_schema']['path']
+            ))
+
+            rows_persisted += batch_rows_persisted
+
+        self.LOGGER.info('Batch with {} records wrote {} rows in {} millis for `{}`'.format(
+            len(records),
+            rows_persisted,
+            _duration_millis(batch__timing_start),
+            root_table_name
+        ))
+
         return {
-            'records_persisted': records_persisted,
+            'records_persisted': len(records),
             'rows_persisted': rows_persisted
         }
 

@@ -39,6 +39,10 @@ class PostgresTarget(SQLInterface):
     IDENTIFIER_FIELD_LENGTH = 63
 
     def __init__(self, connection, *args, postgres_schema='public', **kwargs):
+        self.LOGGER.info(
+            'PostgresTarget created with established connection: `{}`, PostgreSQL schema: `{}`'.format(connection.dsn,
+                                                                                                       postgres_schema))
+
         self.conn = connection
         self.postgres_schema = postgres_schema
 
