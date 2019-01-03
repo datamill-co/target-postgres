@@ -38,6 +38,8 @@ test__base: &test__base
   steps:
     - checkout
     - *restore__cache
+    - attach_workspace:
+        at: "./"
 
     - run:
         name: Run Tests
@@ -95,6 +97,11 @@ jobs:
             - "/usr/local/bin"
             - "/usr/local/lib/python3.7/site-packages"
 
+      - persist_to_workspace:
+          root: "./"
+          paths:
+            - "./venv--target-postgres"
+
   test--11.1:
     <<: *test__base
     docker:
@@ -137,6 +144,8 @@ jobs:
     steps:
       - checkout
       - *restore__cache
+      - attach_workspace:
+          at: "./"
 
       - run:
           name: Setup artifacts folder
@@ -182,6 +191,34 @@ jobs:
             tap-postgres --config config.json --properties /code/artifacts/data/properties.json > /code/artifacts/data/target
 
             deactivate
+
+      - run:
+          name: Repeatability of Data -> Target
+          command: |
+            source venv--target-postgres/bin/activate
+            cd /code/.circleci/integration
+
+            cat /code/artifacts/data/tap | target-postgres --config target-config.json
+
+            deactivate
+
+            cd /code
+
+            source venv--tap-postgres/bin/activate
+            cd /code/.circleci/integration/tap-postgres
+
+            tap-postgres --config config.json --discover > tmp-properties.json
+
+            ## Select _every_ table found in properties.
+            ##  row-count seems to only show up inside of the necessary metadata object...easier than multi-line-sed
+            sed 's/"row-count": 0,/"row-count": 0,"selected":true,/g' tmp-properties.json > /code/artifacts/data/properties.json
+
+            tap-postgres --config config.json --properties /code/artifacts/data/properties.json > /code/artifacts/data/target.repeated
+
+            deactivate
+
+            ## TODO: compare repeated data to insure that we only changed _sdc values
+            # diff /code/artifacts/data/target /code/artifacts/data/target.repeated
 
       - store_artifacts:
           path: /code/artifacts

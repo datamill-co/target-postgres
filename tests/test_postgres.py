@@ -1043,6 +1043,20 @@ def test_loading__invalid_column_name__column_type_change(db_cleanup):
             assert 0 == len([x for x in persisted_records if x[0] is None and x[1] is None and x[2] is None])
 
 
+def test_loading__column_type_change__pks__same_resulting_type(db_cleanup):
+    stream = CatStream(20)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties']['id'] = {'type': ['integer', 'null']}
+
+    main(CONFIG, input_stream=stream)
+
+    stream = CatStream(20)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties']['id'] = {'type': ['null', 'integer']}
+
+    main(CONFIG, input_stream=stream)
+
+
 def test_loading__invalid__column_type_change__pks(db_cleanup):
     main(CONFIG, input_stream=CatStream(20))
 
