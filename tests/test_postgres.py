@@ -141,7 +141,7 @@ def assert_records(conn, records, table_name, pks, match_pks=False):
                 assert sorted(list(persisted_records.keys())) == sorted(records_pks)
 
 
-def test_loading__invalid__configuration__schema():
+def test_loading__invalid__configuration__schema(db_cleanup):
     stream = CatStream(1)
     stream.schema = deepcopy(stream.schema)
     stream.schema['schema']['type'] = 'invalid type for a JSON Schema'
@@ -150,13 +150,13 @@ def test_loading__invalid__configuration__schema():
         main(CONFIG, input_stream=stream)
 
 
-def test_loading__invalid__records():
+def test_loading__invalid__records(db_cleanup):
     with pytest.raises(singer_stream.SingerStreamError, match=r'.*'):
         main(CONFIG,
              input_stream=InvalidCatStream(1))
 
 
-def test_loading__invalid__records__disable():
+def test_loading__invalid__records__disable(db_cleanup):
     config = deepcopy(CONFIG)
     config['invalid_records_detect'] = False
 
@@ -169,7 +169,7 @@ def test_loading__invalid__records__disable():
             assert_columns_equal(cur, 'cats', {})
 
 
-def test_loading__invalid__records__threshold():
+def test_loading__invalid__records__threshold(db_cleanup):
     config = deepcopy(CONFIG)
     config['invalid_records_threshold'] = 10
 
@@ -177,7 +177,7 @@ def test_loading__invalid__records__threshold():
         main(config, input_stream=InvalidCatStream(20))
 
 
-def test_loading__invalid__default_null_value__non_nullable_column():
+def test_loading__invalid__default_null_value__non_nullable_column(db_cleanup):
     class NullDefaultCatStream(CatStream):
 
         def generate_record(self):
@@ -1043,7 +1043,21 @@ def test_loading__invalid_column_name__column_type_change(db_cleanup):
             assert 0 == len([x for x in persisted_records if x[0] is None and x[1] is None and x[2] is None])
 
 
-def test_loading__invalid__column_type_change__pks():
+def test_loading__column_type_change__pks__same_resulting_type(db_cleanup):
+    stream = CatStream(20)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties']['id'] = {'type': ['integer', 'null']}
+
+    main(CONFIG, input_stream=stream)
+
+    stream = CatStream(20)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties']['id'] = {'type': ['null', 'integer']}
+
+    main(CONFIG, input_stream=stream)
+
+
+def test_loading__invalid__column_type_change__pks(db_cleanup):
     main(CONFIG, input_stream=CatStream(20))
 
     class StringIdCatStream(CatStream):
@@ -1060,7 +1074,7 @@ def test_loading__invalid__column_type_change__pks():
         main(CONFIG, input_stream=stream)
 
 
-def test_loading__invalid__column_type_change__pks__nullable():
+def test_loading__invalid__column_type_change__pks__nullable(db_cleanup):
     main(CONFIG, input_stream=CatStream(20))
 
     stream = CatStream(20)

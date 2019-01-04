@@ -13,6 +13,9 @@
 #
 
 from copy import deepcopy
+import datetime
+
+import singer
 
 from target_postgres import json_schema
 from target_postgres.singer_stream import (
@@ -27,6 +30,10 @@ from target_postgres.singer_stream import (
 )
 
 SEPARATOR = '__'
+
+
+def _duration_millis(start):
+    return (datetime.datetime.now() - start).total_seconds() * 1000
 
 
 def to_table_schema(path, level, keys, properties):
@@ -352,6 +359,7 @@ class SQLInterface:
     """
 
     IDENTIFIER_FIELD_LENGTH = NotImplementedError('`IDENTIFIER_FIELD_LENGTH` not implemented.')
+    LOGGER = singer.get_logger()
 
     def _get_streamed_table_schemas(self, schema, key_properties):
         """
@@ -435,22 +443,25 @@ class SQLInterface:
             canonicalized_column_name = raw_canonicalized_column_name[
                                         :self.IDENTIFIER_FIELD_LENGTH - len(raw_suffix)] + raw_suffix
 
+            self.LOGGER.warning(
+                'FIELD COLLISION: Field `{}` exists in remote already. No compatible type found. Appending type suffix: `{}`'.format(
+                    path,
+                    canonicalized_column_name
+                ))
+
         i = 0
         ## NAME COLLISION
         while canonicalized_column_name in existing_column_names:
+            self.LOGGER.warning(
+                'NAME COLLISION: Field `{}` collided with `{}` in remote. Adding new integer suffix...'.format(
+                    path,
+                    canonicalized_column_name
+                ))
+
             i += 1
             suffix = raw_suffix + SEPARATOR + str(i)
             canonicalized_column_name = raw_canonicalized_column_name[
                                         :self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix
-
-            # TODO: logger warn
-            ##raise Exception(
-            ##    'NAME COLLISION: Cannot handle merging column `{}` (canonicalized as: `{}`, canonicalized with type as: `{}`) in table `{}`.'.format(
-            ##        raw_column_name,
-            ##        canonicalized_column_name,
-            ##        canonicalized_typed_column_name,
-            ##        table_name
-            ##    ))
 
         return canonicalized_column_name
 
@@ -498,19 +509,16 @@ class SQLInterface:
         i = 0
         ## NAME COLLISION
         while canonicalized_name in to_from:
+            self.LOGGER.warning(
+                'NAME COLLISION: Table `{}` collided with `{}` in remote. Adding new integer suffix...'.format(
+                    from_path,
+                    canonicalized_name
+                ))
+
             i += 1
             suffix = SEPARATOR + str(i)
             canonicalized_name = raw_canonicalized_name[
                                  :self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix
-
-            # TODO: logger warn
-            ##raise Exception(
-            ##    'NAME COLLISION: Cannot handle merging column `{}` (canonicalized as: `{}`, canonicalized with type as: `{}`) in table `{}`.'.format(
-            ##        raw_column_name,
-            ##        canonicalized_column_name,
-            ##        canonicalized_typed_column_name,
-            ##        table_name
-            ##    ))
 
         return {'exists': False, 'to': canonicalized_name}
 
@@ -675,11 +683,10 @@ class SQLInterface:
             if not column_path in [m['from'] for m in mappings]:
                 ### NON EMPTY TABLE
                 if not table_empty:
-                    ## TODO: Use self.logger to warn
-                    # self.logger.warning('Forcing new column `{}.{}.{}` to be nullable due to table not empty.'.format(
-                    #     self.postgres_schema,
-                    #     table_name,
-                    #     column_name))
+                    self.LOGGER.warning(
+                        'NOT EMPTY: Forcing new column `{}` in table `{}` to be nullable due to table not empty.'.format(
+                            column_path,
+                            table_name))
                     column_schema = nullable_column_schema
 
                 self.add_column(connection,
@@ -1023,14 +1030,41 @@ class SQLInterface:
         :return: {'records_persisted': int,
                   'rows_persisted': int}
         """
-        records_persisted = len(records)
+        batch__timing_start = datetime.datetime.now()
+
+        self.LOGGER.info('Writing batch with {} records for `{}` with `key_properties`: `{}`'.format(
+            len(records),
+            root_table_name,
+            key_properties
+        ))
+
         rows_persisted = 0
         for table_batch in self._get_table_batches(schema, key_properties, records):
             table_batch['streamed_schema']['path'] = (root_table_name,) + table_batch['streamed_schema']['path']
+
+            table_batch__schema__timing_start = datetime.datetime.now()
+
+            self.LOGGER.info('Writing table batch schema for `{}`'.format(
+                table_batch['streamed_schema']['path']
+            ))
+
             remote_schema = self.upsert_table_helper(connection,
                                                      table_batch['streamed_schema'],
                                                      metadata)
-            rows_persisted += self.write_table_batch(
+
+            self.LOGGER.info('Table batch schema written in {} millis for `{}`'.format(
+                _duration_millis(table_batch__schema__timing_start),
+                table_batch['streamed_schema']['path']
+            ))
+
+            table_batch__records__timing_start = datetime.datetime.now()
+
+            self.LOGGER.info('Writing table batch with {} rows for `{}`'.format(
+                len(table_batch['records']),
+                table_batch['streamed_schema']['path']
+            ))
+
+            batch_rows_persisted = self.write_table_batch(
                 connection,
                 {'remote_schema': remote_schema,
                  'records': self._serialize_table_records(remote_schema,
@@ -1038,8 +1072,24 @@ class SQLInterface:
                                                           table_batch['records'])},
                 metadata)
 
+            self.LOGGER.info('Table batch with {} rows wrote {} rows in {} millis for {}'.format(
+                len(table_batch['records']),
+                batch_rows_persisted,
+                _duration_millis(table_batch__records__timing_start),
+                table_batch['streamed_schema']['path']
+            ))
+
+            rows_persisted += batch_rows_persisted
+
+        self.LOGGER.info('Batch with {} records wrote {} rows in {} millis for `{}`'.format(
+            len(records),
+            rows_persisted,
+            _duration_millis(batch__timing_start),
+            root_table_name
+        ))
+
         return {
-            'records_persisted': records_persisted,
+            'records_persisted': len(records),
             'rows_persisted': rows_persisted
         }
 
