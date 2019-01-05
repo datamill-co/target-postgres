@@ -151,7 +151,6 @@ def main(config, input_stream=None):
 
         postgres_target = PostgresTarget(
             connection,
-            LOGGER,
             postgres_schema=config.get('postgres_schema', 'public'))
 
         invalid_records_detect = config.get('invalid_records_detect')
