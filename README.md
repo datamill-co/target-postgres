@@ -12,6 +12,12 @@ A [Singer](https://singer.io/) postgres target, for use with Singer streams gene
 - Adds columns and sub-tables as new fields are added to the stream [JSON Schema](https://json-schema.org/)
 - Full stream replication via record `version` and `ACTIVATE_VERSION` messages.
 
+## Install
+
+```sh
+pip install singer-target-postgres
+```
+
 ## Usage
 
 1. Follow the
