@@ -16,22 +16,24 @@ LOGGER = singer.get_logger()
 
 def main(target):
     """
-
-    :param target:
-    :return:
+    Given a target, stream stdin input as a text stream.
+    :param target: object which implements `write_batch` and `activate_version`
+    :return: None
     """
     config = utils.parse_args([]).config
     input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
-    return stream_to_target(input_stream, target, config=config)
+    stream_to_target(input_stream, target, config=config)
+
+    return None
 
 
 def stream_to_target(stream, target, config={}):
     """
-
-    :param stream:
-    :param target:
-    :param config:
-    :return:
+    Persist `stream` to `target` with optional `config`.
+    :param stream: iterator which represents a Singer data stream
+    :param target: object which implements `write_batch` and `activate_version`
+    :param config: [optional] configuration for buffers etc.
+    :return: None
     """
 
     streams = {}
@@ -47,24 +49,26 @@ def stream_to_target(stream, target, config={}):
 
         line_count = 0
         for line in stream:
-            line_handler(streams,
-                         target,
-                         invalid_records_detect,
-                         invalid_records_threshold,
-                         max_batch_rows,
-                         max_batch_size,
-                         line)
+            _line_handler(streams,
+                          target,
+                          invalid_records_detect,
+                          invalid_records_threshold,
+                          max_batch_rows,
+                          max_batch_size,
+                          line)
             if line_count > 0 and line_count % batch_detection_threshold == 0:
-                flush_streams(streams, target)
+                _flush_streams(streams, target)
             line_count += 1
 
-        flush_streams(streams, target, force=True)
+        _flush_streams(streams, target, force=True)
+
+        return None
 
     except Exception as e:
         LOGGER.critical(e)
         raise e
     finally:
-        report_invalid_records(streams)
+        _report_invalid_records(streams)
 
 
 class TargetError(Exception):
@@ -73,18 +77,18 @@ class TargetError(Exception):
     """
 
 
-def flush_stream(target, stream_buffer):
+def _flush_stream(target, stream_buffer):
     target.write_batch(stream_buffer)
     stream_buffer.flush_buffer()
 
 
-def flush_streams(streams, target, force=False):
+def _flush_streams(streams, target, force=False):
     for stream_buffer in streams.values():
         if force or stream_buffer.buffer_full:
-            flush_stream(target, stream_buffer)
+            _flush_stream(target, stream_buffer)
 
 
-def report_invalid_records(streams):
+def _report_invalid_records(streams):
     for stream_buffer in streams.values():
         if stream_buffer.peek_invalid_records():
             LOGGER.warning("Invalid records detected for stream {}: {}".format(
@@ -93,8 +97,8 @@ def report_invalid_records(streams):
             ))
 
 
-def line_handler(streams, target, invalid_records_detect, invalid_records_threshold, max_batch_rows, max_batch_size,
-                 line):
+def _line_handler(streams, target, invalid_records_detect, invalid_records_threshold, max_batch_rows, max_batch_size,
+                  line):
     try:
         line_data = json.loads(line)
     except json.decoder.JSONDecodeError:
