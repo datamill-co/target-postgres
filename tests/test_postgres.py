@@ -151,33 +151,6 @@ def test_loading__invalid__configuration__schema(db_cleanup):
         main(CONFIG, input_stream=stream)
 
 
-def test_loading__invalid__records(db_cleanup):
-    with pytest.raises(singer_stream.SingerStreamError, match=r'.*'):
-        main(CONFIG,
-             input_stream=InvalidCatStream(1))
-
-
-def test_loading__invalid__records__disable(db_cleanup):
-    config = deepcopy(CONFIG)
-    config['invalid_records_detect'] = False
-
-    main(config, input_stream=InvalidCatStream(100))
-
-    with psycopg2.connect(**TEST_DB) as conn:
-        with conn.cursor() as cur:
-            # No columns for a non existent table
-            ## Since all `cat`s records were invalid, we could not persist them, hence, no table created
-            assert_columns_equal(cur, 'cats', {})
-
-
-def test_loading__invalid__records__threshold(db_cleanup):
-    config = deepcopy(CONFIG)
-    config['invalid_records_threshold'] = 10
-
-    with pytest.raises(singer_stream.SingerStreamError, match=r'.*.10*'):
-        main(config, input_stream=InvalidCatStream(20))
-
-
 def test_loading__invalid__default_null_value__non_nullable_column(db_cleanup):
     class NullDefaultCatStream(CatStream):
 
