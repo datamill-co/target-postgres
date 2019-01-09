@@ -1,48 +1,68 @@
 version: 2.0
 
+filters: &filters
+  filters:
+    tags:
+      only: /^v[0-9]+(\.[0-9]+)*$/
+
+filters__tags: &filters__tags
+  filters:
+    branches:
+      ignore: /.*/
+    tags:
+      only: /^v[0-9]+(\.[0-9]+)*$/
+
+
 workflows:
   version: 2
   test:
     jobs:
-      - cache
+      - cache:
+          <<: *filters
+      - build:
+          <<: *filters
+          requires:
+            - cache
       - test--11.1:
+          <<: *filters
           requires:
             - cache
       - test--9.6.11:
+          <<: *filters
           requires:
             - cache
       - test--9.5.15:
+          <<: *filters
           requires:
             - cache
       - test--9.4.20:
+          <<: *filters
           requires:
             - cache
       - test--tap-github:
+          <<: *filters
           requires:
             - test--11.1
             - test--9.6.11
             - test--9.5.15
             - test--9.4.20
-      - approve-release:
-          type: approval
+      - test-release:
+          <<: *filters__tags
           requires:
             - test--tap-github
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: /^v[0-9-]+(\.[0-9]+)*$/
+            - build
+      - approve-release:
+          <<: *filters__tags
+          type: approval
+          requires:
+            - test-release
       - release:
+          <<: *filters__tags
           requires:
             - approve-release
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: /^v[0-9]+(\.[0-9]+)*$/
 
 cache: &cache
-  deps-v5-{{ checksum "setup.py" }}
+         deps-v5-{{ checksum "setup.py" }}
 
 restore__cache: &restore__cache
   restore_cache:
@@ -239,6 +259,61 @@ jobs:
       - store_artifacts:
           path: /code/artifacts
 
+  build:
+    working_directory: /code/
+    docker:
+      - image: python:3.7.1-stretch
+    steps:
+      - checkout
+      - *restore__cache
+      - attach_workspace:
+          at: "./"
+      - run:
+          name: Build disttribution
+          command: |
+            source venv--target-postgres/bin/activate
+
+            pip install --upgrade setuptools wheel twine
+
+            python setup.py sdist bdist_wheel
+
+            deactivate
+
+      - persist_to_workspace:
+          root: "./"
+          paths:
+            - "./dist"
+
+  test-release:
+    working_directory: /code/
+    docker:
+      - image: python:3.7.1-stretch
+    steps:
+      - checkout
+      - *restore__cache
+      - attach_workspace:
+          at: "./"
+      - run:
+          name: Validate tag
+          command: |
+            export TAG=`echo $CIRCLE_TAG | sed 's/v//'`
+            export VERSION=`grep version setup.py | sed 's/version="\(.*\)",/\1/'`
+
+            echo tag: $TAG equals version: $VERSION '?'
+
+            [[ $CIRCLE_TAG == $VERSION ]]
+      - run:
+          name: Install upload tools
+          command: pip install --upgrade twine
+      - run:
+          name: Test Publish
+          environment:
+            TWINE_USERNAME: datamill
+            TWINE_REPOSITORY_URL: https://test.pypi.org/legacy/
+          command: |
+            export TWINE_PASSWORD=$PYPI__PASSWORD__TEST
+            twine upload ./dist/*
+
   release:
     working_directory: /code/
     docker:
@@ -249,6 +324,12 @@ jobs:
       - attach_workspace:
           at: "./"
       - run:
-          name: TODO Deployment
+          name: Install upload tools
+          command: pip install --upgrade twine
+      - run:
+          name: Publish
+          environment:
+            TWINE_USERNAME: datamill
           command: |
-            echo Coming soon...
+            export TWINE_PASSWORD=$PYPI__PASSWORD
+            twine upload ./dist/*
