@@ -19,11 +19,27 @@ workflows:
             - cache
       - test--tap-github:
           requires:
-            - cache
             - test--11.1
             - test--9.6.11
             - test--9.5.15
             - test--9.4.20
+      - approve-release:
+          type: approval
+          requires:
+            - test--tap-github
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9-]+(\.[0-9]+)*$/
+      - release:
+          requires:
+            - approve-release
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9]+(\.[0-9]+)*$/
 
 cache: &cache
   deps-v5-{{ checksum "setup.py" }}
@@ -222,3 +238,17 @@ jobs:
 
       - store_artifacts:
           path: /code/artifacts
+
+  release:
+    working_directory: /code/
+    docker:
+      - image: python:3.7.1-stretch
+    steps:
+      - checkout
+      - *restore__cache
+      - attach_workspace:
+          at: "./"
+      - run:
+          name: TODO Deployment
+          command: |
+            echo Coming soon...
