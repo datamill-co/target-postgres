@@ -3,7 +3,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='target-postgres',
+    name='singer-target-postgres',
     version="0.1.0",
     description='Singer.io target for loading data into postgres',
     classifiers=['Programming Language :: Python :: 3 :: Only'],
