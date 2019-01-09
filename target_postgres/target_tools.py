@@ -37,10 +37,7 @@ def stream_to_target(stream, target, config={}):
     streams = {}
     try:
         if not config.get('disable_collection', False):
-            LOGGER.info('Sending version information to singer.io. ' +
-                        'To disable sending anonymous usage data, set ' +
-                        'the config parameter "disable_collection" to true')
-            threading.Thread(target=send_usage_stats).start()
+            _async_send_usage_stats()
 
         invalid_records_detect = config.get('invalid_records_detect')
         invalid_records_threshold = config.get('invalid_records_threshold')
@@ -169,20 +166,25 @@ def line_handler(streams, target, invalid_records_detect, invalid_records_thresh
             line))
 
 
-def send_usage_stats():
+def _send_usage_stats():
     try:
         version = pkg_resources.get_distribution('target-postgres').version
-        conn = http.client.HTTPConnection('collector.singer.io', timeout=10)
-        conn.connect()
-        params = {
-            'e': 'se',
-            'aid': 'singer',
-            'se_ca': 'target-postgres',
-            'se_ac': 'open',
-            'se_la': version,
-        }
-        conn.request('GET', '/i?' + urllib.parse.urlencode(params))
-        response = conn.getresponse()
-        conn.close()
+        with http.client.HTTPConnection('collector.singer.io', timeout=10).connect() as conn:
+            params = {
+                'e': 'se',
+                'aid': 'singer',
+                'se_ca': 'target-postgres',
+                'se_ac': 'open',
+                'se_la': version,
+            }
+            conn.request('GET', '/i?' + urllib.parse.urlencode(params))
+            conn.getresponse()
     except:
         LOGGER.debug('Collection request failed')
+
+
+def _async_send_usage_stats():
+    LOGGER.info('Sending version information to singer.io. ' +
+                'To disable sending anonymous usage data, set ' +
+                'the config parameter "disable_collection" to true')
+    threading.Thread(target=_send_usage_stats()).start()
