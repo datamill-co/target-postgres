@@ -5,6 +5,31 @@ import pytest
 from target_postgres import json_schema
 from fixtures import CATS_SCHEMA
 
+def test_python_type():
+    assert json_schema.python_type(None) \
+           == json_schema.NULL
+    assert json_schema.python_type(True) \
+           == json_schema.BOOLEAN
+    assert json_schema.python_type(True) \
+           == json_schema.BOOLEAN
+    assert json_schema.python_type(123) \
+    == json_schema.INTEGER
+    assert json_schema.python_type(0) \
+           == json_schema.INTEGER
+    assert json_schema.python_type(-1234567890) \
+           == json_schema.INTEGER
+    assert json_schema.python_type(3.14159) \
+           == json_schema.NUMBER
+    assert json_schema.python_type(0.0) \
+           == json_schema.NUMBER
+    assert json_schema.python_type(-3.14159) \
+           == json_schema.NUMBER
+    assert json_schema.python_type('') \
+           == json_schema.STRING
+    assert json_schema.python_type('hello') \
+           == json_schema.STRING
+    assert json_schema.python_type('world') \
+           == json_schema.STRING
 
 def test_is_object():
     assert json_schema.is_object({'type': ['object']})

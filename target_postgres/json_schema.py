@@ -12,10 +12,32 @@ NUMBER = 'number'
 BOOLEAN = 'boolean'
 STRING = 'string'
 
+_PYTHON_TYPE_TO_JSON_SCHEMA = {
+    int: INTEGER,
+    float: NUMBER,
+    bool: BOOLEAN,
+    str: STRING,
+    type(None): NULL
+}
+
+
 class JSONSchemaError(Exception):
     """
     Raise this when there is an error with regards to an instance of JSON Schema
     """
+
+
+def python_type(x):
+    """
+    Given a value `x`, return its Python Type as a JSONSchema type.
+    :param x:
+    :return:
+    """
+    if not type(x) in _PYTHON_TYPE_TO_JSON_SCHEMA:
+        raise JSONSchemaError('Unknown type `{}`. Cannot translate to JSONSchema type.'.format(
+            str(type(x))
+        ))
+    return _PYTHON_TYPE_TO_JSON_SCHEMA[type(x)]
 
 
 def get_type(schema):
