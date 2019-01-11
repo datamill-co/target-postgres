@@ -2,13 +2,9 @@ from copy import deepcopy
 
 from target_postgres import json_schema
 from target_postgres.singer_stream import (
-    SINGER_BATCHED_AT,
     SINGER_LEVEL,
-    SINGER_PK,
-    SINGER_RECEIVED_AT,
     SINGER_SEQUENCE,
     SINGER_SOURCE_PK_PREFIX,
-    SINGER_TABLE_VERSION,
     SINGER_VALUE
 )
 
@@ -48,8 +44,6 @@ def _get_streamed_table_schemas(schema, key_properties):
     """
     root_table_schema = json_schema.simplify(schema)
 
-    _add_singer_columns(root_table_schema, key_properties)
-
     subtables = {}
     key_prop_schemas = {}
     for key in key_properties:
@@ -78,37 +72,6 @@ def _to_table_schema(path, level, keys, properties):
             'schema': {'type': 'object',
                        'additionalProperties': False,
                        'properties': properties}}
-
-
-def _add_singer_columns(schema, key_properties):
-    properties = schema['properties']
-
-    if SINGER_RECEIVED_AT not in properties:
-        properties[SINGER_RECEIVED_AT] = {
-            'type': ['null', 'string'],
-            'format': 'date-time'
-        }
-
-    if SINGER_SEQUENCE not in properties:
-        properties[SINGER_SEQUENCE] = {
-            'type': ['null', 'integer']
-        }
-
-    if SINGER_TABLE_VERSION not in properties:
-        properties[SINGER_TABLE_VERSION] = {
-            'type': ['null', 'integer']
-        }
-
-    if SINGER_BATCHED_AT not in properties:
-        properties[SINGER_BATCHED_AT] = {
-            'type': ['null', 'string'],
-            'format': 'date-time'
-        }
-
-    if len(key_properties) == 0:
-        properties[SINGER_PK] = {
-            'type': ['string']
-        }
 
 
 def _literal_only_schema(schema):

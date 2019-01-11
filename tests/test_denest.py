@@ -33,21 +33,8 @@ def missing_key_properties(table_batch):
     return errors
 
 
-def missing_sdc_properties(table_batch):
-    if table_batch['streamed_schema']['path']:
-        return []
-
-    errors = []
-    for p in [SINGER_RECEIVED_AT, SINGER_SEQUENCE, SINGER_TABLE_VERSION, SINGER_BATCHED_AT]:
-        if not (p,) in table_batch['streamed_schema']['schema']['properties']:
-            errors.append({'_sdc': p,
-                           'message': '`_sdc` missing'})
-
-    return errors
-
-
 def errors(table_batch):
-    return non_path_properties(table_batch) + missing_key_properties(table_batch) + missing_sdc_properties(table_batch)
+    return non_path_properties(table_batch) + missing_key_properties(table_batch)
 
 
 def test_empty():

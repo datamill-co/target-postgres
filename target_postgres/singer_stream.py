@@ -1,9 +1,11 @@
+from copy import deepcopy
 import uuid
 
 import arrow
 from jsonschema import Draft4Validator, FormatChecker
 from jsonschema.exceptions import ValidationError
 
+from target_postgres import json_schema
 from target_postgres.pysize import get_size
 
 
@@ -38,7 +40,11 @@ class BufferedSingerStream():
         :param invalid_records_detect: Defaults to True when value is None
         :param invalid_records_threshold: Defaults to 0 when value is None
         """
+        self.schema = None
+        self.key_properties = None
+        self.validator = None
         self.update_schema(schema, key_properties)
+
         self.stream = stream
         self.invalid_records = []
         self.max_rows = max_rows
@@ -58,19 +64,43 @@ class BufferedSingerStream():
         self.__lifetime_max_version = None
 
     def update_schema(self, schema, key_properties):
-        self.validator = Draft4Validator(schema, format_checker=FormatChecker())
+        # In order to determine whether a value _is in_ properties _or not_ we need to flatten `$ref`s etc.
+        self.schema = json_schema.simplify(schema)
+        self.key_properties = deepcopy(key_properties)
+        self.validator = Draft4Validator(self.schema, format_checker=FormatChecker())
 
-        if len(key_properties) == 0:
+        properties = self.schema['properties']
+
+        if SINGER_RECEIVED_AT not in properties:
+            properties[SINGER_RECEIVED_AT] = {
+                'type': ['null', 'string'],
+                'format': 'date-time'
+            }
+
+        if SINGER_SEQUENCE not in properties:
+            properties[SINGER_SEQUENCE] = {
+                'type': ['null', 'integer']
+            }
+
+        if SINGER_TABLE_VERSION not in properties:
+            properties[SINGER_TABLE_VERSION] = {
+                'type': ['null', 'integer']
+            }
+
+        if SINGER_BATCHED_AT not in properties:
+            properties[SINGER_BATCHED_AT] = {
+                'type': ['null', 'string'],
+                'format': 'date-time'
+            }
+
+        if len(self.key_properties) == 0:
             self.use_uuid_pk = True
-            key_properties = [SINGER_PK]
-            schema['properties'][SINGER_PK] = {
-                'type': 'string'
+            self.key_properties = [SINGER_PK]
+            properties[SINGER_PK] = {
+                'type': ['string']
             }
         else:
             self.use_uuid_pk = False
-
-        self.schema = schema
-        self.key_properties = key_properties
 
     @property
     def count(self):
