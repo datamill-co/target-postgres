@@ -39,6 +39,10 @@ workflows:
           <<: *filters
           requires:
             - cache
+      - test--8.4.22:
+          <<: *filters
+          requires:
+            - cache
       - test--tap-github:
           <<: *filters
           requires:
@@ -167,6 +171,14 @@ jobs:
     docker:
       - image: python:3.7.1-stretch
       - image: postgres:9.4.20
+        environment:
+          POSTGRES_DB: target_postgres_test
+
+  test--8.4.22:
+    <<: *test__base
+    docker:
+      - image: python:3.7.1-stretch
+      - image: postgres:8.4.22
         environment:
           POSTGRES_DB: target_postgres_test
 
