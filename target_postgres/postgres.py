@@ -74,8 +74,8 @@ class PostgresTarget(SQLInterface):
                             ))
 
                     for key in stream_buffer.key_properties:
-                        if json_schema.to_sql(current_table_schema['schema']['properties'][key]) \
-                                != json_schema.to_sql(stream_buffer.schema['properties'][key]):
+                        if self.json_schema_to_sql_type(current_table_schema['schema']['properties'][key]) \
+                                != self.json_schema_to_sql_type(stream_buffer.schema['properties'][key]):
                             raise PostgresError(
                                 ('`key_properties` type change detected for "{}". ' +
                                  'Existing values are: {}. ' +
@@ -83,8 +83,8 @@ class PostgresTarget(SQLInterface):
                                     key,
                                     json_schema.get_type(current_table_schema['schema']['properties'][key]),
                                     json_schema.get_type(stream_buffer.schema['properties'][key]),
-                                    json_schema.to_sql(current_table_schema['schema']['properties'][key]),
-                                    json_schema.to_sql(stream_buffer.schema['properties'][key])
+                                    self.json_schema_to_sql_type(current_table_schema['schema']['properties'][key]),
+                                    self.json_schema_to_sql_type(stream_buffer.schema['properties'][key])
                                 ))
 
                 root_table_name = stream_buffer.stream
@@ -423,7 +423,7 @@ class PostgresTarget(SQLInterface):
             table_schema=sql.Identifier(self.postgres_schema),
             table_name=sql.Identifier(table_name),
             column_name=sql.Identifier(column_name),
-            data_type=sql.SQL(json_schema.to_sql(column_schema))))
+            data_type=sql.SQL(self.json_schema_to_sql_type(column_schema))))
 
     def migrate_column(self, cur, table_name, from_column, to_column):
         cur.execute(sql.SQL('UPDATE {table_schema}.{table_name} ' +
@@ -521,7 +521,7 @@ class PostgresTarget(SQLInterface):
 
         properties = {}
         for column in cur.fetchall():
-            properties[column[0]] = json_schema.from_sql(column[1], column[2] == 'YES')
+            properties[column[0]] = self.sql_type_to_json_schema(column[1], column[2] == 'YES')
 
         metadata = self._get_table_metadata(cur, name)
 
@@ -546,3 +546,69 @@ class PostgresTarget(SQLInterface):
         metadata['table_mappings'] = table_mappings
 
         return metadata
+
+    def sql_type_to_json_schema(self, sql_type, is_nullable):
+        """
+        Given a string representing a SQL column type, and a boolean indicating whether
+        the associated column is nullable, return a compatible JSONSchema structure.
+        :param sql_type: string
+        :param is_nullable: boolean
+        :return: JSONSchema
+        """
+        _format = None
+        if sql_type == 'timestamp with time zone':
+            json_type = 'string'
+            _format = 'date-time'
+        elif sql_type == 'bigint':
+            json_type = 'integer'
+        elif sql_type == 'double precision':
+            json_type = 'number'
+        elif sql_type == 'boolean':
+            json_type = 'boolean'
+        elif sql_type == 'text':
+            json_type = 'string'
+        else:
+            raise PostgresError('Unsupported type `{}` in existing target table'.format(sql_type))
+
+        json_type = [json_type]
+        if is_nullable:
+            json_type.append(json_schema.NULL)
+
+        ret_json_schema = {'type': json_type}
+        if _format:
+            ret_json_schema['format'] = _format
+
+        return ret_json_schema
+
+    def json_schema_to_sql_type(self, schema):
+        _type = json_schema.get_type(schema)
+        not_null = True
+        ln = len(_type)
+        if ln == 1:
+            _type = _type[0]
+        if ln == 2 and json_schema.NULL in _type:
+            not_null = False
+            if _type.index(json_schema.NULL) == 0:
+                _type = _type[1]
+            else:
+                _type = _type[0]
+        elif ln > 2:
+            raise PostgresError('Multiple types per column not supported')
+
+        sql_type = 'text'
+
+        if 'format' in schema and \
+                schema['format'] == 'date-time' and \
+                _type == 'string':
+            sql_type = 'timestamp with time zone'
+        elif _type == 'boolean':
+            sql_type = 'boolean'
+        elif _type == 'integer':
+            sql_type = 'bigint'
+        elif _type == 'number':
+            sql_type = 'double precision'
+
+        if not_null:
+            sql_type += ' NOT NULL'
+
+        return sql_type

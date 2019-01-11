@@ -28,7 +28,7 @@ def _duration_millis(start):
 
 
 def _mapping_name(field, schema):
-    return field + SEPARATOR + json_schema.sql_shorthand(schema)
+    return field + SEPARATOR + json_schema.shorthand(schema)
 
 
 class SQLInterface:
@@ -50,6 +50,14 @@ class SQLInterface:
 
     IDENTIFIER_FIELD_LENGTH = NotImplementedError('`IDENTIFIER_FIELD_LENGTH` not implemented.')
     LOGGER = singer.get_logger()
+
+    def json_schema_to_sql_type(self, schema):
+        """
+        Given a JSONSchema structure, return a compatible string representing a SQL column type.
+        :param schema: JSONSchema
+        :return: string
+        """
+        raise NotImplementedError('`` not implemented.')
 
     def get_table_schema(self, connection, path, name):
         """
@@ -90,13 +98,13 @@ class SQLInterface:
         existing_column_names = set()
 
         for m in mappings:
-            from_type__to_name[(m['from'], json_schema.sql_shorthand(m))] = m['to']
+            from_type__to_name[(m['from'], json_schema.shorthand(m))] = m['to']
             existing_paths.add(m['from'])
             existing_column_names.add(m['to'])
 
         ## MAPPING EXISTS, NO CANONICALIZATION NECESSARY
-        if (path, json_schema.sql_shorthand(schema)) in from_type__to_name:
-            return from_type__to_name[(path, json_schema.sql_shorthand(schema))]
+        if (path, json_schema.shorthand(schema)) in from_type__to_name:
+            return from_type__to_name[(path, json_schema.shorthand(schema))]
 
         raw_canonicalized_column_name = self.canonicalize_identifier(SEPARATOR.join(path))
         canonicalized_column_name = raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH]
@@ -104,7 +112,7 @@ class SQLInterface:
         raw_suffix = ''
         ## NO TYPE MATCH
         if path in existing_paths:
-            raw_suffix = SEPARATOR + json_schema.sql_shorthand(schema)
+            raw_suffix = SEPARATOR + json_schema.shorthand(schema)
             canonicalized_column_name = raw_canonicalized_column_name[
                                         :self.IDENTIFIER_FIELD_LENGTH - len(raw_suffix)] + raw_suffix
 
@@ -278,7 +286,7 @@ class SQLInterface:
     def _get_mapping(self, existing_schema, path, schema):
         for to, mapping in existing_schema.get('mappings', {}).items():
             if tuple(mapping['from']) == path \
-                    and json_schema.sql_shorthand(mapping) == json_schema.sql_shorthand(schema):
+                    and json_schema.shorthand(mapping) == json_schema.shorthand(schema):
                 return to
 
         return None
@@ -373,19 +381,21 @@ class SQLInterface:
             ## EXISTING COLUMNS
             ### SCHEMAS MATCH
             if [True for m in mappings if
-                m['from'] == column_path and json_schema.to_sql(m) == json_schema.to_sql(column_schema)]:
+                m['from'] == column_path
+                and self.json_schema_to_sql_type(m) == self.json_schema_to_sql_type(column_schema)]:
                 continue
             ### NULLABLE SCHEMAS MATCH
             ###  New column _is not_ nullable, existing column _is_
             if [True for m in mappings if
-                m['from'] == column_path and json_schema.to_sql(m) == json_schema.to_sql(nullable_column_schema)]:
+                m['from'] == column_path
+                and self.json_schema_to_sql_type(m) == self.json_schema_to_sql_type(nullable_column_schema)]:
                 continue
 
             ### NULL COMPATIBILITY
             ###  New column _is_ nullable, existing column is _not_
             non_null_original_column = [m for m in mappings if
-                                        m['from'] == column_path and json_schema.sql_shorthand(
-                                            m) == json_schema.sql_shorthand(column_schema)]
+                                        m['from'] == column_path and json_schema.shorthand(
+                                            m) == json_schema.shorthand(column_schema)]
             if non_null_original_column:
                 ## MAKE NULLABLE
                 self.make_column_nullable(connection,
@@ -398,8 +408,8 @@ class SQLInterface:
                                         canonicalized_column_name,
                                         nullable_column_schema)
 
-                mappings = [m for m in mappings if not (m['from'] == column_path and json_schema.sql_shorthand(
-                    m) == json_schema.sql_shorthand(column_schema))]
+                mappings = [m for m in mappings if not (m['from'] == column_path and json_schema.shorthand(
+                    m) == json_schema.shorthand(column_schema))]
                 mappings.append({'from': column_path,
                                  'to': canonicalized_column_name,
                                  'type': json_schema.get_type(nullable_column_schema)})
