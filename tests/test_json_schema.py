@@ -531,6 +531,6 @@ def test_make_nullable():
 
 
 def test_sql_shorthand():
-    assert 'b' == json_schema.sql_shorthand({'type': 'boolean'})
-    assert 'b' == json_schema.sql_shorthand({'type': ['null', 'boolean']})
-    assert 's' == json_schema.sql_shorthand({'type': ['null', 'string']})
+    assert 'b' == json_schema.shorthand({'type': 'boolean'})
+    assert 'b' == json_schema.shorthand({'type': ['null', 'boolean']})
+    assert 's' == json_schema.shorthand({'type': ['null', 'string']})

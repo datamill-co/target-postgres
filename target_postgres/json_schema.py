@@ -260,67 +260,6 @@ def validation_errors(schema):
     return errors
 
 
-def from_sql(sql_type, nullable):
-    _format = None
-    if sql_type == 'timestamp with time zone':
-        json_type = 'string'
-        _format = 'date-time'
-    elif sql_type == 'bigint':
-        json_type = 'integer'
-    elif sql_type == 'double precision':
-        json_type = 'number'
-    elif sql_type == 'boolean':
-        json_type = 'boolean'
-    elif sql_type == 'text':
-        json_type = 'string'
-    else:
-        raise JSONSchemaError('Unsupported type `{}` in existing target table'.format(sql_type))
-
-    json_type = [json_type]
-    if nullable:
-        json_type.append(NULL)
-
-    ret_json_schema = {'type': json_type}
-    if _format:
-        ret_json_schema['format'] = _format
-
-    return ret_json_schema
-
-
-def to_sql(schema):
-    _type = get_type(schema)
-    not_null = True
-    ln = len(_type)
-    if ln == 1:
-        _type = _type[0]
-    if ln == 2 and NULL in _type:
-        not_null = False
-        if _type.index(NULL) == 0:
-            _type = _type[1]
-        else:
-            _type = _type[0]
-    elif ln > 2:
-        raise JSONSchemaError('Multiple types per column not supported')
-
-    sql_type = 'text'
-
-    if 'format' in schema and \
-            schema['format'] == 'date-time' and \
-            _type == 'string':
-        sql_type = 'timestamp with time zone'
-    elif _type == 'boolean':
-        sql_type = 'boolean'
-    elif _type == 'integer':
-        sql_type = 'bigint'
-    elif _type == 'number':
-        sql_type = 'double precision'
-
-    if not_null:
-        sql_type += ' NOT NULL'
-
-    return sql_type
-
-
 _shorthand_mapping = {
     NULL: '',
     'string': 's',
@@ -346,5 +285,5 @@ def _type_shorthand(type_s):
     return _shorthand_mapping[type_s]
 
 
-def sql_shorthand(schema):
+def shorthand(schema):
     return _type_shorthand(get_type(schema))
