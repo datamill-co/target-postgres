@@ -188,3 +188,23 @@ string identifier which contains only characters which are allowed by the remote
 - This approach is inspired by what Stitch Data takes with `array` de-nesting.
 - The user experience for those using a SQL querying language is better for flat tables
   - as compared to something like [PostgreSQL's JSONB](https://www.postgresql.org/docs/9.4/datatype-json.html) support
+
+## Queries
+
+### What
+
+- When we write SQL at any given point, we have the option to use "latest" PostgreSQL features
+- We opt for features available from PostgreSQL 8.4.22 forward
+- We ***DO NOT*** support PostgreSQL 8.4.22
+  - any features/bugs issues based on this will be weighed against this decision as far as effort to benefit
+
+### Why
+
+- Supporting multiple versions of PostgreSQL has _thus far_ been fairly straightforward by adhering to only query support available in the _oldest_ version of supported PostgreSQL
+- By doing this, we only have one main code base, instead of many fractured versions which all employ the latest/greatest system functions/methods/tables/information schemas available
+- By using 8.4.22, supporting [Redshift](https://github.com/datamill-co/target-redshift) is made simpler
+  - Redshift was originally split from [PostgreSQL 8.0.2](https://docs.aws.amazon.com/redshift/latest/dg/c_redshift-and-postgres-sql.html)
+  - At some point, a _lot_ of work was done by AWS to make Redshift a "simple fork" of PostgreSQL 8.4
+- We do not _support_ PostgreSQL 8.4 simply because PostgreSQL does not support it anymore
+  - Our _only_ benefit to making 8.4 query language our target is Redshift
+  - When a new supported version of PostgreSQL comes along, and we undertake the effort to support it herein, if supporting it is simpler to do by breaking 8.4, we will move the necessary logic to [target-redshift](https://github.com/datamill-co/target-redshift)
