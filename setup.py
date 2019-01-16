@@ -12,7 +12,7 @@ setup(
     name='singer-target-postgres',
     url='https://github.com/datamill-co/target-postgres',
     author='datamill',
-    version="0.1.0",
+    version="0.1.1",
     description='Singer.io target for loading data into postgres',
     long_description=long_description,
     long_description_content_type='text/markdown',
