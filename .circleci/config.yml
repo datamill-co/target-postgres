@@ -309,11 +309,11 @@ jobs:
           name: Validate tag
           command: |
             export TAG=`echo $CIRCLE_TAG | sed 's/v//'`
-            export VERSION=`grep version setup.py | sed 's/version="\(.*\)",/\1/'`
+            VERSION=`grep version setup.py | sed 's/^.*version="\(.*\)",.*$/\1/'`
 
             echo tag: $TAG equals version: $VERSION '?'
 
-            [[ $CIRCLE_TAG == $VERSION ]]
+            [[ $TAG == $VERSION ]]
       - run:
           name: Install upload tools
           command: pip install --upgrade twine
