@@ -19,11 +19,11 @@ setup(
     classifiers=['Programming Language :: Python :: 3 :: Only'],
     py_modules=['target_postgres'],
     install_requires=[
-        'arrow==0.12.1',
+        'arrow==0.13.0',
         'jsonschema==2.6.0',
-        'psycopg2==2.7.4',
-        'psycopg2-binary==2.7.4',
-        'singer-python==5.0.12'
+        'psycopg2==2.7.6',
+        'psycopg2-binary==2.7.6',
+        'singer-python==5.4.1'
     ],
     setup_requires=[
         "pytest-runner"
