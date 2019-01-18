@@ -321,10 +321,13 @@ class PostgresTarget(SQLInterface):
             insert_distinct_order_by = distinct_order_by
 
         insert_columns_list = []
+        dedupped_columns_list = []
         for column in columns:
-            insert_columns_list.append(sql.SQL('{}.{}').format(sql.Identifier('dedupped'),
-                                                               sql.Identifier(column)))
+            insert_columns_list.append(sql.SQL('{}').format(sql.Identifier(column)))
+            dedupped_columns_list.append(sql.SQL('{}.{}').format(sql.Identifier('dedupped'),
+                                                                 sql.Identifier(column)))
         insert_columns = sql.SQL(', ').join(insert_columns_list)
+        dedupped_columns = sql.SQL(', ').join(dedupped_columns_list)
 
         return sql.SQL('''
             DELETE FROM {table} USING (
@@ -338,8 +341,8 @@ class PostgresTarget(SQLInterface):
                     JOIN {table} ON {pk_where}{sequence_join}
                     WHERE pk_ranked = 1
                 ) AS "pks" WHERE {cxt_where};
-            INSERT INTO {table} (
-                SELECT {insert_columns}
+            INSERT INTO {table}({insert_columns}) (
+                SELECT {dedupped_columns}
                 FROM (
                     SELECT *,
                            ROW_NUMBER() OVER (PARTITION BY {insert_distinct_on}
@@ -360,7 +363,8 @@ class PostgresTarget(SQLInterface):
                         pk_null=pk_null,
                         insert_distinct_on=insert_distinct_on,
                         insert_distinct_order_by=insert_distinct_order_by,
-                        insert_columns=insert_columns)
+                        insert_columns=insert_columns,
+                        dedupped_columns=dedupped_columns)
 
     def serialize_table_record_null_value(self, remote_schema, streamed_schema, field, value):
         if value is None:
