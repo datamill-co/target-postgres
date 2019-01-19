@@ -384,10 +384,58 @@ def test_loading__column_type_change(db_cleanup):
             assert cat_count == len(persisted_records)
             assert cat_count == len([x for x in persisted_records if x[0] is not None])
 
-    class NameBooleanCatStream(CatStream):
+    class NameDateTimeCatStream(CatStream):
         def generate_record(self):
             record = CatStream.generate_record(self)
             record['id'] = record['id'] + cat_count
+            record['name'] = '2001-01-01 01:01:01.0001+01:01'
+            return record
+
+    stream = NameDateTimeCatStream(cat_count)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties']['name'] = {'type': 'string',
+                                                     'format': 'date-time'}
+
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name__s', 'text', 'YES'),
+                                     ('name__t', 'timestamp with time zone', 'YES'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
+
+            cur.execute(sql.SQL('SELECT {}, {} FROM {}').format(
+                sql.Identifier('name__s'),
+                sql.Identifier('name__t'),
+                sql.Identifier('cats')
+            ))
+            persisted_records = cur.fetchall()
+
+            ## Assert that the split columns migrated data/persisted new data
+            assert 2 * cat_count == len(persisted_records)
+            assert cat_count == len([x for x in persisted_records if x[0] is not None])
+            assert cat_count == len([x for x in persisted_records if x[1] is not None])
+            assert 0 == len([x for x in persisted_records if x[0] is not None and x[1] is not None])
+
+    class NameBooleanCatStream(CatStream):
+        def generate_record(self):
+            record = CatStream.generate_record(self)
+            record['id'] = record['id'] + (2 * cat_count)
             record['name'] = False
             return record
 
@@ -411,6 +459,7 @@ def test_loading__column_type_change(db_cleanup):
                                      ('age', 'bigint', 'YES'),
                                      ('id', 'bigint', 'NO'),
                                      ('name__s', 'text', 'YES'),
+                                     ('name__t', 'timestamp with time zone', 'YES'),
                                      ('name__b', 'boolean', 'YES'),
                                      ('paw_size', 'bigint', 'NO'),
                                      ('paw_colour', 'text', 'NO'),
@@ -418,23 +467,26 @@ def test_loading__column_type_change(db_cleanup):
                                      ('pattern', 'text', 'YES')
                                  })
 
-            cur.execute(sql.SQL('SELECT {}, {} FROM {}').format(
+            cur.execute(sql.SQL('SELECT {}, {}, {} FROM {}').format(
                 sql.Identifier('name__s'),
+                sql.Identifier('name__t'),
                 sql.Identifier('name__b'),
                 sql.Identifier('cats')
             ))
             persisted_records = cur.fetchall()
 
             ## Assert that the split columns migrated data/persisted new data
-            assert 2 * cat_count == len(persisted_records)
+            assert 3 * cat_count == len(persisted_records)
             assert cat_count == len([x for x in persisted_records if x[0] is not None])
             assert cat_count == len([x for x in persisted_records if x[1] is not None])
-            assert 0 == len([x for x in persisted_records if x[0] is not None and x[1] is not None])
+            assert cat_count == len([x for x in persisted_records if x[2] is not None])
+            assert 0 == len(
+                [x for x in persisted_records if x[0] is not None and x[1] is not None and x[2] is not None])
 
     class NameIntegerCatStream(CatStream):
         def generate_record(self):
             record = CatStream.generate_record(self)
-            record['id'] = record['id'] + (2 * cat_count)
+            record['id'] = record['id'] + (3 * cat_count)
             record['name'] = 314
             return record
 
@@ -458,6 +510,7 @@ def test_loading__column_type_change(db_cleanup):
                                      ('age', 'bigint', 'YES'),
                                      ('id', 'bigint', 'NO'),
                                      ('name__s', 'text', 'YES'),
+                                     ('name__t', 'timestamp with time zone', 'YES'),
                                      ('name__b', 'boolean', 'YES'),
                                      ('name__i', 'bigint', 'YES'),
                                      ('paw_size', 'bigint', 'NO'),
@@ -466,8 +519,9 @@ def test_loading__column_type_change(db_cleanup):
                                      ('pattern', 'text', 'YES')
                                  })
 
-            cur.execute(sql.SQL('SELECT {}, {}, {} FROM {}').format(
+            cur.execute(sql.SQL('SELECT {}, {}, {}, {} FROM {}').format(
                 sql.Identifier('name__s'),
+                sql.Identifier('name__t'),
                 sql.Identifier('name__b'),
                 sql.Identifier('name__i'),
                 sql.Identifier('cats')
@@ -475,13 +529,16 @@ def test_loading__column_type_change(db_cleanup):
             persisted_records = cur.fetchall()
 
             ## Assert that the split columns migrated data/persisted new data
-            assert 3 * cat_count == len(persisted_records)
+            assert 4 * cat_count == len(persisted_records)
             assert cat_count == len([x for x in persisted_records if x[0] is not None])
             assert cat_count == len([x for x in persisted_records if x[1] is not None])
             assert cat_count == len([x for x in persisted_records if x[2] is not None])
+            assert cat_count == len([x for x in persisted_records if x[3] is not None])
             assert 0 == len(
-                [x for x in persisted_records if x[0] is not None and x[1] is not None and x[2] is not None])
-            assert 0 == len([x for x in persisted_records if x[0] is None and x[1] is None and x[2] is None])
+                [x for x in persisted_records if
+                 x[0] is not None and x[1] is not None and x[2] is not None and x[3] is not None])
+            assert 0 == len(
+                [x for x in persisted_records if x[0] is None and x[1] is None and x[2] is None and x[3] is None])
 
 
 def test_loading__column_type_change__nullable(db_cleanup):
@@ -620,7 +677,7 @@ def test_loading__multi_types_columns(db_cleanup):
                                      ('every_type__i', 'bigint', 'YES'),
                                      ('every_type__f', 'double precision', 'YES'),
                                      ('every_type__b', 'boolean', 'YES'),
-                                     ('every_type__s', 'timestamp with time zone', 'YES'),
+                                     ('every_type__t', 'timestamp with time zone', 'YES'),
                                      ('every_type__i__1', 'bigint', 'YES'),
                                      ('every_type__f__1', 'double precision', 'YES'),
                                      ('every_type__b__1', 'boolean', 'YES'),
