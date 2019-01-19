@@ -520,8 +520,13 @@ class PostgresTarget(SQLInterface):
         if not 'mappings' in metadata:
             metadata['mappings'] = {}
 
-        metadata['mappings'][to_name] = {'type': json_schema.get_type(mapped_schema),
-                                         'from': from_path}
+        mapping = {'type': json_schema.get_type(mapped_schema),
+                   'from': from_path}
+
+        if 't' == json_schema.shorthand(mapped_schema):
+            mapping['format'] = 'date-time'
+
+        metadata['mappings'][to_name] = mapping
 
         self._set_table_metadata(cur, table_name, metadata)
 
