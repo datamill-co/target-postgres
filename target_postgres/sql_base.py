@@ -336,7 +336,7 @@ class SQLInterface:
                 if make_nullable:
                     single_type_columns.append((column_path, json_schema.make_nullable(single_type_column_schema)))
                 else:
-                    single_type_columns.append((column_path, single_type_column_schema))
+                    single_type_columns.append((column_path, deepcopy(single_type_column_schema)))
 
         ## Process new columns against existing
         raw_mappings = existing_schema.get('mappings', {})
