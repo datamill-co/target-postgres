@@ -57,6 +57,13 @@ def test_is_literal():
     assert not json_schema.is_literal({})
 
 
+def test_is_datetime():
+    assert not json_schema.is_datetime({'type': ['integer', 'null']})
+    assert not json_schema.is_datetime({'type': ['string']})
+    assert json_schema.is_datetime({'type': 'string', 'format': 'date-time'})
+    assert not json_schema.is_datetime({'type': ['string', 'null']})
+
+
 def test_complex_objects__logical_statements():
     every_type = {
         'type': ['null', 'integer', 'number', 'boolean', 'string', 'array', 'object'],
@@ -540,3 +547,13 @@ def test_sql_shorthand():
                                          'format': 'date-time'})
     assert 't' == json_schema.shorthand({'type': 'string',
                                          'format': 'date-time'})
+
+
+def test_simple_type():
+    assert {'type': ['integer', 'null']} \
+           == json_schema.simple_type({'type': ['integer', 'null']})
+    assert {'type': ['string'], 'format': 'date-time'} \
+           == json_schema.simple_type({'type': 'string',
+                                       'format': 'date-time',
+                                       'something': 1,
+                                       'extra': 2})

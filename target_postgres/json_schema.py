@@ -11,6 +11,7 @@ INTEGER = 'integer'
 NUMBER = 'number'
 BOOLEAN = 'boolean'
 STRING = 'string'
+DATE_TIME_FORMAT = 'date-time'
 
 _PYTHON_TYPE_TO_JSON_SCHEMA = {
     int: INTEGER,
@@ -54,6 +55,21 @@ def get_type(schema):
         return [type]
 
     return type
+
+
+def simple_type(schema):
+    """
+    Given a JSON Schema dict, extracts the simplified schema
+    :param schema: dict, JSON Schema
+    :return: dict, JSON Schema
+    """
+    type = get_type(schema)
+
+    if STRING in type and 'format' in schema and schema['format'] == DATE_TIME_FORMAT:
+        return {'type': type,
+                'format': DATE_TIME_FORMAT}
+
+    return {'type': type}
 
 
 def _get_ref(schema, paths):
@@ -139,6 +155,16 @@ def is_literal(schema):
     """
 
     return not {STRING, INTEGER, NUMBER, BOOLEAN}.isdisjoint(set(get_type(schema)))
+
+
+def is_datetime(schema):
+    """
+    Given a JSON Schema compatible dict, returns True when schema's type allows being a date-time
+    :param schema: dict, JSON Schema
+    :return: Boolean
+    """
+
+    return 'format' in simple_type(schema)
 
 
 def make_nullable(schema):
