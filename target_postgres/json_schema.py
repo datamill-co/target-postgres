@@ -266,6 +266,7 @@ _shorthand_mapping = {
     'number': 'f',
     'integer': 'i',
     'boolean': 'b',
+    'date-time': 't'
 }
 
 
@@ -286,4 +287,10 @@ def _type_shorthand(type_s):
 
 
 def shorthand(schema):
-    return _type_shorthand(get_type(schema))
+    _type = deepcopy(get_type(schema))
+
+    if 'format' in schema and 'date-time' == schema['format'] and STRING in _type:
+        _type.remove(STRING)
+        _type.append('date-time')
+
+    return _type_shorthand(_type)
