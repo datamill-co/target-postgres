@@ -418,6 +418,56 @@ class MultiTypeStream(FakeStream):
         }
 
 
+class TypeChangeStream(FakeStream):
+    stream = 'root'
+
+    def __init__(self, n, starting_id):
+        FakeStream.__init__(self, n)
+        self.starting_id = starting_id
+        self.changing_literal_type = chance.pickone(['integer', 'number', 'boolean', 'string', 'date-time'])
+        type_def = {'type': self.changing_literal_type}
+
+        if self.changing_literal_type == 'date-time':
+            type_def = {'type': 'string',
+                        'format': 'date-time'}
+
+        print('TypeChangeStream chose:', type_def, 'id starting at:', self.id)
+        self.schema = {
+            'type': 'SCHEMA',
+            'stream': 'root',
+            'schema': {
+                'additionalProperties': False,
+                'properties': {
+                    'id': {'type': 'integer'},
+                    'changing_literal_type': type_def
+                }
+            },
+            'key_properties': ['id']
+        }
+
+    def generate_record(self):
+        value = None
+        if self.changing_literal_type == 'integer':
+            value = random.randint(-314159265359, 314159265359)
+        elif self.changing_literal_type == 'number':
+            value = chance.pickone([random.uniform(-314159265359, 314159265359),
+                                    float(random.randint(-314159265359, 314159265359)),
+                                    random.randint(-314159265359, 314159265359)])
+        elif self.changing_literal_type == 'boolean':
+            value = chance.boolean()
+        elif self.changing_literal_type == 'string':
+            value = chance.date(minyear=2012).isoformat()
+        elif self.changing_literal_type == 'date-time':
+            value = chance.date(minyear=2012).isoformat()
+        else:
+            raise Exception('Unknown changing_literal_type: `{}`'.format(self.changing_literal_type))
+
+        return {
+            'id': self.id + self.starting_id,
+            'changing_literal_type': value,
+        }
+
+
 def clear_db():
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:

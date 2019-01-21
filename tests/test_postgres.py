@@ -6,7 +6,7 @@ from psycopg2 import sql
 import psycopg2.extras
 import pytest
 
-from fixtures import CatStream, CONFIG, db_cleanup, InvalidCatStream, MultiTypeStream, NestedStream, TEST_DB
+from fixtures import CatStream, CONFIG, db_cleanup, MultiTypeStream, NestedStream, TEST_DB, TypeChangeStream
 from target_postgres import json_schema
 from target_postgres import postgres
 from target_postgres import singer_stream
@@ -539,6 +539,72 @@ def test_loading__column_type_change(db_cleanup):
                  x[0] is not None and x[1] is not None and x[2] is not None and x[3] is not None])
             assert 0 == len(
                 [x for x in persisted_records if x[0] is None and x[1] is None and x[2] is None and x[3] is None])
+
+
+def test_loading__column_type_change__generative(db_cleanup):
+    insert_count = 20
+    repeats_to_perform = 5
+
+    literal_types_remaining = set(['integer', 'number', 'boolean', 'string', 'date-time'])
+
+    repeats_performed = 0
+    while repeats_performed < repeats_to_perform or literal_types_remaining:
+        stream = TypeChangeStream(insert_count, repeats_performed * insert_count)
+
+        repeats_performed += 1
+        if stream.changing_literal_type in literal_types_remaining:
+            literal_types_remaining.remove(stream.changing_literal_type)
+
+        main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_columns_equal(cur,
+                                 'root',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('changing_literal_type__s', 'text', 'YES'),
+                                     ('changing_literal_type__t', 'timestamp with time zone', 'YES'),
+                                     ('changing_literal_type__b', 'boolean', 'YES'),
+                                     ('changing_literal_type__i', 'bigint', 'YES'),
+                                     ('changing_literal_type__f', 'double precision', 'YES')
+                                 })
+
+            cur.execute(sql.SQL('SELECT {}, {}, {}, {}, {} FROM {}').format(
+                sql.Identifier('changing_literal_type__s'),
+                sql.Identifier('changing_literal_type__t'),
+                sql.Identifier('changing_literal_type__b'),
+                sql.Identifier('changing_literal_type__i'),
+                sql.Identifier('changing_literal_type__f'),
+                sql.Identifier('root')
+            ))
+            persisted_records = cur.fetchall()
+
+            ## Assert that the split columns migrated data/persisted new data
+            assert repeats_performed * insert_count == len(persisted_records)
+            assert insert_count <= len([x for x in persisted_records if x[0] is not None])
+            assert insert_count <= len([x for x in persisted_records if x[1] is not None])
+            assert insert_count <= len([x for x in persisted_records if x[2] is not None])
+            assert insert_count <= len([x for x in persisted_records if x[3] is not None])
+            assert insert_count <= len([x for x in persisted_records if x[4] is not None])
+            assert 0 == len(
+                [x for x in persisted_records
+                 if x[0] is not None
+                 and x[1] is not None
+                 and x[2] is not None
+                 and x[3] is not None
+                 and x[4] is not None])
+            assert 0 == len(
+                [x for x in persisted_records
+                 if x[0] is None
+                 and x[1] is None
+                 and x[2] is None
+                 and x[3] is None
+                 and x[4] is None])
 
 
 def test_loading__column_type_change__nullable(db_cleanup):
