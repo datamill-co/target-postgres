@@ -163,6 +163,20 @@ def test_loading__invalid__default_null_value__non_nullable_column(db_cleanup):
         main(CONFIG, input_stream=NullDefaultCatStream(20))
 
 
+def test_loading__invalid_schema_version(db_cleanup):
+    main(CONFIG, input_stream=CatStream(100))
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            target = postgres.PostgresTarget(conn)
+            metadata = target._get_table_metadata(cur, 'cats')
+            metadata.pop('schema_version')
+            target._set_table_metadata(cur, 'cats', metadata)
+
+    with pytest.raises(postgres.PostgresError, match=r'.*Expected version.*'):
+        main(CONFIG, input_stream=CatStream(100))
+
+
 def test_loading__simple(db_cleanup):
     stream = CatStream(100)
     main(CONFIG, input_stream=stream)
