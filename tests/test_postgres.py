@@ -589,8 +589,10 @@ def test_loading__column_type_change__generative(db_cleanup):
             assert insert_count <= len([x for x in persisted_records if x[0] is not None])
             assert insert_count <= len([x for x in persisted_records if x[1] is not None])
             assert insert_count <= len([x for x in persisted_records if x[2] is not None])
-            assert insert_count <= len([x for x in persisted_records if x[3] is not None])
-            assert insert_count <= len([x for x in persisted_records if x[4] is not None])
+            ## Integers are valid Numbers, so sometimes a Number can be placed into an existing Integer column
+            assert (2 * insert_count) \
+                   <= len([x for x in persisted_records if x[3] is not None]) \
+                   + len([x for x in persisted_records if x[4] is not None])
             assert 0 == len(
                 [x for x in persisted_records
                  if x[0] is not None
