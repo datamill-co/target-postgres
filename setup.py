@@ -21,8 +21,8 @@ setup(
     install_requires=[
         'arrow==0.13.0',
         'jsonschema==2.6.0',
-        'psycopg2==2.7.6',
-        'psycopg2-binary==2.7.6',
+        'psycopg2==2.7.7',
+        'psycopg2-binary==2.7.7',
         'singer-python==5.4.1'
     ],
     setup_requires=[
