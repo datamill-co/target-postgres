@@ -219,7 +219,8 @@ class PostgresTarget(SQLInterface):
 
         cur.execute(sql.SQL('{} ();').format(create_table_sql))
 
-        self._set_table_metadata(cur, name, {'version': metadata.get('version', None)})
+        self._set_table_metadata(cur, name, {'version': metadata.get('version', None),
+                                             'schema_version': metadata['schema_version']})
 
     def add_table_mapping(self, cur, from_path, metadata):
         root_table = from_path[0]

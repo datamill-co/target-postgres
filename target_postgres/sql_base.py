@@ -327,7 +327,10 @@ class SQLInterface:
         """
         table_path = schema['path']
 
-        table_name = self.add_table_mapping(connection, table_path, metadata)
+        _metadata = deepcopy(metadata)
+        _metadata['schema_version'] = CURRENT_SCHEMA_VERSION
+
+        table_name = self.add_table_mapping(connection, table_path, _metadata)
 
         existing_schema = self._get_table_schema(connection, table_path, table_name)
 
