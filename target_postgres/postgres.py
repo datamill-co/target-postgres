@@ -9,13 +9,35 @@ import arrow
 from psycopg2 import sql
 
 from target_postgres import json_schema
-from target_postgres.sql_base import SQLInterface, SEPARATOR
+from target_postgres.sql_base import SEPARATOR, SQLInterface
 from target_postgres.singer_stream import (
     SINGER_SEQUENCE,
     SINGER_LEVEL
 )
 
 RESERVED_NULL_DEFAULT = 'NULL'
+
+
+def _update_schema_0_to_1(table_schema):
+    """
+    Given a `table_schema` of version 0, update it to version 1.
+
+    NOTE: This transformation is purely informational. There is no _actual_ schema update that needs to happen,
+    nor any data migration.
+
+    :param table_schema: TABLE_SCHEMA
+    :return: TABLE_SCHEMA
+    """
+
+    remote_schema = deepcopy(table_schema)
+
+    for field, property in remote_schema['schema']['properties'].items():
+        if json_schema.is_datetime(property):
+            remote_schema['mappings'][field]['format'] = json_schema.DATE_TIME_FORMAT
+
+    remote_schema['schema_version'] = 1
+
+    return remote_schema
 
 
 class PostgresError(Exception):
@@ -582,6 +604,9 @@ class PostgresTarget(SQLInterface):
         metadata['type'] = 'TABLE_SCHEMA'
         metadata['schema'] = {'properties': properties}
         metadata['table_mappings'] = table_mappings
+
+        if 0 == metadata.get('schema_version', 0):
+            return _update_schema_0_to_1(metadata)
 
         return metadata
 
