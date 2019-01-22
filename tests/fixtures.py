@@ -8,8 +8,6 @@ import arrow
 from faker import Faker
 from chance import chance
 
-from target_postgres.singer_stream import SINGER_SEQUENCE
-
 CONFIG = {
     'postgres_host': os.environ['POSTGRES_HOST'],
     'postgres_database': os.environ['POSTGRES_DATABASE'],
