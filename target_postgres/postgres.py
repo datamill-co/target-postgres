@@ -49,11 +49,11 @@ class _MillisLoggingCursor(LoggingCursor):
     """
 
     def execute(self, query, vars=None):
-        self.timestamp = time.time()
+        self.timestamp = time.monotonic()
         return super(_MillisLoggingCursor, self).execute(query, vars)
 
     def callproc(self, procname, vars=None):
-        self.timestamp = time.time()
+        self.timestamp = time.monotonic()
         return super(_MillisLoggingCursor, self).callproc(procname, vars)
 
 
@@ -63,8 +63,8 @@ class MillisLoggingConnection(LoggingConnection):
     """
 
     def filter(self, msg, curs):
-        return "{} millis spent executing: {}".format(
-            int((time.time() - curs.timestamp) * 1000),
+        return "MillisLoggingConnection: {} millis spent executing: {}".format(
+            int((time.monotonic() - curs.timestamp) * 1000),
             msg
         )
 
