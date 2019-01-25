@@ -312,7 +312,7 @@ class SQLInterface:
 
         return None
 
-    def upsert_table_helper(self, connection, schema, metadata):
+    def upsert_table_helper(self, connection, schema, metadata, log_schema_changes=True):
         """
         Upserts the `schema` to remote by:
         - creating table if necessary
@@ -322,7 +322,8 @@ class SQLInterface:
 
         :param connection: remote connection, type left to be determined by implementing class
         :param schema: TABLE_SCHEMA(local)
-        :param metadata: additional information necessary for downstream operations
+        :param metadata: additional information necessary for downstream operations,
+        :param log_schema_changes: defaults to True, set to false to disable logging of table level schema changes
         :return: TABLE_SCHEMA(remote)
         """
         table_path = schema['path']
@@ -376,20 +377,27 @@ class SQLInterface:
         table_empty = self.is_table_empty(connection, table_name)
 
         for column_path, column_schema in single_type_columns:
-            upsert_table_helper__start__column = time.time()
+            upsert_table_helper__start__column = time.monotonic()
 
             canonicalized_column_name = self._canonicalize_column_identifier(column_path, column_schema, mappings)
             nullable_column_schema = json_schema.make_nullable(column_schema)
 
-            debug_log_message = '{} ' + '[`{}`.`{}`:`{}`]'.format(table_name, column_path,
-                                                                  canonicalized_column_name) + ' took {} millis'
+            def log_message(msg):
+                if log_schema_changes:
+                    self.LOGGER.info(
+                        'Table Schema Change [`{}`.`{}`:`{}`] {} (took {} millis)'.format(
+                            table_name,
+                            column_path,
+                            canonicalized_column_name,
+                            msg,
+                            _duration_millis(upsert_table_helper__start__column)))
 
             ## NEW COLUMN
             if not column_path in [m['from'] for m in mappings]:
-                upsert_table_helper__column = "NEW COLUMN"
+                upsert_table_helper__column = "New column"
                 ### NON EMPTY TABLE
                 if not table_empty:
-                    upsert_table_helper__column += ", NON EMPTY TABLE"
+                    upsert_table_helper__column += ", non empty table"
                     self.LOGGER.warning(
                         'NOT EMPTY: Forcing new column `{}` in table `{}` to be nullable due to table not empty.'.format(
                             column_path,
@@ -411,10 +419,7 @@ class SQLInterface:
                 mapping['to'] = canonicalized_column_name
                 mappings.append(mapping)
 
-                self.LOGGER.debug(debug_log_message.format(
-                    upsert_table_helper__column,
-                    _duration_millis(upsert_table_helper__start__column),
-                ))
+                log_message(upsert_table_helper__column)
 
                 continue
 
@@ -437,7 +442,6 @@ class SQLInterface:
                                         m['from'] == column_path and json_schema.shorthand(
                                             m) == json_schema.shorthand(column_schema)]
             if non_null_original_column:
-                upsert_table_helper__column = "New column _is_ nullable, existing column is _not_, MAKE NULLABLE"
                 ## MAKE NULLABLE
                 self.make_column_nullable(connection,
                                           table_name,
@@ -457,10 +461,7 @@ class SQLInterface:
                 mapping['to'] = canonicalized_column_name
                 mappings.append(mapping)
 
-                self.LOGGER.debug(debug_log_message.format(
-                    upsert_table_helper__column,
-                    _duration_millis(upsert_table_helper__start__column),
-                ))
+                log_message("Made existing column nullable. New column is nullable, existing column is not")
 
                 continue
 
@@ -469,8 +470,6 @@ class SQLInterface:
             duplicate_paths = [m for m in mappings if m['from'] == column_path]
 
             if 1 == len(duplicate_paths):
-                upsert_table_helper__column = "FIRST MULTI TYPE COLUMN, New column matches existing column path, but the types are incompatible,"
-
                 existing_mapping = duplicate_paths[0]
                 existing_column_name = existing_mapping['to']
 
@@ -531,10 +530,14 @@ class SQLInterface:
                                  table_name,
                                  existing_mapping['to'])
 
+                upsert_table_helper__column = "Splitting `{}` into `{}` and `{}`. New column matches existing column path, but the types are incompatible.".format(
+                    existing_column_name,
+                    existing_column_new_normalized_name,
+                    canonicalized_column_name
+                )
+
             ## REST MULTI TYPE
             elif 1 < len(duplicate_paths):
-                upsert_table_helper__column = "ANOTHER MULTI TYPE COLUMN, New column matches existing columns path, but no types are compatible,"
-
                 ## Add new column
                 self.add_column_mapping(connection,
                                         table_name,
@@ -551,6 +554,10 @@ class SQLInterface:
                 mapping['to'] = canonicalized_column_name
                 mappings.append(mapping)
 
+                upsert_table_helper__column = "Adding new column to split column `{}`. New column matches existing column's path, but no types were compatible.".format(
+                    column_path
+                )
+
             ## UNKNOWN
             else:
                 raise Exception(
@@ -560,10 +567,7 @@ class SQLInterface:
                         table_name
                     ))
 
-            self.LOGGER.debug(debug_log_message.format(
-                upsert_table_helper__column,
-                _duration_millis(upsert_table_helper__start__column),
-            ))
+            log_message(upsert_table_helper__column)
 
         return self._get_table_schema(connection, table_path, table_name)
 

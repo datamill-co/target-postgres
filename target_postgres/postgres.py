@@ -474,7 +474,8 @@ class PostgresTarget(SQLInterface):
         target_schema['path'] = (target_table_name,)
         self.upsert_table_helper(cur,
                                  target_schema,
-                                 {'version': remote_schema['version']})
+                                 {'version': remote_schema['version']},
+                                 log_schema_changes=False)
 
         ## Make streamable CSV records
         csv_headers = list(remote_schema['schema']['properties'].keys())
