@@ -13,7 +13,7 @@
 #
 
 from copy import deepcopy
-import datetime
+import time
 
 import singer
 
@@ -25,7 +25,7 @@ CURRENT_SCHEMA_VERSION = 1
 
 
 def _duration_millis(start):
-    return (datetime.datetime.now() - start).total_seconds() * 1000
+    return int((time.time() - start) * 1000)
 
 
 def _mapping_name(field, schema):
@@ -704,7 +704,7 @@ class SQLInterface:
         :return: {'records_persisted': int,
                   'rows_persisted': int}
         """
-        batch__timing_start = datetime.datetime.now()
+        batch__timing_start = time.time()
 
         self.LOGGER.info('Writing batch with {} records for `{}` with `key_properties`: `{}`'.format(
             len(records),
@@ -716,7 +716,7 @@ class SQLInterface:
         for table_batch in denest.to_table_batches(schema, key_properties, records):
             table_batch['streamed_schema']['path'] = (root_table_name,) + table_batch['streamed_schema']['path']
 
-            table_batch__schema__timing_start = datetime.datetime.now()
+            table_batch__schema__timing_start = time.time()
 
             self.LOGGER.info('Writing table batch schema for `{}`'.format(
                 table_batch['streamed_schema']['path']
@@ -731,7 +731,7 @@ class SQLInterface:
                 table_batch['streamed_schema']['path']
             ))
 
-            table_batch__records__timing_start = datetime.datetime.now()
+            table_batch__records__timing_start = time.time()
 
             self.LOGGER.info('Writing table batch with {} rows for `{}`'.format(
                 len(table_batch['records']),
