@@ -12,7 +12,8 @@ CONFIG = {
     'postgres_host': os.environ['POSTGRES_HOST'],
     'postgres_database': os.environ['POSTGRES_DATABASE'],
     'postgres_username': os.environ['POSTGRES_USERNAME'],
-    'disable_collection': True
+    'disable_collection': True,
+    'logging_level': 'DEBUG'
 }
 
 TEST_DB = {
