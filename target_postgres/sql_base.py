@@ -376,13 +376,20 @@ class SQLInterface:
         table_empty = self.is_table_empty(connection, table_name)
 
         for column_path, column_schema in single_type_columns:
+            upsert_table_helper__start__column = time.time()
+
             canonicalized_column_name = self._canonicalize_column_identifier(column_path, column_schema, mappings)
             nullable_column_schema = json_schema.make_nullable(column_schema)
 
+            debug_log_message = '{} ' + '[`{}`.`{}`:`{}`]'.format(table_name, column_path,
+                                                                  canonicalized_column_name) + ' took {} millis'
+
             ## NEW COLUMN
             if not column_path in [m['from'] for m in mappings]:
+                upsert_table_helper__column = "NEW COLUMN"
                 ### NON EMPTY TABLE
                 if not table_empty:
+                    upsert_table_helper__column += ", NON EMPTY TABLE"
                     self.LOGGER.warning(
                         'NOT EMPTY: Forcing new column `{}` in table `{}` to be nullable due to table not empty.'.format(
                             column_path,
@@ -403,6 +410,11 @@ class SQLInterface:
                 mapping['from'] = column_path
                 mapping['to'] = canonicalized_column_name
                 mappings.append(mapping)
+
+                self.LOGGER.debug(debug_log_message.format(
+                    upsert_table_helper__column,
+                    _duration_millis(upsert_table_helper__start__column),
+                ))
 
                 continue
 
@@ -425,6 +437,7 @@ class SQLInterface:
                                         m['from'] == column_path and json_schema.shorthand(
                                             m) == json_schema.shorthand(column_schema)]
             if non_null_original_column:
+                upsert_table_helper__column = "New column _is_ nullable, existing column is _not_, MAKE NULLABLE"
                 ## MAKE NULLABLE
                 self.make_column_nullable(connection,
                                           table_name,
@@ -444,6 +457,11 @@ class SQLInterface:
                 mapping['to'] = canonicalized_column_name
                 mappings.append(mapping)
 
+                self.LOGGER.debug(debug_log_message.format(
+                    upsert_table_helper__column,
+                    _duration_millis(upsert_table_helper__start__column),
+                ))
+
                 continue
 
             ### FIRST MULTI TYPE
@@ -451,6 +469,7 @@ class SQLInterface:
             duplicate_paths = [m for m in mappings if m['from'] == column_path]
 
             if 1 == len(duplicate_paths):
+                upsert_table_helper__column = "FIRST MULTI TYPE COLUMN, New column matches existing column path, but the types are incompatible,"
 
                 existing_mapping = duplicate_paths[0]
                 existing_column_name = existing_mapping['to']
@@ -514,6 +533,7 @@ class SQLInterface:
 
             ## REST MULTI TYPE
             elif 1 < len(duplicate_paths):
+                upsert_table_helper__column = "ANOTHER MULTI TYPE COLUMN, New column matches existing columns path, but no types are compatible,"
 
                 ## Add new column
                 self.add_column_mapping(connection,
@@ -539,6 +559,11 @@ class SQLInterface:
                         canonicalized_column_name,
                         table_name
                     ))
+
+            self.LOGGER.debug(debug_log_message.format(
+                upsert_table_helper__column,
+                _duration_millis(upsert_table_helper__start__column),
+            ))
 
         return self._get_table_schema(connection, table_path, table_name)
 
