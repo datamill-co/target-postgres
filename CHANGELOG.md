@@ -15,3 +15,7 @@
     - Later, the same field is of type `string`
       - The original `date-time` column will be made `nullable`
       - The values for this field will fail to persist
+- **FEATURES:**
+  - [Added the `logging_level`](https://github.com/datamill-co/target-postgres/pull/92) config option which uses standard Python Logger Levels to configure more details about what Target-Postgres is doing
+    - Query level logging and timing
+    - Table schema changes logging and timing
