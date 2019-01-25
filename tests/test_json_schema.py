@@ -61,6 +61,7 @@ def test_is_datetime():
     assert not json_schema.is_datetime({'type': ['integer', 'null']})
     assert not json_schema.is_datetime({'type': ['string']})
     assert json_schema.is_datetime({'type': 'string', 'format': 'date-time'})
+    assert not json_schema.is_datetime({'type': 'string', 'format': 'email'})
     assert not json_schema.is_datetime({'type': ['string', 'null']})
 
 

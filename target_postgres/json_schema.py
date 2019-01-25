@@ -59,13 +59,22 @@ def get_type(schema):
 
 def simple_type(schema):
     """
-    Given a JSON Schema dict, extracts the simplified schema
+    Given a JSON Schema dict, extracts the simplified schema, ie, a schema which can only represent
+    _one_ of the given types allowed (along with the Nullable modifier):
+    - OBJECT
+    - ARRAY
+    - INTEGER
+    - NUMBER
+    - BOOLEAN
+    - STRING
+    - DATE_TIME
+
     :param schema: dict, JSON Schema
     :return: dict, JSON Schema
     """
     type = get_type(schema)
 
-    if STRING in type and 'format' in schema and schema['format'] == DATE_TIME_FORMAT:
+    if is_datetime(schema):
         return {'type': type,
                 'format': DATE_TIME_FORMAT}
 
@@ -164,7 +173,7 @@ def is_datetime(schema):
     :return: Boolean
     """
 
-    return 'format' in simple_type(schema)
+    return STRING in get_type(schema) and schema.get('format') == DATE_TIME_FORMAT
 
 
 def make_nullable(schema):
