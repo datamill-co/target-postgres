@@ -6,7 +6,7 @@ from psycopg2 import sql
 import psycopg2.extras
 import pytest
 
-from fixtures import CatStream, CONFIG, db_cleanup, InvalidCatStream, MultiTypeStream, NestedStream, TEST_DB
+from fixtures import CatStream, CONFIG, db_cleanup, MultiTypeStream, NestedStream, TEST_DB, TypeChangeStream
 from target_postgres import json_schema
 from target_postgres import postgres
 from target_postgres import singer_stream
@@ -161,6 +161,19 @@ def test_loading__invalid__default_null_value__non_nullable_column(db_cleanup):
 
     with pytest.raises(postgres.PostgresError, match=r'.*IntegrityError.*'):
         main(CONFIG, input_stream=NullDefaultCatStream(20))
+
+
+def test_loading__schema_version_0_gets_migrated_to_1(db_cleanup):
+    main(CONFIG, input_stream=CatStream(100))
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            target = postgres.PostgresTarget(conn)
+            metadata = target._get_table_metadata(cur, 'cats')
+            metadata.pop('schema_version')
+            target._set_table_metadata(cur, 'cats', metadata)
+
+    main(CONFIG, input_stream=CatStream(100))
 
 
 def test_loading__simple(db_cleanup):
@@ -384,10 +397,58 @@ def test_loading__column_type_change(db_cleanup):
             assert cat_count == len(persisted_records)
             assert cat_count == len([x for x in persisted_records if x[0] is not None])
 
-    class NameBooleanCatStream(CatStream):
+    class NameDateTimeCatStream(CatStream):
         def generate_record(self):
             record = CatStream.generate_record(self)
             record['id'] = record['id'] + cat_count
+            record['name'] = '2001-01-01 01:01:01.0001+01:01'
+            return record
+
+    stream = NameDateTimeCatStream(cat_count)
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['schema']['properties']['name'] = {'type': 'string',
+                                                     'format': 'date-time'}
+
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name__s', 'text', 'YES'),
+                                     ('name__t', 'timestamp with time zone', 'YES'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
+
+            cur.execute(sql.SQL('SELECT {}, {} FROM {}').format(
+                sql.Identifier('name__s'),
+                sql.Identifier('name__t'),
+                sql.Identifier('cats')
+            ))
+            persisted_records = cur.fetchall()
+
+            ## Assert that the split columns migrated data/persisted new data
+            assert 2 * cat_count == len(persisted_records)
+            assert cat_count == len([x for x in persisted_records if x[0] is not None])
+            assert cat_count == len([x for x in persisted_records if x[1] is not None])
+            assert 0 == len([x for x in persisted_records if x[0] is not None and x[1] is not None])
+
+    class NameBooleanCatStream(CatStream):
+        def generate_record(self):
+            record = CatStream.generate_record(self)
+            record['id'] = record['id'] + (2 * cat_count)
             record['name'] = False
             return record
 
@@ -411,6 +472,7 @@ def test_loading__column_type_change(db_cleanup):
                                      ('age', 'bigint', 'YES'),
                                      ('id', 'bigint', 'NO'),
                                      ('name__s', 'text', 'YES'),
+                                     ('name__t', 'timestamp with time zone', 'YES'),
                                      ('name__b', 'boolean', 'YES'),
                                      ('paw_size', 'bigint', 'NO'),
                                      ('paw_colour', 'text', 'NO'),
@@ -418,23 +480,26 @@ def test_loading__column_type_change(db_cleanup):
                                      ('pattern', 'text', 'YES')
                                  })
 
-            cur.execute(sql.SQL('SELECT {}, {} FROM {}').format(
+            cur.execute(sql.SQL('SELECT {}, {}, {} FROM {}').format(
                 sql.Identifier('name__s'),
+                sql.Identifier('name__t'),
                 sql.Identifier('name__b'),
                 sql.Identifier('cats')
             ))
             persisted_records = cur.fetchall()
 
             ## Assert that the split columns migrated data/persisted new data
-            assert 2 * cat_count == len(persisted_records)
+            assert 3 * cat_count == len(persisted_records)
             assert cat_count == len([x for x in persisted_records if x[0] is not None])
             assert cat_count == len([x for x in persisted_records if x[1] is not None])
-            assert 0 == len([x for x in persisted_records if x[0] is not None and x[1] is not None])
+            assert cat_count == len([x for x in persisted_records if x[2] is not None])
+            assert 0 == len(
+                [x for x in persisted_records if x[0] is not None and x[1] is not None and x[2] is not None])
 
     class NameIntegerCatStream(CatStream):
         def generate_record(self):
             record = CatStream.generate_record(self)
-            record['id'] = record['id'] + (2 * cat_count)
+            record['id'] = record['id'] + (3 * cat_count)
             record['name'] = 314
             return record
 
@@ -458,6 +523,7 @@ def test_loading__column_type_change(db_cleanup):
                                      ('age', 'bigint', 'YES'),
                                      ('id', 'bigint', 'NO'),
                                      ('name__s', 'text', 'YES'),
+                                     ('name__t', 'timestamp with time zone', 'YES'),
                                      ('name__b', 'boolean', 'YES'),
                                      ('name__i', 'bigint', 'YES'),
                                      ('paw_size', 'bigint', 'NO'),
@@ -466,8 +532,9 @@ def test_loading__column_type_change(db_cleanup):
                                      ('pattern', 'text', 'YES')
                                  })
 
-            cur.execute(sql.SQL('SELECT {}, {}, {} FROM {}').format(
+            cur.execute(sql.SQL('SELECT {}, {}, {}, {} FROM {}').format(
                 sql.Identifier('name__s'),
+                sql.Identifier('name__t'),
                 sql.Identifier('name__b'),
                 sql.Identifier('name__i'),
                 sql.Identifier('cats')
@@ -475,13 +542,84 @@ def test_loading__column_type_change(db_cleanup):
             persisted_records = cur.fetchall()
 
             ## Assert that the split columns migrated data/persisted new data
-            assert 3 * cat_count == len(persisted_records)
+            assert 4 * cat_count == len(persisted_records)
             assert cat_count == len([x for x in persisted_records if x[0] is not None])
             assert cat_count == len([x for x in persisted_records if x[1] is not None])
             assert cat_count == len([x for x in persisted_records if x[2] is not None])
+            assert cat_count == len([x for x in persisted_records if x[3] is not None])
             assert 0 == len(
-                [x for x in persisted_records if x[0] is not None and x[1] is not None and x[2] is not None])
-            assert 0 == len([x for x in persisted_records if x[0] is None and x[1] is None and x[2] is None])
+                [x for x in persisted_records if
+                 x[0] is not None and x[1] is not None and x[2] is not None and x[3] is not None])
+            assert 0 == len(
+                [x for x in persisted_records if x[0] is None and x[1] is None and x[2] is None and x[3] is None])
+
+
+def test_loading__column_type_change__generative(db_cleanup):
+    insert_count = 20
+    repeats_to_perform = 5
+
+    literal_types_remaining = set(['integer', 'number', 'boolean', 'string', 'date-time'])
+
+    repeats_performed = 0
+    while repeats_performed < repeats_to_perform or literal_types_remaining:
+        stream = TypeChangeStream(insert_count, repeats_performed * insert_count)
+
+        repeats_performed += 1
+        if stream.changing_literal_type in literal_types_remaining:
+            literal_types_remaining.remove(stream.changing_literal_type)
+
+        main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_columns_equal(cur,
+                                 'root',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('changing_literal_type__s', 'text', 'YES'),
+                                     ('changing_literal_type__t', 'timestamp with time zone', 'YES'),
+                                     ('changing_literal_type__b', 'boolean', 'YES'),
+                                     ('changing_literal_type__i', 'bigint', 'YES'),
+                                     ('changing_literal_type__f', 'double precision', 'YES')
+                                 })
+
+            cur.execute(sql.SQL('SELECT {}, {}, {}, {}, {} FROM {}').format(
+                sql.Identifier('changing_literal_type__s'),
+                sql.Identifier('changing_literal_type__t'),
+                sql.Identifier('changing_literal_type__b'),
+                sql.Identifier('changing_literal_type__i'),
+                sql.Identifier('changing_literal_type__f'),
+                sql.Identifier('root')
+            ))
+            persisted_records = cur.fetchall()
+
+            ## Assert that the split columns migrated data/persisted new data
+            assert repeats_performed * insert_count == len(persisted_records)
+            assert insert_count <= len([x for x in persisted_records if x[0] is not None])
+            assert insert_count <= len([x for x in persisted_records if x[1] is not None])
+            assert insert_count <= len([x for x in persisted_records if x[2] is not None])
+            ## Integers are valid Numbers, so sometimes a Number can be placed into an existing Integer column
+            assert (2 * insert_count) \
+                   <= len([x for x in persisted_records if x[3] is not None]) \
+                   + len([x for x in persisted_records if x[4] is not None])
+            assert 0 == len(
+                [x for x in persisted_records
+                 if x[0] is not None
+                 and x[1] is not None
+                 and x[2] is not None
+                 and x[3] is not None
+                 and x[4] is not None])
+            assert 0 == len(
+                [x for x in persisted_records
+                 if x[0] is None
+                 and x[1] is None
+                 and x[2] is None
+                 and x[3] is None
+                 and x[4] is None])
 
 
 def test_loading__column_type_change__nullable(db_cleanup):
@@ -620,7 +758,7 @@ def test_loading__multi_types_columns(db_cleanup):
                                      ('every_type__i', 'bigint', 'YES'),
                                      ('every_type__f', 'double precision', 'YES'),
                                      ('every_type__b', 'boolean', 'YES'),
-                                     ('every_type__s', 'timestamp with time zone', 'YES'),
+                                     ('every_type__t', 'timestamp with time zone', 'YES'),
                                      ('every_type__i__1', 'bigint', 'YES'),
                                      ('every_type__f__1', 'double precision', 'YES'),
                                      ('every_type__b__1', 'boolean', 'YES'),
@@ -1067,6 +1205,33 @@ def test_upsert(db_cleanup):
         with conn.cursor() as cur:
             cur.execute(get_count_sql('cats'))
             assert cur.fetchone()[0] == 100
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'cats__adoption__immunizations',
+                                 {
+                                     ('_sdc_level_0_id', 'bigint', 'NO'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_source_key_id', 'bigint', 'NO'),
+                                     ('date_administered', 'timestamp with time zone', 'YES'),
+                                     ('type', 'text', 'YES')
+                                 })
         assert_records(conn, stream.records, 'cats', 'id')
 
     stream = CatStream(100)
@@ -1076,6 +1241,33 @@ def test_upsert(db_cleanup):
         with conn.cursor() as cur:
             cur.execute(get_count_sql('cats'))
             assert cur.fetchone()[0] == 100
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'cats__adoption__immunizations',
+                                 {
+                                     ('_sdc_level_0_id', 'bigint', 'NO'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_source_key_id', 'bigint', 'NO'),
+                                     ('date_administered', 'timestamp with time zone', 'YES'),
+                                     ('type', 'text', 'YES')
+                                 })
         assert_records(conn, stream.records, 'cats', 'id')
 
     stream = CatStream(200)
@@ -1085,6 +1277,33 @@ def test_upsert(db_cleanup):
         with conn.cursor() as cur:
             cur.execute(get_count_sql('cats'))
             assert cur.fetchone()[0] == 200
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'cats__adoption__immunizations',
+                                 {
+                                     ('_sdc_level_0_id', 'bigint', 'NO'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_source_key_id', 'bigint', 'NO'),
+                                     ('date_administered', 'timestamp with time zone', 'YES'),
+                                     ('type', 'text', 'YES')
+                                 })
         assert_records(conn, stream.records, 'cats', 'id')
 
 

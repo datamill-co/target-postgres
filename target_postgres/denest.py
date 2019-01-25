@@ -18,7 +18,10 @@ def to_table_batches(schema, key_properties, records):
     :param key_properties: [string, ...]
     :param records: [{...}, ...]
     :return: [{'streamed_schema': TABLE_SCHEMA(local),
-               'records': [{...}, ...]
+               'records': [{(path_0, path_1, ...):
+                            (_json_schema_string_type, value), ...},
+                            ...]},
+              ...]
     """
     table_schemas = _get_streamed_table_schemas(schema,
                                                 key_properties)
@@ -184,7 +187,7 @@ def _get_streamed_table_records(key_properties, records):
 
     :param key_properties: [string, ...]
     :param records: [{...}, ...]
-    :return: {TableName string: [{...}, ...],
+    :return: {TableName string: [{(path_0, path_1, ...): (_json_schema_string_type, value), ...}, ...],
               ...}
     """
 

@@ -21,6 +21,7 @@ from target_postgres import denest
 from target_postgres import json_schema
 
 SEPARATOR = '__'
+CURRENT_SCHEMA_VERSION = 1
 
 
 def _duration_millis(start):
@@ -69,6 +70,26 @@ class SQLInterface:
         :return: TABLE_SCHEMA(remote)
         """
         raise NotImplementedError('`get_table_schema` not implemented.')
+
+    def _get_table_schema(self, connection, path, name):
+        """
+        get_table_schema, but with checking the version of the schema to ensure latest format.
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param path: (string, ...)
+        :param name: string
+        :return: TABLE_SCHEMA(remote)
+        """
+        remote_schema = self.get_table_schema(connection, path, name)
+        if remote_schema and remote_schema.get('schema_version', 0) != CURRENT_SCHEMA_VERSION:
+            raise Exception('Schema for `{}` (`{}`) is of version {}. Expected version {}'.format(
+                path,
+                name,
+                remote_schema.get('schema_version', 0),
+                CURRENT_SCHEMA_VERSION
+            ))
+
+        return remote_schema
 
     def is_table_empty(self, connection, name):
         """
@@ -306,13 +327,16 @@ class SQLInterface:
         """
         table_path = schema['path']
 
-        table_name = self.add_table_mapping(connection, table_path, metadata)
+        _metadata = deepcopy(metadata)
+        _metadata['schema_version'] = CURRENT_SCHEMA_VERSION
 
-        existing_schema = self.get_table_schema(connection, table_path, table_name)
+        table_name = self.add_table_mapping(connection, table_path, _metadata)
+
+        existing_schema = self._get_table_schema(connection, table_path, table_name)
 
         if existing_schema is None:
-            self.add_table(connection, table_name, metadata)
-            existing_schema = self.get_table_schema(connection, table_path, table_name)
+            self.add_table(connection, table_name, _metadata)
+            existing_schema = self._get_table_schema(connection, table_path, table_name)
 
         self.add_key_properties(connection, table_name, schema.get('key_properties', None))
 
@@ -336,7 +360,7 @@ class SQLInterface:
                 if make_nullable:
                     single_type_columns.append((column_path, json_schema.make_nullable(single_type_column_schema)))
                 else:
-                    single_type_columns.append((column_path, single_type_column_schema))
+                    single_type_columns.append((column_path, deepcopy(single_type_column_schema)))
 
         ## Process new columns against existing
         raw_mappings = existing_schema.get('mappings', {})
@@ -344,7 +368,10 @@ class SQLInterface:
         mappings = []
 
         for to, m in raw_mappings.items():
-            mappings.append({'from': tuple(m['from']), 'to': to, 'type': m['type']})
+            mapping = json_schema.simple_type(m)
+            mapping['from'] = tuple(m['from'])
+            mapping['to'] = to
+            mappings.append(mapping)
 
         table_empty = self.is_table_empty(connection, table_name)
 
@@ -371,10 +398,11 @@ class SQLInterface:
                                         column_path,
                                         canonicalized_column_name,
                                         column_schema)
-                mappings.append(
-                    {'from': column_path,
-                     'to': canonicalized_column_name,
-                     'type': json_schema.get_type(column_schema)})
+
+                mapping = json_schema.simple_type(column_schema)
+                mapping['from'] = column_path
+                mapping['to'] = canonicalized_column_name
+                mappings.append(mapping)
 
                 continue
 
@@ -410,9 +438,11 @@ class SQLInterface:
 
                 mappings = [m for m in mappings if not (m['from'] == column_path and json_schema.shorthand(
                     m) == json_schema.shorthand(column_schema))]
-                mappings.append({'from': column_path,
-                                 'to': canonicalized_column_name,
-                                 'type': json_schema.get_type(nullable_column_schema)})
+
+                mapping = json_schema.simple_type(nullable_column_schema)
+                mapping['from'] = column_path
+                mapping['to'] = canonicalized_column_name
+                mappings.append(mapping)
 
                 continue
 
@@ -430,16 +460,20 @@ class SQLInterface:
 
                 ## Update existing properties
                 mappings = [m for m in mappings if m['from'] != column_path]
-                mappings.append({'from': column_path,
-                                 'to': canonicalized_column_name,
-                                 'type': json_schema.get_type(nullable_column_schema)})
+
+                mapping = json_schema.simple_type(nullable_column_schema)
+                mapping['from'] = column_path
+                mapping['to'] = canonicalized_column_name
+                mappings.append(mapping)
 
                 existing_column_new_normalized_name = self._canonicalize_column_identifier(column_path,
                                                                                            existing_mapping,
                                                                                            mappings)
-                mappings.append({'from': column_path,
-                                 'to': existing_column_new_normalized_name,
-                                 'type': json_schema.get_type(json_schema.make_nullable(existing_mapping))})
+
+                mapping = json_schema.simple_type(json_schema.make_nullable(existing_mapping))
+                mapping['from'] = column_path
+                mapping['to'] = existing_column_new_normalized_name
+                mappings.append(mapping)
 
                 ## Add new columns
                 ### NOTE: all migrated columns will be nullable and remain that way
@@ -492,9 +526,10 @@ class SQLInterface:
                                 canonicalized_column_name,
                                 nullable_column_schema)
 
-                mappings.append({'from': column_path,
-                                 'to': canonicalized_column_name,
-                                 'type': json_schema.get_type(nullable_column_schema)})
+                mapping = json_schema.simple_type(nullable_column_schema)
+                mapping['from'] = column_path
+                mapping['to'] = canonicalized_column_name
+                mappings.append(mapping)
 
             ## UNKNOWN
             else:
@@ -505,31 +540,31 @@ class SQLInterface:
                         table_name
                     ))
 
-        return self.get_table_schema(connection, table_path, table_name)
+        return self._get_table_schema(connection, table_path, table_name)
 
-    def _serialize_table_record_field_name(self, remote_schema, streamed_schema, path, json_schema_type):
+    def _serialize_table_record_field_name(self, remote_schema, streamed_schema, path, value_json_schema):
         """
         Returns the appropriate remote field (column) name for `field`.
 
         :param remote_schema: TABLE_SCHEMA(remote)
         :param streamed_schema: TABLE_SCHEMA(local)
         :param path: (string, ...)
-        :value_json_schema_type: string
+        :value_json_schema: dict, JSON Schema
         :return: string
         """
 
-        json_schema_type = json_schema_type or json_schema.get_type(streamed_schema['schema']['properties'][path])
+        simple_json_schema = json_schema.simple_type(value_json_schema)
 
         mapping = self._get_mapping(remote_schema,
                                     path,
-                                    {'type': json_schema_type})
+                                    simple_json_schema)
 
         if not mapping is None:
             return mapping
 
         ## Numbers are valid as `float` OR `int`
         ##  ie, 123.0 and 456 are valid 'number's
-        if json_schema.INTEGER in json_schema_type:
+        if json_schema.INTEGER in json_schema.get_type(simple_json_schema):
             mapping = self._get_mapping(remote_schema,
                                         path,
                                         {'type': json_schema.NUMBER})
@@ -581,12 +616,12 @@ class SQLInterface:
 
         :param remote_schema: TABLE_SCHEMA(remote)
         :param streamed_schema: TABLE_SCHEMA(local)
-        :param records: [{(path_0, path_1, ...): (_json_schema_type, value), ...}, ...]
+        :param records: [{(path_0, path_1, ...): (_json_schema_string_type, value), ...}, ...]
         :return: [{...}, ...]
         """
 
         datetime_paths = [k for k, v in streamed_schema['schema']['properties'].items()
-                          if v.get('format') == 'date-time']
+                          if json_schema.is_datetime(v)]
 
         default_paths = {k: v.get('default') for k, v in streamed_schema['schema']['properties'].items()
                          if v.get('default') is not None}
@@ -605,26 +640,34 @@ class SQLInterface:
             row = deepcopy(default_row)
 
             for path in paths:
-                json_schema_type, value = record.get(path, (None, None))
+                json_schema_string_type, value = record.get(path, (None, None))
 
                 ## Serialize fields which are not present but have default values set
                 if path in default_paths \
                         and value is None:
                     value = default_paths[path]
-                    json_schema_type = json_schema.python_type(value)
+                    json_schema_string_type = json_schema.python_type(value)
 
                 ## Serialize datetime to compatible format
                 if path in datetime_paths \
-                        and json_schema_type == json_schema.STRING \
+                        and json_schema_string_type == json_schema.STRING \
                         and value is not None:
                     value = self.serialize_table_record_datetime_value(remote_schema, streamed_schema, path,
                                                                        value)
+                    value_json_schema = {'type': json_schema.STRING,
+                                         'format': json_schema.DATE_TIME_FORMAT}
+                elif json_schema_string_type:
+                    value_json_schema = {'type': json_schema_string_type}
+                else:
+                    value_json_schema = json_schema.simple_type(streamed_schema['schema']['properties'][path])
 
                 ## Serialize NULL default value
                 value = self.serialize_table_record_null_value(remote_schema, streamed_schema, path, value)
 
-                field_name = self._serialize_table_record_field_name(remote_schema, streamed_schema, path,
-                                                                     json_schema_type)
+                field_name = self._serialize_table_record_field_name(remote_schema,
+                                                                     streamed_schema,
+                                                                     path,
+                                                                     value_json_schema)
 
                 if field_name in remote_fields \
                         and (not field_name in row

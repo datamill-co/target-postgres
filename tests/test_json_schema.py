@@ -5,6 +5,7 @@ import pytest
 from target_postgres import json_schema
 from fixtures import CATS_SCHEMA
 
+
 def test_python_type():
     assert json_schema.python_type(None) \
            == json_schema.NULL
@@ -13,7 +14,7 @@ def test_python_type():
     assert json_schema.python_type(True) \
            == json_schema.BOOLEAN
     assert json_schema.python_type(123) \
-    == json_schema.INTEGER
+           == json_schema.INTEGER
     assert json_schema.python_type(0) \
            == json_schema.INTEGER
     assert json_schema.python_type(-1234567890) \
@@ -30,6 +31,7 @@ def test_python_type():
            == json_schema.STRING
     assert json_schema.python_type('world') \
            == json_schema.STRING
+
 
 def test_is_object():
     assert json_schema.is_object({'type': ['object']})
@@ -53,6 +55,14 @@ def test_is_literal():
     assert json_schema.is_literal({'type': ['string']})
     assert not json_schema.is_literal({'type': ['array'], 'items': {'type': ['boolean']}})
     assert not json_schema.is_literal({})
+
+
+def test_is_datetime():
+    assert not json_schema.is_datetime({'type': ['integer', 'null']})
+    assert not json_schema.is_datetime({'type': ['string']})
+    assert json_schema.is_datetime({'type': 'string', 'format': 'date-time'})
+    assert not json_schema.is_datetime({'type': 'string', 'format': 'email'})
+    assert not json_schema.is_datetime({'type': ['string', 'null']})
 
 
 def test_complex_objects__logical_statements():
@@ -534,3 +544,17 @@ def test_sql_shorthand():
     assert 'b' == json_schema.shorthand({'type': 'boolean'})
     assert 'b' == json_schema.shorthand({'type': ['null', 'boolean']})
     assert 's' == json_schema.shorthand({'type': ['null', 'string']})
+    assert 't' == json_schema.shorthand({'type': ['null', 'string'],
+                                         'format': 'date-time'})
+    assert 't' == json_schema.shorthand({'type': 'string',
+                                         'format': 'date-time'})
+
+
+def test_simple_type():
+    assert {'type': ['integer', 'null']} \
+           == json_schema.simple_type({'type': ['integer', 'null']})
+    assert {'type': ['string'], 'format': 'date-time'} \
+           == json_schema.simple_type({'type': 'string',
+                                       'format': 'date-time',
+                                       'something': 1,
+                                       'extra': 2})

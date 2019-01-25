@@ -11,6 +11,7 @@ INTEGER = 'integer'
 NUMBER = 'number'
 BOOLEAN = 'boolean'
 STRING = 'string'
+DATE_TIME_FORMAT = 'date-time'
 
 _PYTHON_TYPE_TO_JSON_SCHEMA = {
     int: INTEGER,
@@ -54,6 +55,30 @@ def get_type(schema):
         return [type]
 
     return type
+
+
+def simple_type(schema):
+    """
+    Given a JSON Schema dict, extracts the simplified schema, ie, a schema which can only represent
+    _one_ of the given types allowed (along with the Nullable modifier):
+    - OBJECT
+    - ARRAY
+    - INTEGER
+    - NUMBER
+    - BOOLEAN
+    - STRING
+    - DATE_TIME
+
+    :param schema: dict, JSON Schema
+    :return: dict, JSON Schema
+    """
+    type = get_type(schema)
+
+    if is_datetime(schema):
+        return {'type': type,
+                'format': DATE_TIME_FORMAT}
+
+    return {'type': type}
 
 
 def _get_ref(schema, paths):
@@ -139,6 +164,16 @@ def is_literal(schema):
     """
 
     return not {STRING, INTEGER, NUMBER, BOOLEAN}.isdisjoint(set(get_type(schema)))
+
+
+def is_datetime(schema):
+    """
+    Given a JSON Schema compatible dict, returns True when schema's type allows being a date-time
+    :param schema: dict, JSON Schema
+    :return: Boolean
+    """
+
+    return STRING in get_type(schema) and schema.get('format') == DATE_TIME_FORMAT
 
 
 def make_nullable(schema):
@@ -266,6 +301,7 @@ _shorthand_mapping = {
     'number': 'f',
     'integer': 'i',
     'boolean': 'b',
+    'date-time': 't'
 }
 
 
@@ -286,4 +322,10 @@ def _type_shorthand(type_s):
 
 
 def shorthand(schema):
-    return _type_shorthand(get_type(schema))
+    _type = deepcopy(get_type(schema))
+
+    if 'format' in schema and 'date-time' == schema['format'] and STRING in _type:
+        _type.remove(STRING)
+        _type.append('date-time')
+
+    return _type_shorthand(_type)
