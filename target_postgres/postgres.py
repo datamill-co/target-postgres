@@ -1,12 +1,15 @@
 from copy import deepcopy
-import io
-import re
 import csv
-import uuid
+import io
 import json
+import logging
+import re
+import time
+import uuid
 
 import arrow
 from psycopg2 import sql
+from psycopg2.extras import LoggingConnection, LoggingCursor
 
 from target_postgres import json_schema
 from target_postgres.sql_base import SEPARATOR, SQLInterface
@@ -40,6 +43,36 @@ def _update_schema_0_to_1(table_schema):
     return remote_schema
 
 
+class _MillisLoggingCursor(LoggingCursor):
+    """
+    An implementation of LoggingCursor which tracks duration of queries.
+    """
+
+    def execute(self, query, vars=None):
+        self.timestamp = time.monotonic()
+        return super(_MillisLoggingCursor, self).execute(query, vars)
+
+    def callproc(self, procname, vars=None):
+        self.timestamp = time.monotonic()
+        return super(_MillisLoggingCursor, self).callproc(procname, vars)
+
+
+class MillisLoggingConnection(LoggingConnection):
+    """
+    An implementation of LoggingConnection which tracks duration of queries.
+    """
+
+    def filter(self, msg, curs):
+        return "MillisLoggingConnection: {} millis spent executing: {}".format(
+            int((time.monotonic() - curs.timestamp) * 1000),
+            msg
+        )
+
+    def cursor(self, *args, **kwargs):
+        kwargs.setdefault('cursor_factory', _MillisLoggingCursor)
+        return LoggingConnection.cursor(self, *args, **kwargs)
+
+
 class PostgresError(Exception):
     """
     Raise this when there is an error with regards to Postgres streaming
@@ -60,10 +93,20 @@ class PostgresTarget(SQLInterface):
     # TODO: Figure out way to `SELECT` value from commands
     IDENTIFIER_FIELD_LENGTH = 63
 
-    def __init__(self, connection, *args, postgres_schema='public', **kwargs):
+    def __init__(self, connection, *args, postgres_schema='public', logging_level=None, **kwargs):
         self.LOGGER.info(
             'PostgresTarget created with established connection: `{}`, PostgreSQL schema: `{}`'.format(connection.dsn,
                                                                                                        postgres_schema))
+
+        if logging_level:
+            level = logging.getLevelName(logging_level)
+            self.LOGGER.setLevel(level)
+
+        try:
+            connection.initialize(self.LOGGER)
+            self.LOGGER.debug('PostgresTarget set to log all queries.')
+        except AttributeError:
+            self.LOGGER.debug('PostgresTarget disabling logging all queries.')
 
         self.conn = connection
         self.postgres_schema = postgres_schema
@@ -431,7 +474,8 @@ class PostgresTarget(SQLInterface):
         target_schema['path'] = (target_table_name,)
         self.upsert_table_helper(cur,
                                  target_schema,
-                                 {'version': remote_schema['version']})
+                                 {'version': remote_schema['version']},
+                                 log_schema_changes=False)
 
         ## Make streamable CSV records
         csv_headers = list(remote_schema['schema']['properties'].keys())

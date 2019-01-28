@@ -13,7 +13,7 @@
 #
 
 from copy import deepcopy
-import datetime
+import time
 
 import singer
 
@@ -25,7 +25,7 @@ CURRENT_SCHEMA_VERSION = 1
 
 
 def _duration_millis(start):
-    return (datetime.datetime.now() - start).total_seconds() * 1000
+    return int((time.monotonic() - start) * 1000)
 
 
 def _mapping_name(field, schema):
@@ -312,7 +312,7 @@ class SQLInterface:
 
         return None
 
-    def upsert_table_helper(self, connection, schema, metadata):
+    def upsert_table_helper(self, connection, schema, metadata, log_schema_changes=True):
         """
         Upserts the `schema` to remote by:
         - creating table if necessary
@@ -322,7 +322,8 @@ class SQLInterface:
 
         :param connection: remote connection, type left to be determined by implementing class
         :param schema: TABLE_SCHEMA(local)
-        :param metadata: additional information necessary for downstream operations
+        :param metadata: additional information necessary for downstream operations,
+        :param log_schema_changes: defaults to True, set to false to disable logging of table level schema changes
         :return: TABLE_SCHEMA(remote)
         """
         table_path = schema['path']
@@ -376,13 +377,27 @@ class SQLInterface:
         table_empty = self.is_table_empty(connection, table_name)
 
         for column_path, column_schema in single_type_columns:
+            upsert_table_helper__start__column = time.monotonic()
+
             canonicalized_column_name = self._canonicalize_column_identifier(column_path, column_schema, mappings)
             nullable_column_schema = json_schema.make_nullable(column_schema)
 
+            def log_message(msg):
+                if log_schema_changes:
+                    self.LOGGER.info(
+                        'Table Schema Change [`{}`.`{}`:`{}`] {} (took {} millis)'.format(
+                            table_name,
+                            column_path,
+                            canonicalized_column_name,
+                            msg,
+                            _duration_millis(upsert_table_helper__start__column)))
+
             ## NEW COLUMN
             if not column_path in [m['from'] for m in mappings]:
+                upsert_table_helper__column = "New column"
                 ### NON EMPTY TABLE
                 if not table_empty:
+                    upsert_table_helper__column += ", non empty table"
                     self.LOGGER.warning(
                         'NOT EMPTY: Forcing new column `{}` in table `{}` to be nullable due to table not empty.'.format(
                             column_path,
@@ -403,6 +418,8 @@ class SQLInterface:
                 mapping['from'] = column_path
                 mapping['to'] = canonicalized_column_name
                 mappings.append(mapping)
+
+                log_message(upsert_table_helper__column)
 
                 continue
 
@@ -444,6 +461,8 @@ class SQLInterface:
                 mapping['to'] = canonicalized_column_name
                 mappings.append(mapping)
 
+                log_message("Made existing column nullable. New column is nullable, existing column is not")
+
                 continue
 
             ### FIRST MULTI TYPE
@@ -451,7 +470,6 @@ class SQLInterface:
             duplicate_paths = [m for m in mappings if m['from'] == column_path]
 
             if 1 == len(duplicate_paths):
-
                 existing_mapping = duplicate_paths[0]
                 existing_column_name = existing_mapping['to']
 
@@ -512,9 +530,14 @@ class SQLInterface:
                                  table_name,
                                  existing_mapping['to'])
 
+                upsert_table_helper__column = "Splitting `{}` into `{}` and `{}`. New column matches existing column path, but the types are incompatible.".format(
+                    existing_column_name,
+                    existing_column_new_normalized_name,
+                    canonicalized_column_name
+                )
+
             ## REST MULTI TYPE
             elif 1 < len(duplicate_paths):
-
                 ## Add new column
                 self.add_column_mapping(connection,
                                         table_name,
@@ -531,6 +554,10 @@ class SQLInterface:
                 mapping['to'] = canonicalized_column_name
                 mappings.append(mapping)
 
+                upsert_table_helper__column = "Adding new column to split column `{}`. New column matches existing column's path, but no types were compatible.".format(
+                    column_path
+                )
+
             ## UNKNOWN
             else:
                 raise Exception(
@@ -539,6 +566,8 @@ class SQLInterface:
                         canonicalized_column_name,
                         table_name
                     ))
+
+            log_message(upsert_table_helper__column)
 
         return self._get_table_schema(connection, table_path, table_name)
 
@@ -704,7 +733,7 @@ class SQLInterface:
         :return: {'records_persisted': int,
                   'rows_persisted': int}
         """
-        batch__timing_start = datetime.datetime.now()
+        batch__timing_start = time.monotonic()
 
         self.LOGGER.info('Writing batch with {} records for `{}` with `key_properties`: `{}`'.format(
             len(records),
@@ -716,7 +745,7 @@ class SQLInterface:
         for table_batch in denest.to_table_batches(schema, key_properties, records):
             table_batch['streamed_schema']['path'] = (root_table_name,) + table_batch['streamed_schema']['path']
 
-            table_batch__schema__timing_start = datetime.datetime.now()
+            table_batch__schema__timing_start = time.monotonic()
 
             self.LOGGER.info('Writing table batch schema for `{}`'.format(
                 table_batch['streamed_schema']['path']
@@ -731,7 +760,7 @@ class SQLInterface:
                 table_batch['streamed_schema']['path']
             ))
 
-            table_batch__records__timing_start = datetime.datetime.now()
+            table_batch__records__timing_start = time.monotonic()
 
             self.LOGGER.info('Writing table batch with {} rows for `{}`'.format(
                 len(table_batch['records']),

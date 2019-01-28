@@ -1,15 +1,17 @@
 from singer import utils
 import psycopg2
 
-from target_postgres.postgres import PostgresTarget
+from target_postgres.postgres import MillisLoggingConnection, PostgresTarget
 from target_postgres import target_tools
 
 REQUIRED_CONFIG_KEYS = [
     'postgres_database'
 ]
 
+
 def main(config, input_stream=None):
     with psycopg2.connect(
+            connection_factory=MillisLoggingConnection,
             host=config.get('postgres_host', 'localhost'),
             port=config.get('postgres_port', 5432),
             dbname=config.get('postgres_database'),
@@ -18,12 +20,14 @@ def main(config, input_stream=None):
     ) as connection:
         postgres_target = PostgresTarget(
             connection,
-            postgres_schema=config.get('postgres_schema', 'public'))
+            postgres_schema=config.get('postgres_schema', 'public'),
+            logging_level=config.get('logging_level'))
 
         if input_stream:
             target_tools.stream_to_target(input_stream, postgres_target, config=config)
         else:
             target_tools.main(postgres_target)
+
 
 def cli():
     args = utils.parse_args(REQUIRED_CONFIG_KEYS)
