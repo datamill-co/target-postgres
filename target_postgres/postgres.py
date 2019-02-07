@@ -20,7 +20,6 @@ from target_postgres.singer_stream import (
 
 RESERVED_NULL_DEFAULT = 'NULL'
 
-
 def _update_schema_0_to_1(table_schema):
     """
     Given a `table_schema` of version 0, update it to version 1.
@@ -125,6 +124,8 @@ class PostgresTarget(SQLInterface):
                                                              (stream_buffer.stream,),
                                                              stream_buffer.stream)
 
+                table_metadata = self._get_table_metadata(cur,
+                                                          stream_buffer.stream)
                 current_table_version = None
 
                 if current_table_schema:
@@ -137,19 +138,22 @@ class PostgresTarget(SQLInterface):
                                 current_table_schema.get('key_properties'),
                                 stream_buffer.key_properties
                             ))
-
                     for key in stream_buffer.key_properties:
-                        if self.json_schema_to_sql_type(current_table_schema['schema']['properties'][key]) \
-                                != self.json_schema_to_sql_type(stream_buffer.schema['properties'][key]):
+                        stream_buffer_key = key
+                        for column_name in table_metadata['mappings'].keys():
+                            if table_metadata['mappings'][column_name]['from'] == [key]:
+                                current_table_key = column_name
+                        if self.json_schema_to_sql_type(current_table_schema['schema']['properties'][current_table_key]) \
+                                != self.json_schema_to_sql_type(stream_buffer.schema['properties'][stream_buffer_key]):
                             raise PostgresError(
                                 ('`key_properties` type change detected for "{}". ' +
                                  'Existing values are: {}. ' +
                                  'Streamed values are: {}, {}, {}').format(
                                     key,
-                                    json_schema.get_type(current_table_schema['schema']['properties'][key]),
-                                    json_schema.get_type(stream_buffer.schema['properties'][key]),
-                                    self.json_schema_to_sql_type(current_table_schema['schema']['properties'][key]),
-                                    self.json_schema_to_sql_type(stream_buffer.schema['properties'][key])
+                                    json_schema.get_type(current_table_schema['schema']['properties'][current_table_key]),
+                                    json_schema.get_type(stream_buffer.schema['properties'][stream_buffer_key]),
+                                    self.json_schema_to_sql_type(current_table_schema['schema']['properties'][current_table_key]),
+                                    self.json_schema_to_sql_type(stream_buffer.schema['properties'][stream_buffer_key])
                                 ))
 
                 root_table_name = stream_buffer.stream
@@ -459,7 +463,7 @@ class PostgresTarget(SQLInterface):
 
         update_sql = self._get_update_sql(remote_schema['name'],
                                           temp_table_name,
-                                          remote_schema['key_properties'],
+                                          [key.lower() for key in remote_schema['key_properties']],
                                           columns,
                                           subkeys)
         cur.execute(update_sql)
