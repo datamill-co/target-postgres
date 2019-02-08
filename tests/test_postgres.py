@@ -975,6 +975,49 @@ def test_loading__invalid_column_name(db_cleanup):
                                  })
 
 
+def test_loading__invalid_column_name__pk(db_cleanup):
+    def setup(count):
+        class Stream(CatStream):
+            def generate_record(self):
+                record = CatStream.generate_record(self)
+                record['ID'] = record['id']
+                record.pop('id')
+                return record
+
+        stream = Stream(count)
+        stream.schema = deepcopy(stream.schema)
+        stream.schema['schema']['properties']['ID'] = \
+            stream.schema['schema']['properties']['id']
+
+        stream.schema['key_properties'] = ['ID']
+        stream.schema['schema'][['properties'].pop('id')
+
+        return stream
+
+    main(CONFIG, input_stream=setup(100))
+    main(CONFIG, input_stream=setup(200))
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
+
+
 def test_loading__invalid_column_name__duplicate_name_handling(db_cleanup):
     for i in range(101):
         name_too_long_stream = CatStream(100)
