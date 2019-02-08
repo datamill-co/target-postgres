@@ -990,7 +990,7 @@ def test_loading__invalid_column_name__pk(db_cleanup):
             stream.schema['schema']['properties']['id']
 
         stream.schema['key_properties'] = ['ID']
-        stream.schema['schema'][['properties'].pop('id')
+        stream.schema['schema']['properties'].pop('id')
 
         return stream
 
