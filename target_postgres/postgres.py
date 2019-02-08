@@ -138,18 +138,19 @@ class PostgresTarget(SQLInterface):
                                 stream_buffer.key_properties
                             ))
 
-                    for key in stream_buffer.key_properties:
-                        if self.json_schema_to_sql_type(current_table_schema['schema']['properties'][key]) \
-                                != self.json_schema_to_sql_type(stream_buffer.schema['properties'][key]):
+                    for key_property in stream_buffer.key_properties:
+                        if self.json_schema_to_sql_type(current_table_schema['schema']['properties'][key_property]) \
+                                != self.json_schema_to_sql_type(stream_buffer.schema['properties'][key_property]):
                             raise PostgresError(
                                 ('`key_properties` type change detected for "{}". ' +
                                  'Existing values are: {}. ' +
                                  'Streamed values are: {}, {}, {}').format(
-                                    key,
-                                    json_schema.get_type(current_table_schema['schema']['properties'][key]),
-                                    json_schema.get_type(stream_buffer.schema['properties'][key]),
-                                    self.json_schema_to_sql_type(current_table_schema['schema']['properties'][key]),
-                                    self.json_schema_to_sql_type(stream_buffer.schema['properties'][key])
+                                    key_property,
+                                    json_schema.get_type(current_table_schema['schema']['properties'][key_property]),
+                                    json_schema.get_type(stream_buffer.schema['properties'][key_property]),
+                                    self.json_schema_to_sql_type(
+                                        current_table_schema['schema']['properties'][key_property]),
+                                    self.json_schema_to_sql_type(stream_buffer.schema['properties'][key_property])
                                 ))
 
                 root_table_name = stream_buffer.stream
