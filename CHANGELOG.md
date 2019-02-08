@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.4
+
+- **BUG FIX:** A bug was identified in 0.1.3 with stream `key_properties` and canonicalization.
+  - [LINK](https://github.com/datamill-co/target-postgres/pull/95)
+  - Discovered and fixed by @mirelagrigoras
+  - If the `key_properties` for a stream changed due to canonicalization, the stream would fail to persist due to:
+    - the `persist_csv_rows` `key_properties` values would remain un-canonicalized (sp?) and therefore cause issues once serialized into a SQL statement
+    - the pre-checks for tables would break because no values could be pulled from the schema with un-canonicalized fields pulled out of the `key_properties`
+  - **NOTE:** the `key_properties` metadata is saved with _raw_ field names.
+
 ## 0.1.3
 
 - **SCHEMA_VERSION: 1**
