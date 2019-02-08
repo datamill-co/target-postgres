@@ -111,6 +111,21 @@ class SQLInterface:
         """
         raise NotImplementedError('`canonicalize_identifier` not implemented.')
 
+    def fetch_column_from_path(self, path, table_schema):
+        """
+        Should only be used for paths which have been established, ie, the schema will
+        not be changing etc.
+        :param path:
+        :param table_schema:
+        :return:
+        """
+
+        for to, m in table_schema.get('mappings', {}).items():
+            if tuple(m['from']) == path:
+                return to, json_schema.simple_type(m)
+
+        raise Exception('blahbittyblah')
+
     def _canonicalize_column_identifier(self, path, schema, mappings):
         """"""
 

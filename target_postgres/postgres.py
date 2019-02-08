@@ -138,18 +138,21 @@ class PostgresTarget(SQLInterface):
                                 stream_buffer.key_properties
                             ))
 
-                    for key in stream_buffer.key_properties:
-                        if self.json_schema_to_sql_type(current_table_schema['schema']['properties'][key]) \
-                                != self.json_schema_to_sql_type(stream_buffer.schema['properties'][key]):
+                    for key_property in stream_buffer.key_properties:
+                        canonicalized_key, remote_column_schema = self.fetch_column_from_path((key_property,),
+                                                                                              current_table_schema)
+                        if self.json_schema_to_sql_type(remote_column_schema) \
+                                != self.json_schema_to_sql_type(stream_buffer.schema['properties'][key_property]):
                             raise PostgresError(
                                 ('`key_properties` type change detected for "{}". ' +
                                  'Existing values are: {}. ' +
                                  'Streamed values are: {}, {}, {}').format(
-                                    key,
-                                    json_schema.get_type(current_table_schema['schema']['properties'][key]),
-                                    json_schema.get_type(stream_buffer.schema['properties'][key]),
-                                    self.json_schema_to_sql_type(current_table_schema['schema']['properties'][key]),
-                                    self.json_schema_to_sql_type(stream_buffer.schema['properties'][key])
+                                    key_property,
+                                    json_schema.get_type(current_table_schema['schema']['properties'][key_property]),
+                                    json_schema.get_type(stream_buffer.schema['properties'][key_property]),
+                                    self.json_schema_to_sql_type(
+                                        current_table_schema['schema']['properties'][key_property]),
+                                    self.json_schema_to_sql_type(stream_buffer.schema['properties'][key_property])
                                 ))
 
                 root_table_name = stream_buffer.stream
@@ -457,9 +460,12 @@ class PostgresTarget(SQLInterface):
         pattern = re.compile(SINGER_LEVEL.format('[0-9]+'))
         subkeys = list(filter(lambda header: re.match(pattern, header) is not None, columns))
 
+        canonicalized_key_properties = [self.fetch_column_from_path((key_property,), remote_schema)[0]
+                                        for key_property in remote_schema['key_properties']]
+
         update_sql = self._get_update_sql(remote_schema['name'],
                                           temp_table_name,
-                                          remote_schema['key_properties'],
+                                          canonicalized_key_properties,
                                           columns,
                                           subkeys)
         cur.execute(update_sql)
