@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.5
+
+- **FEATURES:**
+  - [Added the `persist_empty_tables`](https://github.com/datamill-co/target-postgres/pull/97) config option which allows the Target to create empty tables in Remote.
+
 ## 0.1.4
 
 - **BUG FIX:** A bug was identified in 0.1.3 with stream `key_properties` and canonicalization.
