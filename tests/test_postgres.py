@@ -221,6 +221,68 @@ def test_loading__simple(db_cleanup):
         assert_records(conn, stream.records, 'cats', 'id')
 
 
+def test_loading__empty(db_cleanup):
+    stream = CatStream(0)
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                sql.SQL('''
+            SELECT EXISTS(
+              SELECT 1
+              FROM information_schema.tables
+              WHERE table_schema = {}
+                AND table_name = {}
+            );
+            ''').format(
+                    sql.Literal('public'),
+                    sql.Literal('cats')))
+
+            assert not cur.fetchone()[0]
+
+
+def test_loading__empty__enabled_config(db_cleanup):
+    config = CONFIG.copy()
+    config['persist_empty_tables'] = True
+
+    stream = CatStream(0)
+    main(config, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'cats__adoption__immunizations',
+                                 {
+                                     ('_sdc_level_0_id', 'bigint', 'NO'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_source_key_id', 'bigint', 'NO'),
+                                     ('date_administered', 'timestamp with time zone', 'YES'),
+                                     ('type', 'text', 'YES')
+                                 })
+
+            cur.execute(get_count_sql('cats'))
+            assert cur.fetchone()[0] == 0
+
+
 ## TODO: Complex types defaulted
 # def test_loading__default__complex_type(db_cleanup):
 #     main(CONFIG, input_stream=NestedStream(10))
