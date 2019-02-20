@@ -93,7 +93,7 @@ class PostgresTarget(SQLInterface):
     # TODO: Figure out way to `SELECT` value from commands
     IDENTIFIER_FIELD_LENGTH = 63
 
-    def __init__(self, connection, *args, postgres_schema='public', logging_level=None, **kwargs):
+    def __init__(self, connection, *args, postgres_schema='public', logging_level=None, persist_empty_tables=False, **kwargs):
         self.LOGGER.info(
             'PostgresTarget created with established connection: `{}`, PostgreSQL schema: `{}`'.format(connection.dsn,
                                                                                                        postgres_schema))
@@ -110,9 +110,12 @@ class PostgresTarget(SQLInterface):
 
         self.conn = connection
         self.postgres_schema = postgres_schema
+        self.persist_empty_tables = persist_empty_tables
+        if self.persist_empty_tables:
+            self.LOGGER.debug('PostgresTarget is persisting empty tables')
 
     def write_batch(self, stream_buffer):
-        if stream_buffer.count == 0:
+        if not self.persist_empty_tables and stream_buffer.count == 0:
             return None
 
         with self.conn.cursor() as cur:

@@ -21,7 +21,8 @@ def main(config, input_stream=None):
         postgres_target = PostgresTarget(
             connection,
             postgres_schema=config.get('postgres_schema', 'public'),
-            logging_level=config.get('logging_level'))
+            logging_level=config.get('logging_level'),
+            persist_empty_tables=config.get('persist_empty_tables'))
 
         if input_stream:
             target_tools.stream_to_target(input_stream, postgres_target, config=config)
