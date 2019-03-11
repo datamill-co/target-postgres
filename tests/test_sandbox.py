@@ -429,7 +429,7 @@ class HubspotStream(SandboxStream):
          "record": {
              "properties": {
                  "num_contacted_notes": {
-                     "value": 12345.6789}}}}, ]
+                     "value": 12345.6789}}}}]
 
 
 def test_hubspot__sandbox(db_cleanup):
