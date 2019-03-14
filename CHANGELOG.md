@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.6
+
+- **BUG FIX:** A bug was identified for path to column serialization.
+  - [LINK](https://github.com/datamill-co/target-postgres/pull/100)
+  - A nullable properties which had _multiple_ JSONSchema types
+    - ie, something like `[null, string, integer ...]`
+    - Failed to find an appropriate column in remote to persist `None` values to.
+  - Found by usage of the [Hubspot Tap](https://github.com/singer-io/tap-hubspot)
+
 ## 0.1.5
 
 - **FEATURES:**
