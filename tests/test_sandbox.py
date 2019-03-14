@@ -28,8 +28,31 @@ def assert_columns_equal(cursor, table_name, expected_column_tuples):
            or set(columns) == expected_column_tuples
 
 
-class BigCommerceStream:
+def assert_count_equal(cursor, table_name, n):
+    cursor.execute('SELECT count(*) FROM "public"."{}"'.format(table_name))
+    assert cursor.fetchone()[0] == n
+
+
+class SandboxStream:
     idx = None
+    stream = NotImplementedError()
+
+    def __init__(self):
+        self.idx = -1
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.idx += 1
+
+        if self.idx < len(self.stream):
+            return json.dumps(self.stream[self.idx])
+
+        raise StopIteration
+
+
+class BigCommerceStream(SandboxStream):
     stream = [
         {"type": "SCHEMA",
          "stream": "products",
@@ -314,20 +337,6 @@ class BigCommerceStream:
          "value": {"bookmarks": {"products": "2018-11-17T21:26:50+00:00",
                                  "customers": "2018-11-17T21:25:01+00:00"}}}]
 
-    def __init__(self):
-        self.idx = -1
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        self.idx += 1
-
-        if self.idx < len(self.stream):
-            return json.dumps(self.stream[self.idx])
-
-        raise StopIteration
-
 
 def test_bigcommerce__sandbox(db_cleanup):
     main(CONFIG, input_stream=BigCommerceStream())
@@ -366,3 +375,85 @@ def test_bigcommerce__sandbox(db_cleanup):
                                      ('phone', 'text', 'YES'),
                                      ('last_name', 'text', 'YES')
                                  })
+
+
+class HubspotStream(SandboxStream):
+    stream = [
+        {"type": "SCHEMA",
+         "stream": "deals",
+         "schema": {
+             "type": "object",
+             "properties": {
+                 "properties": {
+                     "type": "object",
+                     "properties": {
+                         "num_contacted_notes": {
+                             "type": "object",
+                             "properties": {
+                                 "value": {
+                                     "type": ["null", "number", "string"]
+                                 }}}}}}},
+         "key_properties": []},
+        {"type": "RECORD",
+         "stream": "deals",
+         "record": {}},
+        {"type": "RECORD",
+         "stream": "deals",
+         "record": {
+             "properties": {}}},
+        {"type": "RECORD",
+         "stream": "deals",
+         "record": {
+             "properties": {
+                 "num_contacted_notes": {}}}},
+        {"type": "RECORD",
+         "stream": "deals",
+         "record": {
+             "properties": {
+                 "num_contacted_notes": {
+                     "value": None}}}},
+        {"type": "RECORD",
+         "stream": "deals",
+         "record": {
+             "properties": {
+                 "num_contacted_notes": {
+                     "value": "helloworld"}}}},
+        {"type": "RECORD",
+         "stream": "deals",
+         "record": {
+             "properties": {
+                 "num_contacted_notes": {
+                     "value": 12345}}}},
+        {"type": "RECORD",
+         "stream": "deals",
+         "record": {
+             "properties": {
+                 "num_contacted_notes": {
+                     "value": 12345.6789}}}}]
+
+
+def test_hubspot__sandbox(db_cleanup):
+    config = CONFIG.copy()
+    config['persist_empty_tables'] = True
+    main(config, input_stream=HubspotStream())
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_tables_equal(cur,
+                                {'deals'})
+
+            assert_columns_equal(cur,
+                                 'deals',
+                                 {
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_primary_key', 'text', 'NO'),
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('properties__num_contacted_notes__value__f', 'double precision', 'YES'),
+                                     ('properties__num_contacted_notes__value__s', 'text', 'YES')
+                                 })
+
+            assert_count_equal(cur,
+                               'deals',
+                               7)

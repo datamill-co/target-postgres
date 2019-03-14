@@ -588,7 +588,7 @@ class SQLInterface:
 
     def _serialize_table_record_field_name(self, remote_schema, streamed_schema, path, value_json_schema):
         """
-        Returns the appropriate remote field (column) name for `field`.
+        Returns the appropriate remote field (column) name for `path`.
 
         :param remote_schema: TABLE_SCHEMA(remote)
         :param streamed_schema: TABLE_SCHEMA(local)
@@ -616,8 +616,9 @@ class SQLInterface:
             if not mapping is None:
                 return mapping
 
-        raise Exception('Unknown column path: {} for table: {}'.format(
+        raise Exception("A compatible column for path {} and JSONSchema {} in table {} cannot be found.".format(
             path,
+            simple_json_schema,
             remote_schema['path']
         ))
 
@@ -692,6 +693,9 @@ class SQLInterface:
                     value = default_paths[path]
                     json_schema_string_type = json_schema.python_type(value)
 
+                if not json_schema_string_type:
+                    continue
+
                 ## Serialize datetime to compatible format
                 if path in datetime_paths \
                         and json_schema_string_type == json_schema.STRING \
@@ -700,10 +704,8 @@ class SQLInterface:
                                                                        value)
                     value_json_schema = {'type': json_schema.STRING,
                                          'format': json_schema.DATE_TIME_FORMAT}
-                elif json_schema_string_type:
-                    value_json_schema = {'type': json_schema_string_type}
                 else:
-                    value_json_schema = json_schema.simple_type(streamed_schema['schema']['properties'][path])
+                    value_json_schema = {'type': json_schema_string_type}
 
                 ## Serialize NULL default value
                 value = self.serialize_table_record_null_value(remote_schema, streamed_schema, path, value)
@@ -713,9 +715,8 @@ class SQLInterface:
                                                                      path,
                                                                      value_json_schema)
 
-                if field_name in remote_fields \
-                        and (not field_name in row
-                             or row[field_name] == NULL_DEFAULT):
+                ## `field_name` is unset
+                if row[field_name] == NULL_DEFAULT:
                     row[field_name] = value
 
             serialized_rows.append(row)
