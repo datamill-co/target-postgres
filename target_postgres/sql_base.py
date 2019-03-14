@@ -616,12 +616,10 @@ class SQLInterface:
             if not mapping is None:
                 return mapping
 
-        raise Exception("Column path: {} for table: {} for the value's JSONSchema {} cannot be found." \
-                        + " This means that the `remote_schema` has no compatible column for this path" \
-                        + " and value type.".format(
+        raise Exception("A compatible column for path {} and JSONSchema {} in table {} cannot be found.".format(
             path,
-            remote_schema['path'],
-            simple_json_schema
+            simple_json_schema,
+            remote_schema['path']
         ))
 
     def serialize_table_record_null_value(
@@ -716,17 +714,6 @@ class SQLInterface:
                                                                      streamed_schema,
                                                                      path,
                                                                      value_json_schema)
-
-                if not field_name in row:
-                    raise Exception(
-                        "Unexpected field_name serialization! Field {} doesn't exist. Please create an issue at: {}." \
-                        + " Arguments are: {}".format(
-                            field_name,
-                            {'remote_schema': remote_schema,
-                             'streamed_schema': streamed_schema,
-                             'path': path,
-                             'value_json_schema': value_json_schema},
-                            "https://github.com/datamill-co/target-postgres/issues"))
 
                 ## `field_name` is unset
                 if row[field_name] == NULL_DEFAULT:
