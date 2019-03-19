@@ -854,8 +854,7 @@ def test_loading__invalid__table_name__stream(db_cleanup):
         stream.schema = deepcopy(stream.schema)
         stream.schema['stream'] = stream_name
 
-        with pytest.raises(postgres.PostgresError, match=postgres_error_regex):
-            main(CONFIG, input_stream=stream)
+        main(CONFIG, input_stream=stream)
 
     invalid_stream_named('', r'.*non empty.*')
     invalid_stream_named('x' * 1000, r'Length.*')

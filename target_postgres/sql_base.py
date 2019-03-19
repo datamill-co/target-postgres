@@ -203,12 +203,13 @@ class SQLInterface:
 
         return canonicalized_column_name
 
-    def add_table(self, connection, schema, metadata):
+    def add_table(self, connection, path, name, metadata):
         """
         Create the remote table schema.
 
         :param connection: remote connection, type left to be determined by implementing class
-        :param schema: TABLE_SCHEMA(local) definition for table to be created
+        :param path: (String, ...)
+        :param name: String
         :param metadata: additional metadata needed by implementing class
         :return: None
         """
@@ -224,22 +225,21 @@ class SQLInterface:
         """
         raise NotImplementedError('`add_key_properties` not implemented.')
 
-    def add_table_mapping_helper(self, from_path, table_mappings):
+    def add_table_mapping_helper(self, from_path, root_from_path, table_mappings):
         """
 
         :param from_path:
         :param table_mappings:
         :return: (boolean, string)
         """
-        from_to = dict([(tuple(mapping['from']), mapping['to']) for mapping in table_mappings])
 
         ## MAPPING EXISTS
-        if from_path in from_to:
-            return {'exists': True, 'to': from_to[from_path]}
+        if from_path in table_mappings:
+            return {'exists': True, 'to': table_mappings[from_path]}
 
-        to_from = dict([(v, k) for k, v in from_to.items()])
+        to_from = dict([(v, k) for k, v in table_mappings.items()])
 
-        name = SEPARATOR.join(from_path)
+        name = SEPARATOR.join(root_from_path)
 
         raw_canonicalized_name = self.canonicalize_identifier(name)
         canonicalized_name = raw_canonicalized_name[:self.IDENTIFIER_FIELD_LENGTH]
@@ -386,7 +386,7 @@ class SQLInterface:
             existing_schema = self._get_table_schema(connection, table_path, table_name)
 
             if existing_schema is None:
-                self.add_table(connection, table_name, _metadata)
+                self.add_table(connection, table_path, table_name, _metadata)
                 existing_schema = self._get_table_schema(connection, table_path, table_name)
 
             self.add_key_properties(connection, table_name, schema.get('key_properties', None))

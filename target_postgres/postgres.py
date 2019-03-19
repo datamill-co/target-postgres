@@ -93,7 +93,8 @@ class PostgresTarget(SQLInterface):
     # TODO: Figure out way to `SELECT` value from commands
     IDENTIFIER_FIELD_LENGTH = 63
 
-    def __init__(self, connection, *args, postgres_schema='public', logging_level=None, persist_empty_tables=False, **kwargs):
+    def __init__(self, connection, *args, postgres_schema='public', logging_level=None, persist_empty_tables=False,
+                 **kwargs):
         self.LOGGER.info(
             'PostgresTarget created with established connection: `{}`, PostgreSQL schema: `{}`'.format(connection.dsn,
                                                                                                        postgres_schema))
@@ -118,19 +119,35 @@ class PostgresTarget(SQLInterface):
         return {'database': self.conn.get_dsn_parameters().get('dbname', None),
                 'schema': self.postgres_schema}
 
+    def setup_table_mapping_cache(self, cur):
+        self.table_mapping_cache = {}
+
+        cur.execute(
+            sql.SQL('''
+                SELECT c.relname, CAST(obj_description(c.oid) AS json)->'path'
+                FROM pg_namespace AS n
+                  INNER JOIN pg_class AS c ON n.oid = c.relnamespace
+                WHERE n.nspname = {};
+                ''').format(sql.Literal(self.postgres_schema)))
+
+        for column in cur.fetchall():
+            self.LOGGER.info("Mapping: {}".format(column))
+            if column[1]:
+                table_path = tuple(column[1])
+                self.table_mapping_cache[table_path] = column[0]
+
     def write_batch(self, stream_buffer):
         if not self.persist_empty_tables and stream_buffer.count == 0:
             return None
 
         with self.conn.cursor() as cur:
             try:
-                self._validate_identifier(stream_buffer.stream)
-
                 cur.execute('BEGIN;')
 
-                current_table_schema = self.get_table_schema(cur,
-                                                             (stream_buffer.stream,),
-                                                             stream_buffer.stream)
+                self.setup_table_mapping_cache(cur)
+
+                root_table_name = self.add_table_mapping(cur, (stream_buffer.stream,), {})
+                current_table_schema = self.get_table_schema(cur, None, root_table_name)
 
                 current_table_version = None
 
@@ -162,8 +179,14 @@ class PostgresTarget(SQLInterface):
                                     self.json_schema_to_sql_type(stream_buffer.schema['properties'][key_property])
                                 ))
 
-                root_table_name = stream_buffer.stream
                 target_table_version = current_table_version or stream_buffer.max_version
+
+                self.LOGGER.info('Stream {} ({}) with max_version {} targetting {}'.format(
+                    stream_buffer.stream,
+                    root_table_name,
+                    stream_buffer.max_version,
+                    target_table_version
+                ))
 
                 if current_table_version is not None and \
                         stream_buffer.max_version is not None:
@@ -174,8 +197,10 @@ class PostgresTarget(SQLInterface):
                         return None
 
                     elif stream_buffer.max_version > current_table_version:
-                        root_table_name = stream_buffer.stream + SEPARATOR + str(stream_buffer.max_version)
+                        root_table_name += SEPARATOR + str(stream_buffer.max_version)
                         target_table_version = stream_buffer.max_version
+
+                self.LOGGER.info('Root table name {}'.format(root_table_name))
 
                 self._validate_identifier(root_table_name)
                 written_batches_details = self.write_batch_helper(cur,
@@ -199,18 +224,21 @@ class PostgresTarget(SQLInterface):
             try:
                 cur.execute('BEGIN;')
 
-                table_metadata = self._get_table_metadata(cur,
-                                                          stream_buffer.stream)
+                self.setup_table_mapping_cache(cur)
+                root_table_name = self.add_table_mapping(cur, (stream_buffer.stream,), {})
+                current_table_schema = self.get_table_schema(cur, None, root_table_name)
 
-                if not table_metadata:
+                if not current_table_schema:
                     self.LOGGER.error('{} - Table for stream does not exist'.format(
                         stream_buffer.stream))
-                elif table_metadata.get('version') is not None and table_metadata.get('version') >= version:
+                elif current_table_schema.get('version') is not None and current_table_schema.get('version') >= version:
                     self.LOGGER.warning('{} - Table version {} already active'.format(
                         stream_buffer.stream,
                         version))
                 else:
-                    versioned_root_table = stream_buffer.stream + SEPARATOR + str(version)
+                    versioned_root_table = root_table_name + SEPARATOR + str(version)
+
+                    names_to_paths = dict([(v, k) for k, v in self.table_mapping_cache.items()])
 
                     cur.execute(
                         sql.SQL('''
@@ -221,7 +249,8 @@ class PostgresTarget(SQLInterface):
                             sql.Literal(versioned_root_table + '%')))
 
                     for versioned_table_name in map(lambda x: x[0], cur.fetchall()):
-                        table_name = stream_buffer.stream + versioned_table_name[len(versioned_root_table):]
+                        table_name = root_table_name + versioned_table_name[len(versioned_root_table):]
+                        table_path = names_to_paths[table_name]
                         cur.execute(
                             sql.SQL('''
                             ALTER TABLE {table_schema}.{stream_table} RENAME TO {stream_table_old};
@@ -234,6 +263,15 @@ class PostgresTarget(SQLInterface):
                                                                 'old'),
                                 stream_table=sql.Identifier(table_name),
                                 version_table=sql.Identifier(versioned_table_name)))
+                        metadata = self._get_table_metadata(cur, table_name)
+
+                        self.LOGGER.info('Activated {}, setting path to {}'.format(
+                            metadata,
+                            table_path
+                        ))
+
+                        metadata['path'] = table_path
+                        self._set_table_metadata(cur, table_name, metadata)
             except Exception as ex:
                 cur.execute('ROLLBACK;')
                 message = '{} - Exception activating table version {}'.format(
@@ -285,7 +323,7 @@ class PostgresTarget(SQLInterface):
             metadata['key_properties'] = key_properties
             self._set_table_metadata(cur, table_name, metadata)
 
-    def add_table(self, cur, name, metadata):
+    def add_table(self, cur, path, name, metadata):
         self._validate_identifier(name)
 
         create_table_sql = sql.SQL('CREATE TABLE {}.{}').format(
@@ -294,43 +332,25 @@ class PostgresTarget(SQLInterface):
 
         cur.execute(sql.SQL('{} ();').format(create_table_sql))
 
-        self._set_table_metadata(cur, name, {'version': metadata.get('version', None),
+        self._set_table_metadata(cur, name, {'path': path,
+                                             'version': metadata.get('version', None),
                                              'schema_version': metadata['schema_version']})
 
     def add_table_mapping(self, cur, from_path, metadata):
-        root_table = from_path[0]
-        cur.execute(
-            sql.SQL('''
-            SELECT EXISTS(
-              SELECT 1
-              FROM information_schema.tables
-              WHERE table_schema = {}
-                AND table_name = {}
-            );
-            ''').format(
-                sql.Literal(self.postgres_schema),
-                sql.Literal(root_table)))
+        root_path = (from_path[0],)
+        root_mapping = self.add_table_mapping_helper(root_path, root_path, self.table_mapping_cache)
 
         # No root table present
         ## Table mappings are hung off of the root table's metadata
         ## SQLInterface's helpers do not guarantee order of table creation
-        if not cur.fetchone()[0]:
-            self.add_table(cur, root_table, metadata)
+        if not root_mapping['exists']:
+            self.table_mapping_cache[root_path] = root_mapping['to']
 
-        metadata = self._get_table_metadata(cur, root_table)
-        if not metadata:
-            metadata = {}
-
-        if not 'table_mappings' in metadata:
-            metadata['table_mappings'] = []
-
-        mapping = self.add_table_mapping_helper(from_path, metadata['table_mappings'])
+        root_from_path = root_path + from_path[1:]
+        mapping = self.add_table_mapping_helper(from_path, root_from_path, self.table_mapping_cache)
 
         if not mapping['exists']:
-            metadata['table_mappings'].append({'type': 'TABLE',
-                                               'from': from_path,
-                                               'to': mapping['to']})
-            self._set_table_metadata(cur, root_table, metadata)
+            self.table_mapping_cache[from_path] = mapping['to']
 
         return mapping['to']
 
@@ -648,19 +668,9 @@ class PostgresTarget(SQLInterface):
         if metadata is None:
             metadata = {'version': None}
 
-        if len(path) > 1:
-            table_mappings = self.get_table_schema(cur, path[:1], path[0])['table_mappings']
-        else:
-            table_mappings = []
-            for mapping in metadata.get('table_mappings', []):
-                if mapping['type'] == 'TABLE':
-                    table_mappings.append(mapping)
-
         metadata['name'] = name
-        metadata['path'] = path
         metadata['type'] = 'TABLE_SCHEMA'
         metadata['schema'] = {'properties': properties}
-        metadata['table_mappings'] = table_mappings
 
         if 0 == metadata.get('schema_version', 0):
             return _update_schema_0_to_1(metadata)
