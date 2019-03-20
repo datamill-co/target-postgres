@@ -225,7 +225,7 @@ class SQLInterface:
         """
         raise NotImplementedError('`add_key_properties` not implemented.')
 
-    def add_table_mapping_helper(self, from_path, root_from_path, table_mappings):
+    def add_table_mapping_helper(self, from_path, table_mappings):
         """
 
         :param from_path:
@@ -239,7 +239,7 @@ class SQLInterface:
 
         to_from = dict([(v, k) for k, v in table_mappings.items()])
 
-        name = SEPARATOR.join(root_from_path)
+        name = SEPARATOR.join(from_path)
 
         raw_canonicalized_name = self.canonicalize_identifier(name)
         canonicalized_name = raw_canonicalized_name[:self.IDENTIFIER_FIELD_LENGTH]

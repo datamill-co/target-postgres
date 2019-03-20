@@ -146,7 +146,7 @@ class PostgresTarget(SQLInterface):
 
                 self.setup_table_mapping_cache(cur)
 
-                root_table_name = self.add_table_mapping(cur, (stream_buffer.stream,), {})
+                root_table_name = self.add_table_mapping_helper((stream_buffer.stream,), self.table_mapping_cache)['to']
                 current_table_schema = self.get_table_schema(cur, None, root_table_name)
 
                 current_table_version = None
@@ -188,6 +188,7 @@ class PostgresTarget(SQLInterface):
                     target_table_version
                 ))
 
+                root_table_name = stream_buffer.stream
                 if current_table_version is not None and \
                         stream_buffer.max_version is not None:
                     if stream_buffer.max_version < current_table_version:
@@ -202,7 +203,6 @@ class PostgresTarget(SQLInterface):
 
                 self.LOGGER.info('Root table name {}'.format(root_table_name))
 
-                self._validate_identifier(root_table_name)
                 written_batches_details = self.write_batch_helper(cur,
                                                                   root_table_name,
                                                                   stream_buffer.schema,
@@ -337,17 +337,7 @@ class PostgresTarget(SQLInterface):
                                              'schema_version': metadata['schema_version']})
 
     def add_table_mapping(self, cur, from_path, metadata):
-        root_path = (from_path[0],)
-        root_mapping = self.add_table_mapping_helper(root_path, root_path, self.table_mapping_cache)
-
-        # No root table present
-        ## Table mappings are hung off of the root table's metadata
-        ## SQLInterface's helpers do not guarantee order of table creation
-        if not root_mapping['exists']:
-            self.table_mapping_cache[root_path] = root_mapping['to']
-
-        root_from_path = root_path + from_path[1:]
-        mapping = self.add_table_mapping_helper(from_path, root_from_path, self.table_mapping_cache)
+        mapping = self.add_table_mapping_helper(from_path, self.table_mapping_cache)
 
         if not mapping['exists']:
             self.table_mapping_cache[from_path] = mapping['to']
