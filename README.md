@@ -190,6 +190,15 @@ If you've `bash` shelled into the Docker Compose container ([see above](#docker)
 $ pytest
 ```
 
+## Collaboration and Contributions
+
+Join the conversation over at the [Singer.io Slack](singer-io.slack.com) and on the `#target-postgres` channel.
+
+Try to adhere to the following for contributing:  
+ - File New Issue -> Fork -> New Branch(If needed) -> Pull Request -> Approval -> Merge
+
+Users can file an issue without submitting a pull request but be aware not all issues can or will be addressed.
+
 ## Sponsorship
 
 Target Postgres is sponsored by Data Mill (Data Mill Services, LLC) [datamill.co](https://datamill.co/).
