@@ -57,19 +57,19 @@ pip install singer-target-postgres
 The fields available to be specified in the config file are specified
 here.
 
-| Field | Type | Default | Details |
-| ----- | ---- | ------- | ------- |
-| `postgres_host` |`["string", "null"]` | `"localhost"` | |
-| `postgres_port` | `["integer", "null"]`|  `5432` | |
-| `postgres_database` | `["string"]`|  `N/A` | |
-| `postgres_username` | `["string", "null"]` |  `N/A` | |
-| `postgres_password` | `["string", "null"]`|  `null` | |
-| `postgres_schema` | `["string", "null"]` |  `"public"` | |
-| `invalid_records_detect` | `["boolean", "null"]`| `true` | Include `false` in your config to disable `target-postgres` from crashing on invalid records |
-| `invalid_records_threshold` | `["integer", "null"]` | `0` | Include a positive value `n` in your config to allow for `target-postgres` to encounter at most `n` invalid records per stream before giving up. |
-| `disable_collection` | `["string", "null"]` | `false` | Include `true` in your config to disable [Singer Usage Logging](#usage-logging).
-| `logging_level` | `["string", "null"]` | `"INFO"` | The level for logging. Set to `DEBUG` to get things like queries executed, timing of those queries, etc. See [Python's Logger Levels](https://docs.python.org/3/library/logging.html#levels) for information about valid values.
-| `persist_empty_tables` | `["boolean", "null"]` | `False` | Whether the Target should create tables which have no records present in Remote.
+| Field                       | Type                  | Default       | Details                                                                                                                                                                                                                          |
+| --------------------------- | --------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `postgres_host`             | `["string", "null"]`  | `"localhost"` |                                                                                                                                                                                                                                  |
+| `postgres_port`             | `["integer", "null"]` | `5432`        |                                                                                                                                                                                                                                  |
+| `postgres_database`         | `["string"]`          | `N/A`         |                                                                                                                                                                                                                                  |
+| `postgres_username`         | `["string", "null"]`  | `N/A`         |                                                                                                                                                                                                                                  |
+| `postgres_password`         | `["string", "null"]`  | `null`        |                                                                                                                                                                                                                                  |
+| `postgres_schema`           | `["string", "null"]`  | `"public"`    |                                                                                                                                                                                                                                  |
+| `invalid_records_detect`    | `["boolean", "null"]` | `true`        | Include `false` in your config to disable `target-postgres` from crashing on invalid records                                                                                                                                     |
+| `invalid_records_threshold` | `["integer", "null"]` | `0`           | Include a positive value `n` in your config to allow for `target-postgres` to encounter at most `n` invalid records per stream before giving up.                                                                                 |
+| `disable_collection`        | `["string", "null"]`  | `false`       | Include `true` in your config to disable [Singer Usage Logging](#usage-logging).                                                                                                                                                 |
+| `logging_level`             | `["string", "null"]`  | `"INFO"`      | The level for logging. Set to `DEBUG` to get things like queries executed, timing of those queries, etc. See [Python's Logger Levels](https://docs.python.org/3/library/logging.html#levels) for information about valid values. |
+| `persist_empty_tables`      | `["boolean", "null"]` | `False`       | Whether the Target should create tables which have no records present in Remote.                                                                                                                                                 |
 
 ### Supported Versions
 
@@ -80,15 +80,14 @@ other than 4 will be rejected.
 `target-postgres` supports all versions of PostgreSQL which are presently supported
 by the PostgreSQL Global Development Group. Our [CI config](https://github.com/datamill-co/target-postgres/blob/master/.circleci/config.yml) defines all versions we are currently supporting.
 
-
-| Version | Current minor | Supported | First Release | Final Release |
-| ------- | ------------- | --------- | ------------- | ------------- |
-| 11 | 11.1 | Yes | October 18, 2018 | November 9, 2023 |
-| 10 | 10.6 | Yes | October 5, 2017 | November 10, 2022 |
-| 9.6 | 9.6.11 | Yes | September 29, 2016 | November 11, 2021 |
-| 9.5 | 9.5.15 | Yes | January 7, 2016 | February 11, 2021 |
-| 9.4 | 9.4.20 | Yes | December 18, 2014 | February 13, 2020 |
-| 9.3 | 9.3.25 | No | September 9, 2013 | November 8, 2018 |
+| Version | Current minor | Supported | First Release      | Final Release     |
+| ------- | ------------- | --------- | ------------------ | ----------------- |
+| 11      | 11.1          | Yes       | October 18, 2018   | November 9, 2023  |
+| 10      | 10.6          | Yes       | October 5, 2017    | November 10, 2022 |
+| 9.6     | 9.6.11        | Yes       | September 29, 2016 | November 11, 2021 |
+| 9.5     | 9.5.15        | Yes       | January 7, 2016    | February 11, 2021 |
+| 9.4     | 9.4.20        | Yes       | December 18, 2014  | February 13, 2020 |
+| 9.3     | 9.3.25        | No        | September 9, 2013  | November 8, 2018  |
 
 _The above is copied from the [current list of versions](https://www.postgresql.org/support/versioning/) on Postgresql.org_
 
@@ -100,18 +99,18 @@ _The above is copied from the [current list of versions](https://www.postgresql.
   object, and array types with or without null are supported. Arrays can
   have any of the other types listed, including objects as types within
   items.
-    - Example of JSON Schema types that work
-        - `['number']`
-        - `['string']`
-        - `['string', 'null']`
-    - Exmaple of JSON Schema types that **DO NOT** work
-        - `['string', 'integer']`
-        - `['integer', 'number']`
-        - `['any']`
-        - `['null']`
+  - Example of JSON Schema types that work
+    - `['number']`
+    - `['string']`
+    - `['string', 'null']`
+  - Exmaple of JSON Schema types that **DO NOT** work
+    - `['string', 'integer']`
+    - `['integer', 'number']`
+    - `['any']`
+    - `['null']`
 - JSON Schema combinations such as `anyOf` and `allOf` are not supported.
-- JSON Schema $ref is partially supported:
-  - ***NOTE:*** The following limitations are known to **NOT** fail gracefully
+- JSON Schema \$ref is partially supported:
+  - **_NOTE:_** The following limitations are known to **NOT** fail gracefully
   - Presently you cannot have any circular or recursive `$ref`s
   - `$ref`s must be present within the schema:
     - URI's do not work
@@ -158,6 +157,8 @@ As soon as you see `INFO: Dev environment ready.` you can shell into the contain
 
 ```sh
 $ docker exec -it target-postgres_target-postgres_1 bash # Your container names might differ
+root@... $ source /code/venv--target-postgres/bin/activate
+root@... $ pytest
 ```
 
 See the [PyTest](#pytest) commands below!
@@ -166,7 +167,7 @@ See the [PyTest](#pytest) commands below!
 
 To run the tests, you will need a PostgreSQL server running.
 
-***NOTE:*** Testing assumes that you've exposed the traditional port `5432`.
+**_NOTE:_** Testing assumes that you've exposed the traditional port `5432`.
 
 Make sure to set the following env vars for [PyTest](#pytest):
 
@@ -196,5 +197,6 @@ Target Postgres is sponsored by Data Mill (Data Mill Services, LLC) [datamill.co
 
 Data Mill helps organizations utilize modern data infrastructure and data science to power analytics, products, and services.
 
-------
+---
+
 Copyright Data Mill Services, LLC 2018
