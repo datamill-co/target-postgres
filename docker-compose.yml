@@ -1,4 +1,4 @@
-version: '2'
+version: "2"
 services:
   db:
     image: postgres:9.6.11
@@ -8,12 +8,12 @@ services:
       - "5432:5432"
 
   target-postgres:
-    build:
-      context: .
-      dockerfile: ./Dockerfile
+    image: python:3.7.1-stretch
+    working_dir: /code
+    entrypoint: /code/docker-entrypoint.sh
     environment:
-      POSTGRES_HOST: 'db'
-      POSTGRES_DATABASE: 'target_postgres_test'
-      POSTGRES_USERNAME: 'postgres'
+      POSTGRES_HOST: "db"
+      POSTGRES_DATABASE: "target_postgres_test"
+      POSTGRES_USERNAME: "postgres"
     volumes:
       - .:/code
