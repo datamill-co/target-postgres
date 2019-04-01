@@ -114,6 +114,10 @@ class PostgresTarget(SQLInterface):
         if self.persist_empty_tables:
             self.LOGGER.debug('PostgresTarget is persisting empty tables')
 
+    def metrics_tags(self):
+        return {'database': self.conn.get_dsn_parameters().get('dbname', None),
+                'schema': self.postgres_schema}
+
     def write_batch(self, stream_buffer):
         if not self.persist_empty_tables and stream_buffer.count == 0:
             return None
