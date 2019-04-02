@@ -53,7 +53,8 @@ class SQLInterface:
     IDENTIFIER_FIELD_LENGTH = NotImplementedError('`IDENTIFIER_FIELD_LENGTH` not implemented.')
     LOGGER = singer.get_logger()
 
-    def _set_metrics_tags(self, metric, path):
+    def _set_metrics_tags(self, metric, job_type, path):
+        metric.tags['job_type'] = job_type
         metric.tags['path'] = path
 
         metric.tags.update(self.metrics_tags())
@@ -363,7 +364,8 @@ class SQLInterface:
         """
         table_path = schema['path']
 
-        with self._set_metrics_tags(metrics.job_timer('upsert_table_schema'),
+        with self._set_metrics_tags(metrics.job_timer(),
+                                    'upsert_table_schema',
                                     table_path) as timer:
 
             _metadata = deepcopy(metadata)
@@ -774,9 +776,11 @@ class SQLInterface:
         :return: {'records_persisted': int,
                   'rows_persisted': int}
         """
-        with self._set_metrics_tags(metrics.job_timer('stream_batch'),
+        with self._set_metrics_tags(metrics.job_timer(),
+                                    'write_batch',
                                     (root_table_name,)):
             with self._set_metrics_tags(metrics.record_counter(None),
+                                        'write_batch',
                                         (root_table_name,)) as batch_counter:
                 self.LOGGER.info('Writing batch with {} records for `{}` with `key_properties`: `{}`'.format(
                     len(records),
@@ -788,9 +792,11 @@ class SQLInterface:
                     table_batch['streamed_schema']['path'] = (root_table_name,) + \
                                                              table_batch['streamed_schema']['path']
 
-                    with self._set_metrics_tags(metrics.job_timer('stream_batch'),
+                    with self._set_metrics_tags(metrics.job_timer(),
+                                                'table_batch',
                                                 table_batch['streamed_schema']['path']) as table_batch_timer:
                         with self._set_metrics_tags(metrics.record_counter(None),
+                                                    'table_batch',
                                                     table_batch['streamed_schema']['path']) as table_batch_counter:
                             self.LOGGER.info('Writing table batch schema for `{}`...'.format(
                                 table_batch['streamed_schema']['path']
