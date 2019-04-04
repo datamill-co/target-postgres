@@ -184,3 +184,60 @@ def test__schema__nested_arrays_add_tables():
 
         print('PASSED')
         print()
+
+
+def test__records__nested():
+    denested = denest.to_table_batches({
+        "properties": {
+            "a": {"type": "object",
+                  "properties": {
+                      "b": {
+                          "type": "array",
+                          "items": {
+                              "type": "object",
+                              "properties": {
+                                  "c": {
+                                      "type": "object",
+                                      "properties": {
+                                          "d": {
+                                              "type": "integer"}}}}}}}}}},
+        [],
+        [{"a": {"b": []}},
+         {"a": {"b": [{"c": 1}]}},
+         {"a": {"b": [{"c": 12},
+                      {"c": 123}]}},
+         {"a": {"b": [{"c": 1234},
+                      {"c": 12345},
+                      {"c": 123456}]}}])
+
+    print('denested:', denested)
+
+    assert 2 == len(denested)
+
+    root_table_checked = False
+    nested_table_checked = False
+
+    for table_batch in denested:
+        if tuple() == table_batch['streamed_schema']['path']:
+            root_table_checked = True
+
+            assert 4 == len(table_batch['records'])
+
+            for record in table_batch['records']:
+                assert {} == record
+
+    for table_batch in denested:
+        if ('a', 'b') == table_batch['streamed_schema']['path']:
+            nested_table_checked = True
+
+            assert 6 == len(table_batch['records'])
+
+            for record in table_batch['records']:
+                assert 'integer' == record[('c',)][0]
+                assert int == type(record[('c',)][1])
+
+    assert root_table_checked
+    assert nested_table_checked
+
+    for table_batch in denested:
+        assert [] == errors(table_batch)
