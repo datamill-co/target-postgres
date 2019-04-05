@@ -158,7 +158,7 @@ def _denest_schema(table_path, table_json_schema, key_prop_schemas, subtables, l
     for prop, item_json_schema in table_json_schema['properties'].items():
 
         if json_schema.is_object(item_json_schema):
-            _denest_schema_helper(table_path + (prop,),
+            _denest_schema_helper((prop,),
                                   item_json_schema,
                                   json_schema.is_nullable(item_json_schema),
                                   new_properties,
