@@ -28,6 +28,7 @@ def to_table_batches(schema, key_properties, records):
 
     table_records = _get_streamed_table_records(key_properties,
                                                 records)
+
     writeable_batches = []
     for table_json_schema in table_schemas:
         writeable_batches.append({'streamed_schema': table_json_schema,
@@ -158,7 +159,7 @@ def _denest_schema(table_path, table_json_schema, key_prop_schemas, subtables, l
     for prop, item_json_schema in table_json_schema['properties'].items():
 
         if json_schema.is_object(item_json_schema):
-            _denest_schema_helper((prop,),
+            _denest_schema_helper(table_path + (prop,),
                                   item_json_schema,
                                   json_schema.is_nullable(item_json_schema),
                                   new_properties,
@@ -270,7 +271,7 @@ def _denest_record(table_path, record, records_map, key_properties, pk_fks, leve
             {...}
             """
             _denest_subrecord(table_path + (prop,),
-                              (prop,),
+                              table_path + (prop,),
                               denested_record,
                               value,
                               records_map,
