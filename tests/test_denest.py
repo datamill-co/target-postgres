@@ -199,29 +199,40 @@ def test__records__nested():
                                   "c": {
                                       "type": "object",
                                       "properties": {
-                                          "d": {
-                                              "type": "integer"}}}}}}}}}},
+                                          "d": {"type": "integer"},
+                                          "e": {"type": "array",
+                                                "items": {"type": "object",
+                                                          "properties": {
+                                                              "f": {"type": "string"},
+                                                              "g": {"type": "boolean"}}}}}}}}}}}}},
         [],
         [{"a": {"b": []}},
-         {"a": {"b": [{"c": 1}]}},
-         {"a": {"b": [{"c": 12},
-                      {"c": 123}]}},
-         {"a": {"b": [{"c": 1234},
-                      {"c": 12345},
-                      {"c": 123456}]}}])
+         {"a": {"b": [{"c": {"d": 1}}]}},
+         {"a": {"b": [{"c": {"d": 12}},
+                      {"c": {"d": 123}}]}},
+         {"a": {"b": [{"c": {"d": 1234}},
+                      {"c": {"d": 12345}},
+                      {"c": {"d": 123456}}]}},
+         {"a": {"b": [{"c": {"e": [{"f": "hello",
+                                    "g": True},
+                                   {"f": "goodbye",
+                                    "g": True}]}}]}}])
 
     print('denested:', denested)
 
-    assert 2 == len(denested)
+    assert 3 == len(denested)
 
     root_table_checked = False
     nested_table_checked = False
+    nested_nested_table_checked = False
 
     for table_batch in denested:
         if tuple() == table_batch['streamed_schema']['path']:
             root_table_checked = True
 
-            assert 4 == len(table_batch['records'])
+            assert {} == table_batch['streamed_schema']['schema']['properties']
+
+            assert 5 == len(table_batch['records'])
 
             for record in table_batch['records']:
                 assert {} == record
@@ -230,14 +241,30 @@ def test__records__nested():
         if ('a', 'b') == table_batch['streamed_schema']['path']:
             nested_table_checked = True
 
-            assert 6 == len(table_batch['records'])
+            assert {'type': 'integer'} == table_batch['streamed_schema']['schema']['properties'][('c', 'd')]
+
+            assert 7 == len(table_batch['records'])
 
             for record in table_batch['records']:
-                assert 'integer' == record[('c',)][0]
-                assert int == type(record[('c',)][1])
+                assert 'integer' == record[('c', 'd')][0]
+                assert int == type(record[('c', 'd')][1])
+
+    for table_batch in denested:
+        if ('a', 'b', 'c', 'e') == table_batch['streamed_schema']['path']:
+            nested_nested_table_checked = True
+
+            assert {'type': 'string'} == table_batch['streamed_schema']['schema']['properties'][('f',)]
+            assert {'type': 'boolean'} == table_batch['streamed_schema']['schema']['properties'][('g',)]
+
+            assert 2 == len(table_batch['records'])
+
+            for record in table_batch['records']:
+                assert 'string' == record[('f',)][1]
+                assert record[('g',)][1]
 
     assert root_table_checked
     assert nested_table_checked
+    assert nested_nested_table_checked
 
     for table_batch in denested:
         assert [] == errors(table_batch)
