@@ -99,9 +99,6 @@ def test__schema__nested_objects_add_fields():
         for table_batch in denested:
             assert [] == errors(table_batch)
 
-        print('PASSED')
-        print()
-
 
 def test__schema__arrays_add_tables():
     denested = denest.to_table_batches({'properties':
@@ -182,5 +179,104 @@ def test__schema__nested_arrays_add_tables():
         ## Assert that we looked for every table path
         assert tables_checked == len(denested)
 
-        print('PASSED')
-        print()
+
+NESTED_SCHEMA = {
+    "properties": {
+        "a": {"type": "object",
+              "properties": {
+                  "b": {
+                      "type": "array",
+                      "items": {
+                          "type": "object",
+                          "properties": {
+                              "c": {
+                                  "type": "object",
+                                  "properties": {
+                                      "d": {"type": "integer"},
+                                      "e": {"type": "array",
+                                            "items": {"type": "object",
+                                                      "properties": {
+                                                          "f": {"type": "string"},
+                                                          "g": {"type": "boolean"}}}}}}}}}}}}}
+
+NESTED_RECORDS = [{"a": {"b": []}},
+                  {"a": {"b": [{"c": {"d": 1}}]}},
+                  {"a": {"b": [{"c": {"d": 12}},
+                               {"c": {"d": 123}}]}},
+                  {"a": {"b": [{"c": {"d": 1234}},
+                               {"c": {"d": 12345}},
+                               {"c": {"d": 123456}}]}},
+                  {"a": {"b": [{"c": {"e": [{"f": "hello",
+                                             "g": True},
+                                            {"f": "goodbye",
+                                             "g": True}]}}]}}]
+
+
+def test__records__nested__tables():
+    denested = denest.to_table_batches(NESTED_SCHEMA, [], NESTED_RECORDS)
+
+    print('denested:', denested)
+
+    assert 3 == len(denested)
+
+    for table_batch in denested:
+        assert table_batch['streamed_schema']['path'] in \
+               {tuple(),
+                ('a', 'b'),
+                ('a', 'b', 'c', 'e')}
+        assert [] == errors(table_batch)
+
+
+def _get_table_batch_with_path(table_batches, path):
+    for table_batch in table_batches:
+        if path == table_batch['streamed_schema']['path']:
+            return table_batch
+    raise Exception('Could not find table_batch with path: {}'.format(path))
+
+
+def test__records__nested__root_empty():
+    denested = denest.to_table_batches(NESTED_SCHEMA, [], NESTED_RECORDS)
+    table_batch = _get_table_batch_with_path(denested,
+                                             tuple())
+
+    assert {} == table_batch['streamed_schema']['schema']['properties']
+
+    assert 5 == len(table_batch['records'])
+
+    for record in table_batch['records']:
+        assert {} == record
+
+
+def test__records__nested__child_table__a_b():
+    denested = denest.to_table_batches(NESTED_SCHEMA, [], NESTED_RECORDS)
+    table_batch = _get_table_batch_with_path(denested,
+                                             ('a', 'b'))
+
+    assert {'type': ['integer']} == table_batch['streamed_schema']['schema']['properties'][('c', 'd')]
+
+    assert 7 == len(table_batch['records'])
+
+    for record in table_batch['records']:
+        # Don't try to access key "('c', 'd')" if record is empty
+        if record == {}:
+            continue
+        assert 'integer' == record[('c', 'd')][0]
+        assert int == type(record[('c', 'd')][1])
+
+
+def test__records__nested__child_table__a_b_c_e():
+    denested = denest.to_table_batches(NESTED_SCHEMA, [], NESTED_RECORDS)
+    table_batch = _get_table_batch_with_path(denested,
+                                             ('a', 'b', 'c', 'e'))
+
+    assert {'type': ['string']} == table_batch['streamed_schema']['schema']['properties'][('f',)]
+    assert {'type': ['boolean']} == table_batch['streamed_schema']['schema']['properties'][('g',)]
+
+    assert 2 == len(table_batch['records'])
+
+    for record in table_batch['records']:
+        assert 'string' == record[('f',)][0]
+        assert str == type(record[('f',)][1])
+
+        assert 'boolean' == record[('g',)][0]
+        assert bool == type(record[('g',)][1])
