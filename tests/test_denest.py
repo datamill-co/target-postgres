@@ -230,7 +230,7 @@ def test__records__nested__tables():
 def _get_table_batch_with_path(table_batches, path):
     for table_batch in table_batches:
         if path == table_batch['streamed_schema']['path']:
-            return path
+            return table_batch
     raise Exception('Could not find table_batch with path: {}'.format(path))
 
 
