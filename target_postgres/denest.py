@@ -93,6 +93,7 @@ def _literal_only_schema(schema):
 
 
 def _denest_schema_helper(table_path,
+                          prop_path,
                           table_json_schema,
                           nullable,
                           top_level_schema,
@@ -102,6 +103,7 @@ def _denest_schema_helper(table_path,
     for prop, item_json_schema in table_json_schema['properties'].items():
         if json_schema.is_object(item_json_schema):
             _denest_schema_helper(table_path + (prop,),
+                                  prop_path + (prop,),
                                   item_json_schema,
                                   nullable,
                                   top_level_schema,
@@ -120,7 +122,7 @@ def _denest_schema_helper(table_path,
             if nullable and not json_schema.is_nullable(item_json_schema):
                 item_json_schema['type'].append('null')
 
-            top_level_schema[table_path + (prop,)] = _literal_only_schema(item_json_schema)
+            top_level_schema[prop_path + (prop,)] = _literal_only_schema(item_json_schema)
 
 
 def _create_subtable(table_path, table_json_schema, key_prop_schemas, subtables, level):
@@ -159,6 +161,7 @@ def _denest_schema(table_path, table_json_schema, key_prop_schemas, subtables, l
 
         if json_schema.is_object(item_json_schema):
             _denest_schema_helper(table_path + (prop,),
+                                  (prop,),
                                   item_json_schema,
                                   json_schema.is_nullable(item_json_schema),
                                   new_properties,
@@ -221,7 +224,7 @@ def _denest_subrecord(table_path,
             """
             {...}
             """
-            _denest_subrecord(table_path,
+            _denest_subrecord(table_path + (prop,),
                               prop_path + (prop,),
                               parent_record,
                               value,
@@ -234,7 +237,7 @@ def _denest_subrecord(table_path,
             """
             [...]
             """
-            _denest_records(prop_path + (prop,),
+            _denest_records(table_path + (prop,),
                             value,
                             records_map,
                             key_properties,
