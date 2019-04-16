@@ -6,8 +6,17 @@
   - [ISSUE LINK](https://github.com/datamill-co/target-postgres/issues/109)
   - [FAILING TESTS LINK](https://github.com/datamill-co/target-postgres/pull/110)
   - [FIX LINK](https://github.com/datamill-co/target-postgres/pull/111)
-  - Subtables with subtables do not serialize column names correctly
+  - Subtables with subtables did not serialize column names correctly
     - The column names ended up having the _table names_ (paths) prepended on them
+    - Due to the denested table _schema_ and denested _records_ being different
+      no information showed up in remote.
+    - This bug was ultimately tracked down to the core denesting logic.
+  - This will fix failing uploads which had **_nullable_** columns in subtables but
+    no data was seen populating those columns.
+    - The broken schema columns will still remain
+  - Failing schemas which had **_non-null_** columns in subtables will still be broken
+    - To fix will require dropping the associated tables, potentially resetting the entire
+      `db`/`schema`
 
 ## 0.1.6
 
