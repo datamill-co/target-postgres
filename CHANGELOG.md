@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.7
+
+- **BUG FIX:** A bug was identified for de-nesting.
+  - [ISSUE LINK](https://github.com/datamill-co/target-postgres/issues/109)
+  - [FAILING TESTS LINK](https://github.com/datamill-co/target-postgres/pull/110)
+  - [FIX LINK](https://github.com/datamill-co/target-postgres/pull/111)
+  - Subtables with subtables do not serialize column names correctly
+    - The column names ended up having the _table names_ (paths) prepended on them
+
 ## 0.1.6
 
 - **BUG FIX:** A bug was identified for path to column serialization.
