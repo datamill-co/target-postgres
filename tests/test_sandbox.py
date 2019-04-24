@@ -1258,3 +1258,6 @@ def test_trouble__sandbox(db_cleanup):
             assert_count_equal(cur,
                                'activities',
                                1)
+
+            cur.execute('SELECT envelope__date FROM "public"."activities"')
+            assert cur.fetchone()[0]
