@@ -513,18 +513,10 @@ class TroubleStream(SandboxStream):
                             },
                             "date": {
                                 "inclusion": "automatic",
-                                "anyOf": [
-                                    {
-                                        "type": [
-                                            "string"
-                                        ],
-                                        "format": "date-time"
-                                    },
-                                    {
-                                        "type": [
-                                            "string"
-                                        ]
-                                    }
+                                "format": "date-time",
+                                "type": [
+                                    "null",
+                                    "string"
                                 ]
                             },
                             "subject": {
