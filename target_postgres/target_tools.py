@@ -37,6 +37,7 @@ def stream_to_target(stream, target, config={}):
     """
 
     streams = {}
+    states = []
     try:
         if not config.get('disable_collection', False):
             _async_send_usage_stats()
@@ -55,7 +56,8 @@ def stream_to_target(stream, target, config={}):
                           invalid_records_threshold,
                           max_batch_rows,
                           max_batch_size,
-                          line)
+                          line,
+                          states)
             if line_count > 0 and line_count % batch_detection_threshold == 0:
                 _flush_streams(streams, target)
             line_count += 1
@@ -69,6 +71,7 @@ def stream_to_target(stream, target, config={}):
         raise e
     finally:
         _report_invalid_records(streams)
+        _report_state(states)
 
 
 class TargetError(Exception):
@@ -96,9 +99,11 @@ def _report_invalid_records(streams):
                 stream_buffer.peek_invalid_records()
             ))
 
+def _report_state(states):
+    sys.stdout.write(json.dumps(states[-1]))
 
 def _line_handler(streams, target, invalid_records_detect, invalid_records_threshold, max_batch_rows, max_batch_size,
-                  line):
+                  line, states):
     try:
         line_data = json.loads(line)
     except json.decoder.JSONDecodeError:
@@ -163,7 +168,7 @@ def _line_handler(streams, target, invalid_records_detect, invalid_records_thres
         target.write_batch(stream_buffer)
         target.activate_version(stream_buffer, line_data['version'])
     elif line_data['type'] == 'STATE':
-        LOGGER.warning('`STATE` Singer message type not supported')
+        states.append(line_data['value'])
     else:
         raise TargetError('Unknown message type {} in message {}'.format(
             line_data['type'],
