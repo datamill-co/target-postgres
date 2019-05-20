@@ -36,6 +36,7 @@ def stream_to_target(stream, target, config={}):
     :return: None
     """
 
+    state_writer = sys.stdout
     streams = {}
     try:
         if not config.get('disable_collection', False):
@@ -55,7 +56,8 @@ def stream_to_target(stream, target, config={}):
                           invalid_records_threshold,
                           max_batch_rows,
                           max_batch_size,
-                          line)
+                          line,
+                          state_writer)
             if line_count > 0 and line_count % batch_detection_threshold == 0:
                 _flush_streams(streams, target)
             line_count += 1
@@ -98,7 +100,7 @@ def _report_invalid_records(streams):
 
 
 def _line_handler(streams, target, invalid_records_detect, invalid_records_threshold, max_batch_rows, max_batch_size,
-                  line):
+                  line, state_writer):
     try:
         line_data = json.loads(line)
     except json.decoder.JSONDecodeError:
@@ -163,7 +165,9 @@ def _line_handler(streams, target, invalid_records_detect, invalid_records_thres
         target.write_batch(stream_buffer)
         target.activate_version(stream_buffer, line_data['version'])
     elif line_data['type'] == 'STATE':
-        LOGGER.warning('`STATE` Singer message type not supported')
+        line = json.dumps(line_data['value'])
+        state_writer.write("{}\n".format(line))
+        state_writer.flush()
     else:
         raise TargetError('Unknown message type {} in message {}'.format(
             line_data['type'],

@@ -1,4 +1,5 @@
 from copy import deepcopy
+import json
 
 from unittest.mock import patch
 import pytest
@@ -70,3 +71,19 @@ def test_loading__invalid__records__threshold():
         target_tools.stream_to_target(InvalidCatStream(20), target, config=config)
 
     assert len(target.calls['write_batch']) == 0
+
+
+def test_state__capture(capsys):
+    stream = [
+        json.dumps({'type': 'STATE', 'value': { 'test': 'state-1' }}),
+        json.dumps({'type': 'STATE', 'value': { 'test': 'state-2' }})]
+
+    target_tools.stream_to_target(stream, Target())
+
+    out, _ = capsys.readouterr()
+
+    filtered_output = list(filter(None, out.split('\n')))
+
+    assert len(filtered_output) == 2
+    assert json.loads(filtered_output[0])['test'] == 'state-1'
+    assert json.loads(filtered_output[1])['test'] == 'state-2'
