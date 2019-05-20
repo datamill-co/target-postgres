@@ -49,7 +49,7 @@ pip install singer-target-postgres
    ```bash
    ~/.virtualenvs/tap-something/bin/tap-something \
      | ~/.virtualenvs/target-postgres/bin/target-postgres \
-       --config ~/singer.io/target_postgres_config.json
+       --config ~/singer.io/target_postgres_config.json >> state.json
    ```
 
 ### Config.json
@@ -98,7 +98,6 @@ _The above is copied from the [current list of versions](https://www.postgresql.
 
 ## Known Limitations
 
-- Ignores `STATE` Singer messages.
 - Requires a [JSON Schema](https://json-schema.org/) for every stream.
 - Only string, string with date-time format, integer, number, boolean,
   object, and array types with or without null are supported. Arrays can
