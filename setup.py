@@ -23,7 +23,7 @@ setup(
         'jsonschema==2.6.0',
         'psycopg2==2.7.7',
         'psycopg2-binary==2.7.7',
-        'singer-python==5.4.1'
+        'singer-python==5.6.0'
     ],
     setup_requires=[
         "pytest-runner"
