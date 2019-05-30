@@ -82,11 +82,11 @@ by the PostgreSQL Global Development Group. Our [CI config](https://github.com/d
 
 | Version | Current minor | Supported | First Release      | Final Release     |
 | ------- | ------------- | --------- | ------------------ | ----------------- |
-| 11      | 11.1          | Yes       | October 18, 2018   | November 9, 2023  |
-| 10      | 10.6          | Yes       | October 5, 2017    | November 10, 2022 |
-| 9.6     | 9.6.11        | Yes       | September 29, 2016 | November 11, 2021 |
-| 9.5     | 9.5.15        | Yes       | January 7, 2016    | February 11, 2021 |
-| 9.4     | 9.4.20        | Yes       | December 18, 2014  | February 13, 2020 |
+| 11      | 11.3          | Yes       | October 18, 2018   | November 9, 2023  |
+| 10      | 10.8          | Yes       | October 5, 2017    | November 10, 2022 |
+| 9.6     | 9.6.13        | Yes       | September 29, 2016 | November 11, 2021 |
+| 9.5     | 9.5.17        | Yes       | January 7, 2016    | February 11, 2021 |
+| 9.4     | 9.4.22        | Yes       | December 18, 2014  | February 13, 2020 |
 | 9.3     | 9.3.25        | No        | September 9, 2013  | November 8, 2018  |
 
 _The above is copied from the [current list of versions](https://www.postgresql.org/support/versioning/) on Postgresql.org_
@@ -195,8 +195,9 @@ $ pytest
 
 Join the conversation over at the [Singer.io Slack](singer-io.slack.com) and on the `#target-postgres` channel.
 
-Try to adhere to the following for contributing:  
- - File New Issue -> Fork -> New Branch(If needed) -> Pull Request -> Approval -> Merge
+Try to adhere to the following for contributing:
+
+- File New Issue -> Fork -> New Branch(If needed) -> Pull Request -> Approval -> Merge
 
 Users can file an issue without submitting a pull request but be aware not all issues can or will be addressed.
 
