@@ -23,19 +23,19 @@ workflows:
           <<: *filters
           requires:
             - cache
-      - test--11.1:
+      - test--11.3:
           <<: *filters
           requires:
             - cache
-      - test--9.6.11:
+      - test--9.6.13:
           <<: *filters
           requires:
             - cache
-      - test--9.5.15:
+      - test--9.5.17:
           <<: *filters
           requires:
             - cache
-      - test--9.4.20:
+      - test--9.4.22:
           <<: *filters
           requires:
             - cache
@@ -46,10 +46,10 @@ workflows:
       - test--tap-github:
           <<: *filters
           requires:
-            - test--11.1
-            - test--9.6.11
-            - test--9.5.15
-            - test--9.4.20
+            - test--11.3
+            - test--9.6.13
+            - test--9.5.17
+            - test--9.4.22
       - test-release:
           <<: *filters__tags
           requires:
@@ -99,7 +99,7 @@ jobs:
   cache:
     working_directory: /code/
     docker:
-      - image: python:3.7.1-stretch
+      - image: python:3.7.3-stretch
     steps:
       - checkout
       - *restore__cache
@@ -142,42 +142,42 @@ jobs:
           paths:
             - "./venv--target-postgres"
 
-  test--11.1:
+  test--11.3:
     <<: *test__base
     docker:
-      - image: python:3.7.1-stretch
-      - image: postgres:11.1
+      - image: python:3.7.3-stretch
+      - image: postgres:11.3
         environment:
           POSTGRES_DB: target_postgres_test
 
-  test--9.6.11:
+  test--9.6.13:
     <<: *test__base
     docker:
-      - image: python:3.7.1-stretch
-      - image: postgres:9.6.11
+      - image: python:3.7.3-stretch
+      - image: postgres:9.6.13
         environment:
           POSTGRES_DB: target_postgres_test
 
-  test--9.5.15:
+  test--9.5.17:
     <<: *test__base
     docker:
-      - image: python:3.7.1-stretch
-      - image: postgres:9.5.15
+      - image: python:3.7.3-stretch
+      - image: postgres:9.5.17
         environment:
           POSTGRES_DB: target_postgres_test
 
-  test--9.4.20:
+  test--9.4.22:
     <<: *test__base
     docker:
-      - image: python:3.7.1-stretch
-      - image: postgres:9.4.20
+      - image: python:3.7.3-stretch
+      - image: postgres:9.4.22
         environment:
           POSTGRES_DB: target_postgres_test
 
   test--8.4.22:
     <<: *test__base
     docker:
-      - image: python:3.7.1-stretch
+      - image: python:3.7.3-stretch
       - image: postgres:8.4.22
         environment:
           POSTGRES_DB: target_postgres_test
@@ -185,8 +185,8 @@ jobs:
   test--tap-github:
     working_directory: /code/
     docker:
-      - image: python:3.7.1-stretch
-      - image: postgres:9.4.20
+      - image: python:3.7.3-stretch
+      - image: postgres:9.4.22
         environment:
           POSTGRES_DB: target_postgres_test
     steps:
@@ -274,7 +274,7 @@ jobs:
   build:
     working_directory: /code/
     docker:
-      - image: python:3.7.1-stretch
+      - image: python:3.7.3-stretch
     steps:
       - checkout
       - *restore__cache
@@ -299,7 +299,7 @@ jobs:
   test-release:
     working_directory: /code/
     docker:
-      - image: python:3.7.1-stretch
+      - image: python:3.7.3-stretch
     steps:
       - checkout
       - *restore__cache
@@ -329,7 +329,7 @@ jobs:
   release:
     working_directory: /code/
     docker:
-      - image: python:3.7.1-stretch
+      - image: python:3.7.3-stretch
     steps:
       - checkout
       - *restore__cache
