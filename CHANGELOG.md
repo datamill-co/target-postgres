@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.8
+
+- **Singer-Python:** bumped to latest
+- **Minor housekeeping:**
+  - Updated container versions to latest
+  - Updated README to reflect new versions of PostgreSQL Server
+
 ## 0.1.7
 
 - **BUG FIX:** A bug was identified for de-nesting.
