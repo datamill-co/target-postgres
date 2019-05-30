@@ -29,8 +29,8 @@ setup(
     ],
     tests_require=[
         "chance==0.110",
-        "Faker==0.9.2",
-        "pytest==3.9.3"
+        "Faker==1.0.7",
+        "pytest==4.5.0"
     ],
     entry_points='''
       [console_scripts]
