@@ -159,7 +159,7 @@ def test_loading__invalid__default_null_value__non_nullable_column(db_cleanup):
             record['name'] = postgres.RESERVED_NULL_DEFAULT
             return record
 
-    with pytest.raises(postgres.PostgresError, match=r'.*IntegrityError.*'):
+    with pytest.raises(postgres.PostgresError, match=r'.*NotNullViolation.*'):
         main(CONFIG, input_stream=NullDefaultCatStream(20))
 
 
