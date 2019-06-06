@@ -292,7 +292,7 @@ jobs:
       - attach_workspace:
           at: "./"
       - run:
-          name: Build disttribution
+          name: Build distribution
           command: |
             source venv--target-postgres/bin/activate
 
