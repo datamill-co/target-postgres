@@ -16,7 +16,12 @@ def main(config, input_stream=None):
             port=config.get('postgres_port', 5432),
             dbname=config.get('postgres_database'),
             user=config.get('postgres_username'),
-            password=config.get('postgres_password')
+            password=config.get('postgres_password'),
+            sslmode=config.get('postgres_sslmode'),
+            sslcert=config.get('postgres_sslcert'),
+            sslkey=config.get('postgres_sslkey'),
+            sslrootcert=config.get('postgres_sslrootcert'),
+            sslcrl=config.get('postgres_sslcrl')
     ) as connection:
         postgres_target = PostgresTarget(
             connection,
