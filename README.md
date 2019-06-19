@@ -51,6 +51,11 @@ pip install singer-target-postgres
      | ~/.virtualenvs/target-postgres/bin/target-postgres \
        --config ~/singer.io/target_postgres_config.json
    ```
+   
+   If you are running windows, the following is equivalent:
+   ```
+   ~\.virtualenvs\tap-something\Scripts\tap-something.exe | ~.virtualenvs\target-postgres\Scripts\target-postgres.exe --config ~\singer.io\target_postgres_config.json
+   ```
 
 ### Config.json
 
