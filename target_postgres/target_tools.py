@@ -51,6 +51,7 @@ def stream_to_target(stream, target, config={}):
         line_count = 0
         for line in stream:
             _line_handler(streams,
+                          state,
                           target,
                           invalid_records_detect,
                           invalid_records_threshold,
@@ -166,6 +167,7 @@ def _line_handler(streams, target, invalid_records_detect, invalid_records_thres
         target.activate_version(stream_buffer, line_data['version'])
     elif line_data['type'] == 'STATE':
         line = json.dumps(line_data['value'])
+        _flush_streams(streams, target, force=True)
         state_writer.write("{}\n".format(line))
         state_writer.flush()
     else:

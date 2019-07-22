@@ -99,6 +99,7 @@ _The above is copied from the [current list of versions](https://www.postgresql.
 ## Known Limitations
 
 - Requires a [JSON Schema](https://json-schema.org/) for every stream.
+- Eagerly flushes records to the database upon recieving a STATE message, which can be frequently if a tap is emitting STATE messages often.
 - Only string, string with date-time format, integer, number, boolean,
   object, and array types with or without null are supported. Arrays can
   have any of the other types listed, including objects as types within
