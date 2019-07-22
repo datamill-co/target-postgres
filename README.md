@@ -75,6 +75,7 @@ here.
 | `disable_collection`        | `["string", "null"]`  | `false`                          | Include `true` in your config to disable [Singer Usage Logging](#usage-logging).                                                                                                                                                 |
 | `logging_level`             | `["string", "null"]`  | `"INFO"`                         | The level for logging. Set to `DEBUG` to get things like queries executed, timing of those queries, etc. See [Python's Logger Levels](https://docs.python.org/3/library/logging.html#levels) for information about valid values. |
 | `persist_empty_tables`      | `["boolean", "null"]` | `False`                          | Whether the Target should create tables which have no records present in Remote.                                                                                                                                                 |
+| `state_support`             | `["boolean", "null"]` | `True`        | Whether the Target should emit `STATE` messages to stdout for further consumption. In this mode, `STATE` messages trigger flushing all unpersisted records from the tap.                                                   |
 
 ### Supported Versions
 

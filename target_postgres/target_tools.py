@@ -47,6 +47,7 @@ def stream_to_target(stream, target, config={}):
         max_batch_rows = config.get('max_batch_rows')
         max_batch_size = config.get('max_batch_size')
         batch_detection_threshold = config.get('batch_detection_threshold', 5000)
+        state_support = config.get('state_support', True)
 
         line_count = 0
         for line in stream:
@@ -58,7 +59,9 @@ def stream_to_target(stream, target, config={}):
                           max_batch_rows,
                           max_batch_size,
                           line,
-                          state_writer)
+                          state_support,
+                          state_writer
+            )
             if line_count > 0 and line_count % batch_detection_threshold == 0:
                 _flush_streams(streams, target)
             line_count += 1
@@ -101,7 +104,7 @@ def _report_invalid_records(streams):
 
 
 def _line_handler(streams, target, invalid_records_detect, invalid_records_threshold, max_batch_rows, max_batch_size,
-                  line, state_writer):
+                  line, state_support, state_writer):
     try:
         line_data = json.loads(line)
     except json.decoder.JSONDecodeError:
@@ -166,10 +169,11 @@ def _line_handler(streams, target, invalid_records_detect, invalid_records_thres
         target.write_batch(stream_buffer)
         target.activate_version(stream_buffer, line_data['version'])
     elif line_data['type'] == 'STATE':
-        line = json.dumps(line_data['value'])
-        _flush_streams(streams, target, force=True)
-        state_writer.write("{}\n".format(line))
-        state_writer.flush()
+        if state_support:
+            line = json.dumps(line_data['value'])
+            _flush_streams(streams, target, force=True)
+            state_writer.write("{}\n".format(line))
+            state_writer.flush()
     else:
         raise TargetError('Unknown message type {} in message {}'.format(
             line_data['type'],
