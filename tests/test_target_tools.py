@@ -219,3 +219,31 @@ def test_state__doesnt_emit_when_only_one_of_several_streams_is_flushing(capsys)
     output = filtered_output(capsys)
     assert len(output) == 1
     assert json.loads(output[0])['test'] == 'state-4'
+
+
+def test_state__doesnt_emit_when_it_isnt_different_than_the_previous_emission(capsys):
+    config = CONFIG.copy()
+    config['max_batch_rows'] = 5
+    config['batch_detection_threshold'] = 1
+    rows = list(CatStream(100))
+    target = Target()
+
+    def test_stream():
+        yield rows[0]
+        for row in rows[slice(1, 21)]:
+            yield row
+        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-1' }})
+        output = filtered_output(capsys)
+        assert len(output) == 1
+
+        for row in rows[slice(22, 99)]:
+            yield row
+        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-1' }})
+
+        output = filtered_output(capsys)
+        assert len(output) == 0
+
+    target_tools.stream_to_target(test_stream(), target, config=config)
+
+    output = filtered_output(capsys)
+    assert len(output) == 0

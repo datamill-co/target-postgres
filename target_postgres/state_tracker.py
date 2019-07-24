@@ -1,6 +1,7 @@
 from collections import deque
 import json
 import sys
+import singer.statediff as statediff
 
 
 class TargetError(Exception):
@@ -28,6 +29,7 @@ class StateTracker:
 
         self.state_queue = deque()  # contains dicts of {'state': <state blob>, 'watermark': number}
         self.message_counter = 0
+        self.last_emitted_state = None
 
     def register_stream(self, stream, buffered_stream):
         self.streams[stream] = buffered_stream
@@ -68,6 +70,9 @@ class StateTracker:
             emittable_state = self.state_queue.popleft()['state']
 
         if emittable_state:
-            line = json.dumps(emittable_state)
-            sys.stdout.write("{}\n".format(line))
-            sys.stdout.flush()
+            if len(statediff.diff(emittable_state, self.last_emitted_state or {})) > 0:
+                line = json.dumps(emittable_state)
+                sys.stdout.write("{}\n".format(line))
+                sys.stdout.flush()
+
+            self.last_emitted_state = emittable_state
