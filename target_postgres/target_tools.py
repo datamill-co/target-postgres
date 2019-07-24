@@ -10,6 +10,7 @@ from singer import utils, metadata, metrics
 
 from target_postgres import json_schema
 from target_postgres.singer_stream import BufferedSingerStream
+from target_postgres.state_tracker import StateTracker
 
 LOGGER = singer.get_logger()
 
@@ -36,8 +37,9 @@ def stream_to_target(stream, target, config={}):
     :return: None
     """
 
-    state_writer = sys.stdout
-    streams = {}
+    state_support = config.get('state_support', True)
+    state_tracker = StateTracker(target, state_support)
+
     try:
         if not config.get('disable_collection', False):
             _async_send_usage_stats()
@@ -47,25 +49,22 @@ def stream_to_target(stream, target, config={}):
         max_batch_rows = config.get('max_batch_rows')
         max_batch_size = config.get('max_batch_size')
         batch_detection_threshold = config.get('batch_detection_threshold', 5000)
-        state_support = config.get('state_support', True)
 
         line_count = 0
         for line in stream:
-            _line_handler(streams,
+            _line_handler(state_tracker,
                           target,
                           invalid_records_detect,
                           invalid_records_threshold,
                           max_batch_rows,
                           max_batch_size,
-                          line,
-                          state_support,
-                          state_writer
+                          line
             )
             if line_count > 0 and line_count % batch_detection_threshold == 0:
-                _flush_streams(streams, target)
+                state_tracker.flush_streams()
             line_count += 1
 
-        _flush_streams(streams, target, force=True)
+        state_tracker.flush_streams(force=True)
 
         return None
 
@@ -73,24 +72,13 @@ def stream_to_target(stream, target, config={}):
         LOGGER.critical(e)
         raise e
     finally:
-        _report_invalid_records(streams)
+        _report_invalid_records(state_tracker.streams)
 
 
 class TargetError(Exception):
     """
     Raise when there is an Exception streaming data to the target.
     """
-
-
-def _flush_stream(target, stream_buffer):
-    target.write_batch(stream_buffer)
-    stream_buffer.flush_buffer()
-
-
-def _flush_streams(streams, target, force=False):
-    for stream_buffer in streams.values():
-        if force or stream_buffer.buffer_full:
-            _flush_stream(target, stream_buffer)
 
 
 def _report_invalid_records(streams):
@@ -102,8 +90,7 @@ def _report_invalid_records(streams):
             ))
 
 
-def _line_handler(streams, target, invalid_records_detect, invalid_records_threshold, max_batch_rows, max_batch_size,
-                  line, state_support, state_writer):
+def _line_handler(state_tracker, target, invalid_records_detect, invalid_records_threshold, max_batch_rows, max_batch_size, line):
     try:
         line_data = json.loads(line)
     except json.decoder.JSONDecodeError:
@@ -133,7 +120,7 @@ def _line_handler(streams, target, invalid_records_detect, invalid_records_thres
         else:
             key_properties = None
 
-        if stream not in streams:
+        if stream not in state_tracker.streams:
             buffered_stream = BufferedSingerStream(stream,
                                                    schema,
                                                    key_properties,
@@ -143,35 +130,32 @@ def _line_handler(streams, target, invalid_records_detect, invalid_records_thres
                 buffered_stream.max_rows = max_batch_rows
             if max_batch_size:
                 buffered_stream.max_buffer_size = max_batch_size
-            streams[stream] = buffered_stream
+            state_tracker.streams[stream] = buffered_stream
         else:
-            streams[stream].update_schema(schema, key_properties)
+            state_tracker.streams[stream].update_schema(schema, key_properties)
     elif line_data['type'] == 'RECORD':
         if 'stream' not in line_data:
             raise TargetError('`stream` is a required key: {}'.format(line))
-        if line_data['stream'] not in streams:
+        if line_data['stream'] not in state_tracker.streams:
             raise TargetError('A record for stream {} was encountered before a corresponding schema'
                               .format(line_data['stream']))
 
-        streams[line_data['stream']].add_record_message(line_data)
+        state_tracker.streams[line_data['stream']].add_record_message(line_data)
 
     elif line_data['type'] == 'ACTIVATE_VERSION':
         if 'stream' not in line_data:
             raise TargetError('`stream` is a required key: {}'.format(line))
         if 'version' not in line_data:
             raise TargetError('`version` is a required key: {}'.format(line))
-        if line_data['stream'] not in streams:
+        if line_data['stream'] not in state_tracker.streams:
             raise TargetError('A ACTIVATE_VERSION for stream {} was encountered before a corresponding schema'
                               .format(line_data['stream']))
 
-        stream_buffer = streams[line_data['stream']]
+        stream_buffer = state_tracker.streams[line_data['stream']]
         target.write_batch(stream_buffer)
         target.activate_version(stream_buffer, line_data['version'])
     elif line_data['type'] == 'STATE':
-        if state_support:
-            line = json.dumps(line_data['value'])
-            state_writer.write("{}\n".format(line))
-            state_writer.flush()
+        state_tracker.emit_state(line_data['value'])
     else:
         raise TargetError('Unknown message type {} in message {}'.format(
             line_data['type'],

@@ -87,3 +87,17 @@ def test_state__capture(capsys):
     assert len(filtered_output) == 2
     assert json.loads(filtered_output[0])['test'] == 'state-1'
     assert json.loads(filtered_output[1])['test'] == 'state-2'
+
+
+def test_state__capture_can_be_disabled(capsys):
+    stream = [
+        json.dumps({'type': 'STATE', 'value': { 'test': 'state-1' }}),
+        json.dumps({'type': 'STATE', 'value': { 'test': 'state-2' }})]
+
+    target_tools.stream_to_target(stream, Target(), {'state_support': False})
+
+    out, _ = capsys.readouterr()
+
+    filtered_output = list(filter(None, out.split('\n')))
+
+    assert len(filtered_output) == 0
