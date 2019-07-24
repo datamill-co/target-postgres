@@ -8,7 +8,7 @@ from target_postgres import singer_stream
 from target_postgres import target_tools
 from target_postgres.sql_base import SQLInterface
 
-from fixtures import CONFIG, InvalidCatStream
+from fixtures import CONFIG, CatStream, InvalidCatStream
 
 
 class Target(SQLInterface):
@@ -24,6 +24,11 @@ class Target(SQLInterface):
     def activate_version(self, stream_buffer, version):
         self.calls['activate_version'] += 1
         return None
+
+
+def filtered_output(capsys):
+    out, _ = capsys.readouterr()
+    return list(filter(None, out.split('\n')))
 
 
 def test_usage_stats():
@@ -79,14 +84,11 @@ def test_state__capture(capsys):
         json.dumps({'type': 'STATE', 'value': { 'test': 'state-2' }})]
 
     target_tools.stream_to_target(stream, Target())
+    output = filtered_output(capsys)
 
-    out, _ = capsys.readouterr()
-
-    filtered_output = list(filter(None, out.split('\n')))
-
-    assert len(filtered_output) == 2
-    assert json.loads(filtered_output[0])['test'] == 'state-1'
-    assert json.loads(filtered_output[1])['test'] == 'state-2'
+    assert len(output) == 2
+    assert json.loads(output[0])['test'] == 'state-1'
+    assert json.loads(output[1])['test'] == 'state-2'
 
 
 def test_state__capture_can_be_disabled(capsys):
@@ -95,9 +97,125 @@ def test_state__capture_can_be_disabled(capsys):
         json.dumps({'type': 'STATE', 'value': { 'test': 'state-2' }})]
 
     target_tools.stream_to_target(stream, Target(), {'state_support': False})
+    output = filtered_output(capsys)
 
-    out, _ = capsys.readouterr()
+    assert len(output) == 0
 
-    filtered_output = list(filter(None, out.split('\n')))
 
-    assert len(filtered_output) == 0
+def test_state__emits_only_messages_when_all_records_before_have_been_flushed(capsys):
+    config = CONFIG.copy()
+    config['max_batch_rows'] = 20
+    config['batch_detection_threshold'] = 1
+    rows = list(CatStream(100))
+    target = Target()
+
+    def test_stream():
+        yield rows[0]
+        for row in rows[slice(1, 5)]:
+            yield row
+        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-1' }})
+        for row in rows[slice(6, 10)]:
+            yield row
+        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-2' }})
+        for row in rows[slice(11, 15)]:
+            yield row
+        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-3' }})
+
+        # After some state messages but before the batch size has been hit no state messages should have been emitted
+        assert len(target.calls['write_batch']) == 0
+        output = filtered_output(capsys)
+        assert output == []
+
+        for row in rows[slice(16, 25)]:
+            yield row
+        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-4' }})
+
+        # After the batch size has been hit and a write_batch call was made, the most recent safe to emit state should have been emitted
+        assert len(target.calls['write_batch']) == 1
+        output = filtered_output(capsys)
+        assert len(output) == 1
+        assert json.loads(output[0])['test'] == 'state-3'
+
+        for row in rows[slice(26, 31)]:
+            yield row
+
+    target_tools.stream_to_target(test_stream(), target, config=config)
+
+    # The final state message should have been outputted after the last records were loaded
+    output = filtered_output(capsys)
+    assert len(output) == 1
+    assert json.loads(output[0])['test'] == 'state-4'
+
+
+def test_state__emits_most_recent_state_when_final_flush_occurs(capsys):
+    config = CONFIG.copy()
+    config['max_batch_rows'] = 20
+    config['batch_detection_threshold'] = 1
+    rows = list(CatStream(5))
+    rows.append(json.dumps({'type': 'STATE', 'value': { 'test': 'state-1' }}))
+
+    target_tools.stream_to_target(rows, Target(), config=config)
+
+    # The final state message should have been outputted after the last records were loaded despite not reaching
+    # one full flushable batch
+    output = filtered_output(capsys)
+    assert len(output) == 1
+    assert json.loads(output[0])['test'] == 'state-1'
+
+
+class DogStream(CatStream):
+    stream = 'dogs'
+    schema = CatStream.schema.copy()
+
+
+DogStream.schema['stream'] = 'dogs'
+
+
+def test_state__doesnt_emit_when_only_one_of_several_streams_is_flushing(capsys):
+    config = CONFIG.copy()
+    config['max_batch_rows'] = 20
+    config['batch_detection_threshold'] = 1
+    cat_rows = list(CatStream(100))
+    dog_rows = list(DogStream(50))
+    target = Target()
+
+    # Simulate one stream that yields a lot of records with another that yields few records and ensure both need to be flushed
+    # before any state messages are emitted
+    def test_stream():
+        yield cat_rows[0]
+        yield dog_rows[0]
+        for row in cat_rows[slice(1, 5)]:
+            yield row
+        for row in dog_rows[slice(1, 5)]:
+            yield row
+        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-1' }})
+
+        for row in cat_rows[slice(6, 45)]:
+            yield row
+        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-2' }})
+
+        for row in cat_rows[slice(46, 65)]:
+            yield row
+        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-3' }})
+
+        # After some state messages but before the batch size has been hit for both streams no state messages should have been emitted
+        assert len(target.calls['write_batch']) == 3
+        output = filtered_output(capsys)
+        assert output == []
+
+        for row in dog_rows[slice(6, 25)]:
+            yield row
+        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-4' }})
+
+        # After the batch size has been hit and a write_batch call was made, the most recent safe to emit state should have been emitted
+        assert len(target.calls['write_batch']) == 4
+        output = filtered_output(capsys)
+        assert len(output) == 1
+        assert json.loads(output[0])['test'] == 'state-2'
+
+    target_tools.stream_to_target(test_stream(), target, config=config)
+
+    # The final state message should have been outputted after the last dog records were loaded despite not reaching one full flushable batch
+    output = filtered_output(capsys)
+    assert len(output) == 1
+    assert json.loads(output[0])['test'] == 'state-4'

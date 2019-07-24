@@ -10,7 +10,7 @@ from singer import utils, metadata, metrics
 
 from target_postgres import json_schema
 from target_postgres.singer_stream import BufferedSingerStream
-from target_postgres.state_tracker import StateTracker
+from target_postgres.state_tracker import StateTracker, TargetError
 
 LOGGER = singer.get_logger()
 
@@ -75,12 +75,6 @@ def stream_to_target(stream, target, config={}):
         _report_invalid_records(state_tracker.streams)
 
 
-class TargetError(Exception):
-    """
-    Raise when there is an Exception streaming data to the target.
-    """
-
-
 def _report_invalid_records(streams):
     for stream_buffer in streams.values():
         if stream_buffer.peek_invalid_records():
@@ -130,18 +124,15 @@ def _line_handler(state_tracker, target, invalid_records_detect, invalid_records
                 buffered_stream.max_rows = max_batch_rows
             if max_batch_size:
                 buffered_stream.max_buffer_size = max_batch_size
-            state_tracker.streams[stream] = buffered_stream
+
+            state_tracker.register_stream(stream, buffered_stream)
         else:
             state_tracker.streams[stream].update_schema(schema, key_properties)
     elif line_data['type'] == 'RECORD':
         if 'stream' not in line_data:
             raise TargetError('`stream` is a required key: {}'.format(line))
-        if line_data['stream'] not in state_tracker.streams:
-            raise TargetError('A record for stream {} was encountered before a corresponding schema'
-                              .format(line_data['stream']))
 
-        state_tracker.streams[line_data['stream']].add_record_message(line_data)
-
+        state_tracker.handle_record_message(line_data['stream'], line_data)
     elif line_data['type'] == 'ACTIVATE_VERSION':
         if 'stream' not in line_data:
             raise TargetError('`stream` is a required key: {}'.format(line))
@@ -155,7 +146,7 @@ def _line_handler(state_tracker, target, invalid_records_detect, invalid_records
         target.write_batch(stream_buffer)
         target.activate_version(stream_buffer, line_data['version'])
     elif line_data['type'] == 'STATE':
-        state_tracker.emit_state(line_data['value'])
+        state_tracker.handle_state_message(line_data['value'])
     else:
         raise TargetError('Unknown message type {} in message {}'.format(
             line_data['type'],
