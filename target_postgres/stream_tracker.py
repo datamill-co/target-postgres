@@ -10,9 +10,10 @@ class TargetError(Exception):
     """
 
 
-class StateTracker:
+class StreamTracker:
     """
-    Object to track STATE messages coming in from the tap and which streams need to be flushed before they can be safely emitted.
+    Object to track the BufferedStream objects for each incoming stream to the target, and the STATE messages coming in. This object understands which streams need to be flushed before STATE messages can be safely emitted and does so.
+
     Because Singer taps don't have a standard way of expressing which streams correspond to which STATEs, the target can only safely
     emit a STATE message once all the records that came in prior to that STATE in the stream. Because target-postgres buffers
     the records in BufferedSingerStreams, the STATE messages need to be delayed until all the records that came before them have been

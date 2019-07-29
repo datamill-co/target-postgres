@@ -10,7 +10,7 @@ from singer import utils, metadata, metrics
 
 from target_postgres import json_schema
 from target_postgres.singer_stream import BufferedSingerStream
-from target_postgres.state_tracker import StateTracker, TargetError
+from target_postgres.stream_tracker import StreamTracker, TargetError
 
 LOGGER = singer.get_logger()
 
@@ -38,7 +38,7 @@ def stream_to_target(stream, target, config={}):
     """
 
     state_support = config.get('state_support', True)
-    state_tracker = StateTracker(target, state_support)
+    state_tracker = StreamTracker(target, state_support)
 
     try:
         if not config.get('disable_collection', False):
