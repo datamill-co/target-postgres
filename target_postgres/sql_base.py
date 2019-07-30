@@ -22,7 +22,7 @@ from target_postgres import denest
 from target_postgres import json_schema
 
 SEPARATOR = '__'
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 
 def _duration_millis(start):
