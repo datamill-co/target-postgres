@@ -132,9 +132,6 @@ class PostgresTarget(SQLInterface):
         """
         Given a Cursor for a Postgres Connection, upgrade table schemas at version 0 to version 1.
 
-        NOTE: This transformation is purely informational. There is no _actual_ schema update that needs to happen,
-        nor any data migration.
-
         :param cur: Cursor
         :return: None
         """
@@ -165,9 +162,6 @@ class PostgresTarget(SQLInterface):
     def _update_schemas_1_to_2(self, cur):
         """
         Given a Cursor for a Postgres Connection, upgrade table schemas at version 1 to version 2.
-
-        NOTE: This transformation is purely informational. There is no _actual_ schema update that needs to happen,
-        nor any data migration.
 
         :param cur: Cursor
         :return: None
