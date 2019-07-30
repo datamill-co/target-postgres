@@ -112,7 +112,7 @@ jobs:
           command: |
             python -m venv venv--target-postgres
             source venv--target-postgres/bin/activate
-            python setup.py install
+            pip install -e .[tests]
             deactivate
 
       - run:
