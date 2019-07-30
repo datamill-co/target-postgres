@@ -26,9 +26,6 @@ def _update_schema_0_to_1(table_metadata, table_schema):
     """
     Given a `table_schema` of version 0, update it to version 1.
 
-    NOTE: This transformation is purely informational. There is no _actual_ schema update that needs to happen,
-    nor any data migration.
-
     :param table_metadata: Table Metadata
     :param table_schema: TABLE_SCHEMA
     :return: Table Metadata
@@ -39,6 +36,23 @@ def _update_schema_0_to_1(table_metadata, table_schema):
             table_metadata['mappings'][field]['format'] = json_schema.DATE_TIME_FORMAT
 
     table_metadata['schema_version'] = 1
+
+    return table_metadata
+
+
+def _update_schema_1_to_2(table_metadata, table_path):
+    """
+    Given a `table_metadata` of version 1, update it to version 2.
+
+    :param table_metadata: Table Metadata
+    :param table_path: [String, ...]
+    :return: Table Metadata
+    """
+
+    table_metadata['path'] = tuple(table_path)
+    table_metadata['schema_version'] = 2
+
+    table_metadata.pop('table_mappings', None)
 
     return table_metadata
 
@@ -112,6 +126,7 @@ class PostgresTarget(SQLInterface):
 
         with self.conn.cursor() as cur:
             self._update_schemas_0_to_1(cur)
+            self._update_schemas_1_to_2(cur)
 
     def _update_schemas_0_to_1(self, cur):
         """
@@ -141,9 +156,57 @@ class PostgresTarget(SQLInterface):
                     pass
 
             if metadata and metadata.get('schema_version', 0) == 0:
-                table_schema = self.get_table_schema(cur, mapped_name)
+                self.LOGGER.info('Migrating `{}` from schema_version 0 to 1'.format(mapped_name))
+
+                table_schema = self.__get_table_schema(cur, mapped_name)
                 version_1_metadata = _update_schema_0_to_1(metadata, table_schema)
                 self._set_table_metadata(cur, mapped_name, version_1_metadata)
+
+    def _update_schemas_1_to_2(self, cur):
+        """
+        Given a Cursor for a Postgres Connection, upgrade table schemas at version 1 to version 2.
+
+        NOTE: This transformation is purely informational. There is no _actual_ schema update that needs to happen,
+        nor any data migration.
+
+        :param cur: Cursor
+        :return: None
+        """
+        cur.execute(
+            sql.SQL('''
+                    SELECT c.relname, obj_description(c.oid, 'pg_class')
+                    FROM pg_namespace AS n
+                      INNER JOIN pg_class AS c ON n.oid = c.relnamespace
+                    WHERE n.nspname = {};
+                    ''').format(sql.Literal(self.postgres_schema)))
+
+        for mapped_name, raw_json in cur.fetchall():
+            metadata = None
+            if raw_json:
+                try:
+                    metadata = json.loads(raw_json)
+                except:
+                    pass
+
+            print(mapped_name, metadata and metadata.get('schema_version', 0), metadata)
+
+            if metadata and metadata.get('schema_version', 0) == 1 and metadata.get('table_mappings'):
+                self.LOGGER.info('Migrating root_table `{}` children from schema_version 1 to 2'.format(mapped_name))
+
+                table_path = tuple()
+
+                for mapping in metadata.get('table_mappings'):
+                    table_name = mapping['to']
+                    table_path = mapping['from']
+                    table_metadata = self._get_table_metadata(cur, table_name)
+
+                    self.LOGGER.info('Migrating `{}` (`{}`) from schema_version 1 to 2'.format(table_path, table_name))
+
+                    version_2_metadata = _update_schema_1_to_2(table_metadata, table_path)
+                    self._set_table_metadata(cur, table_name, version_2_metadata)
+
+                root_version_2_metadata = _update_schema_1_to_2(metadata, table_path[0:1])
+                self._set_table_metadata(cur, mapped_name, root_version_2_metadata)
 
     def metrics_tags(self):
         return {'database': self.conn.get_dsn_parameters().get('dbname', None),
@@ -673,6 +736,10 @@ class PostgresTarget(SQLInterface):
         return cur.fetchall()[0][0] == 0
 
     def get_table_schema(self, cur, name):
+        return self.__get_table_schema(cur, name)
+
+    def __get_table_schema(self, cur, name):
+        # Purely exists for migration purposes. DO NOT CALL DIRECTLY
         cur.execute(
             sql.SQL('SELECT column_name, data_type, is_nullable FROM information_schema.columns ') +
             sql.SQL('WHERE table_schema = {} and table_name = {};').format(

@@ -163,7 +163,7 @@ def test_loading__invalid__default_null_value__non_nullable_column(db_cleanup):
         main(CONFIG, input_stream=NullDefaultCatStream(20))
 
 
-def test_loading__schema_version_0_gets_migrated_to_1(db_cleanup):
+def test_loading__schema_version_0_gets_migrated_to_2(db_cleanup):
     main(CONFIG, input_stream=CatStream(100))
 
     with psycopg2.connect(**TEST_DB) as conn:
@@ -171,9 +171,32 @@ def test_loading__schema_version_0_gets_migrated_to_1(db_cleanup):
             target = postgres.PostgresTarget(conn)
             metadata = target._get_table_metadata(cur, 'cats')
             metadata.pop('schema_version')
+            metadata.pop('path')
+            metadata['table_mappings'] = [{'from': ['cats', 'adoption', 'immunizations'],
+                                           'to': 'cats__adoption__immunizations'}]
             target._set_table_metadata(cur, 'cats', metadata)
 
+            metadata = target._get_table_metadata(cur, 'cats__adoption__immunizations')
+            metadata.pop('schema_version')
+            metadata.pop('path')
+            target._set_table_metadata(cur, 'cats__adoption__immunizations', metadata)
+
     main(CONFIG, input_stream=CatStream(100))
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            target = postgres.PostgresTarget(conn)
+            metadata = target._get_table_metadata(cur, 'cats')
+
+            assert metadata['schema_version'] == 2
+            assert metadata['path']
+            assert not metadata.get('table_mappings')
+
+            metadata = target._get_table_metadata(cur, 'cats__adoption__immunizations')
+
+            assert metadata['schema_version'] == 2
+            assert metadata['path']
+            assert not metadata.get('table_mappings')
 
 
 def test_loading__simple(db_cleanup):
