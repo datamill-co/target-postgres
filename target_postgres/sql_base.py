@@ -89,30 +89,27 @@ class SQLInterface:
         """
         raise NotImplementedError('`` not implemented.')
 
-    def get_table_schema(self, connection, path, name):
+    def get_table_schema(self, connection, name):
         """
         Fetch the `table_schema` for `name`.
 
         :param connection: remote connection, type left to be determined by implementing class
-        :param path: (string, ...)
         :param name: string
         :return: TABLE_SCHEMA(remote)
         """
         raise NotImplementedError('`get_table_schema` not implemented.')
 
-    def _get_table_schema(self, connection, path, name):
+    def _get_table_schema(self, connection, name):
         """
         get_table_schema, but with checking the version of the schema to ensure latest format.
 
         :param connection: remote connection, type left to be determined by implementing class
-        :param path: (string, ...)
         :param name: string
         :return: TABLE_SCHEMA(remote)
         """
-        remote_schema = self.get_table_schema(connection, path, name)
+        remote_schema = self.get_table_schema(connection, name)
         if remote_schema and remote_schema.get('schema_version', 0) != CURRENT_SCHEMA_VERSION:
-            raise Exception('Schema for `{}` (`{}`) is of version {}. Expected version {}'.format(
-                path,
+            raise Exception('Schema for `{}` is of version {}. Expected version {}'.format(
                 name,
                 remote_schema.get('schema_version', 0),
                 CURRENT_SCHEMA_VERSION
@@ -383,11 +380,11 @@ class SQLInterface:
 
             self._set_metrics_tags__table(timer, table_name)
 
-            existing_schema = self._get_table_schema(connection, table_path, table_name)
+            existing_schema = self._get_table_schema(connection, table_name)
 
             if existing_schema is None:
                 self.add_table(connection, table_path, table_name, _metadata)
-                existing_schema = self._get_table_schema(connection, table_path, table_name)
+                existing_schema = self._get_table_schema(connection, table_name)
 
             self.add_key_properties(connection, table_name, schema.get('key_properties', None))
 
@@ -619,7 +616,7 @@ class SQLInterface:
 
                 log_message(upsert_table_helper__column)
 
-            return self._get_table_schema(connection, table_path, table_name)
+            return self._get_table_schema(connection, table_name)
 
     def _serialize_table_record_field_name(self, remote_schema, streamed_schema, path, value_json_schema):
         """
