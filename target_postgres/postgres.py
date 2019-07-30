@@ -149,7 +149,7 @@ class PostgresTarget(SQLInterface):
                 self.setup_table_mapping_cache(cur)
 
                 root_table_name = self.add_table_mapping_helper((stream_buffer.stream,), self.table_mapping_cache)['to']
-                current_table_schema = self.get_table_schema(cur, None, root_table_name)
+                current_table_schema = self.get_table_schema(cur, root_table_name)
 
                 current_table_version = None
 
@@ -228,7 +228,7 @@ class PostgresTarget(SQLInterface):
 
                 self.setup_table_mapping_cache(cur)
                 root_table_name = self.add_table_mapping(cur, (stream_buffer.stream,), {})
-                current_table_schema = self.get_table_schema(cur, None, root_table_name)
+                current_table_schema = self.get_table_schema(cur, root_table_name)
 
                 if not current_table_schema:
                     self.LOGGER.error('{} - Table for stream does not exist'.format(
@@ -642,7 +642,7 @@ class PostgresTarget(SQLInterface):
 
         return cur.fetchall()[0][0] == 0
 
-    def get_table_schema(self, cur, path, name):
+    def get_table_schema(self, cur, name):
         cur.execute(
             sql.SQL('SELECT column_name, data_type, is_nullable FROM information_schema.columns ') +
             sql.SQL('WHERE table_schema = {} and table_name = {};').format(
