@@ -124,17 +124,19 @@ class PostgresTarget(SQLInterface):
 
         cur.execute(
             sql.SQL('''
-                SELECT c.relname, CAST(obj_description(c.oid) AS json)->'path'
+                SELECT c.relname, obj_description(c.oid)
                 FROM pg_namespace AS n
                   INNER JOIN pg_class AS c ON n.oid = c.relnamespace
                 WHERE n.nspname = {};
                 ''').format(sql.Literal(self.postgres_schema)))
 
-        for column in cur.fetchall():
-            self.LOGGER.info("Mapping: {}".format(column))
-            if column[1]:
-                table_path = tuple(column[1])
-                self.table_mapping_cache[table_path] = column[0]
+        for mapped_name, raw_json in cur.fetchall():
+            table_path = None
+            if raw_json:
+                table_path = json.loads(raw_json).get('path', None)
+            self.LOGGER.info("Mapping: {} to {}".format(mapped_name, table_path))
+            if table_path:
+                self.table_mapping_cache[tuple(table_path)] = mapped_name
 
     def write_batch(self, stream_buffer):
         if not self.persist_empty_tables and stream_buffer.count == 0:
