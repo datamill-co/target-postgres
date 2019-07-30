@@ -457,3 +457,109 @@ def test_hubspot__sandbox(db_cleanup):
             assert_count_equal(cur,
                                'deals',
                                7)
+
+
+def test_date_time_invalidation(db_cleanup):
+    class DateTimeStream(SandboxStream):
+        stream = [
+            {"type": "SCHEMA",
+             'stream': 'tenants',
+             'schema': {"comment": "tenant",
+                        "type": "object",
+                        "properties": {
+                            "TenantID": {
+                                "type": [
+                                    "null",
+                                    "integer"
+                                ]
+                            },
+                            "FirstName": {
+                                "type": [
+                                    "null",
+                                    "string"
+                                ]
+                            },
+                            "LastName": {
+                                "type": [
+                                    "null",
+                                    "string"
+                                ]
+                            },
+                            "IsCompany": {
+                                "type": [
+                                    "null",
+                                    "boolean"
+                                ]
+                            },
+                            "RentDueDay": {
+                                "type": [
+                                    "null",
+                                    "integer"
+                                ]
+                            },
+                            "RentPeriod": {
+                                "type": [
+                                    "null",
+                                    "string"
+                                ]
+                            },
+                            "IsProspect": {
+                                "type": [
+                                    "null",
+                                    "boolean"
+                                ]
+                            },
+                            "PropertyID": {
+                                "type": [
+                                    "null",
+                                    "integer"
+                                ]
+                            },
+                            "UpdateDate": {
+                                "type": [
+                                    "string"
+                                ],
+                                "format": "date-time"
+                            },
+                            "Status": {
+                                "type": [
+                                    "null",
+                                    "string"]}}},
+             "key_properties": []},
+            {'type': 'RECORD',
+             'stream': 'tenants',
+             'record': {'TenantID': 554, 'Name': 'Michael Andrews', 'FirstName': 'Michael', 'LastName': 'Andrews',
+                        'IsCompany': False, 'RentDueDay': 1, 'RentPeriod': 'Monthly', 'IsProspect': False,
+                        'PropertyID': 90, 'UpdateDate': '2018-12-03T16:59:03', 'Status': 'Past'}}]
+
+    config = CONFIG.copy()
+    main(config, input_stream=DateTimeStream())
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_tables_equal(cur,
+                                {'tenants'})
+
+            assert_columns_equal(cur,
+                                 'tenants',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_primary_key', 'text', 'NO'),
+                                     ('propertyid', 'bigint', 'YES'),
+                                     ('isprospect', 'boolean', 'YES'),
+                                     ('tenantid', 'bigint', 'YES'),
+                                     ('iscompany', 'boolean', 'YES'),
+                                     ('firstname', 'text', 'YES'),
+                                     ('lastname', 'text', 'YES'),
+                                     ('status', 'text', 'YES'),
+                                     ('rentperiod', 'text', 'YES'),
+                                     ('updatedate', 'timestamp with time zone', 'NO'),
+                                     ('rentdueday', 'bigint', 'YES')
+                                 })
+
+            assert_count_equal(cur,
+                               'tenants',
+                               1)
