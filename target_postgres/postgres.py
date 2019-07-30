@@ -22,26 +22,25 @@ from target_postgres.singer_stream import (
 RESERVED_NULL_DEFAULT = 'NULL'
 
 
-def _update_schema_0_to_1(table_schema):
+def _update_schema_0_to_1(table_metadata, table_schema):
     """
     Given a `table_schema` of version 0, update it to version 1.
 
     NOTE: This transformation is purely informational. There is no _actual_ schema update that needs to happen,
     nor any data migration.
 
+    :param table_metadata: Table Metadata
     :param table_schema: TABLE_SCHEMA
-    :return: TABLE_SCHEMA
+    :return: Table Metadata
     """
 
-    remote_schema = deepcopy(table_schema)
-
-    for field, property in remote_schema['schema']['properties'].items():
+    for field, property in table_schema['schema']['properties'].items():
         if json_schema.is_datetime(property):
-            remote_schema['mappings'][field]['format'] = json_schema.DATE_TIME_FORMAT
+            table_metadata['mappings'][field]['format'] = json_schema.DATE_TIME_FORMAT
 
-    remote_schema['schema_version'] = 1
+    table_metadata['schema_version'] = 1
 
-    return remote_schema
+    return table_metadata
 
 
 class _MillisLoggingCursor(LoggingCursor):
@@ -111,6 +110,41 @@ class PostgresTarget(SQLInterface):
         if self.persist_empty_tables:
             self.LOGGER.debug('PostgresTarget is persisting empty tables')
 
+        with self.conn.cursor() as cur:
+            self._update_schemas_0_to_1(cur)
+
+    def _update_schemas_0_to_1(self, cur):
+        """
+        Given a Cursor for a Postgres Connection, upgrade table schemas at version 0 to version 1.
+
+        NOTE: This transformation is purely informational. There is no _actual_ schema update that needs to happen,
+        nor any data migration.
+
+        :param cur: Cursor
+        :return: None
+        """
+
+        cur.execute(
+            sql.SQL('''
+                    SELECT c.relname, obj_description(c.oid, 'pg_class')
+                    FROM pg_namespace AS n
+                      INNER JOIN pg_class AS c ON n.oid = c.relnamespace
+                    WHERE n.nspname = {};
+                    ''').format(sql.Literal(self.postgres_schema)))
+
+        for mapped_name, raw_json in cur.fetchall():
+            metadata = None
+            if raw_json:
+                try:
+                    metadata = json.loads(raw_json)
+                except:
+                    pass
+
+            if metadata and metadata.get('schema_version', 0) == 0:
+                table_schema = self.get_table_schema(cur, mapped_name)
+                version_1_metadata = _update_schema_0_to_1(metadata, table_schema)
+                self._set_table_metadata(cur, mapped_name, version_1_metadata)
+
     def metrics_tags(self):
         return {'database': self.conn.get_dsn_parameters().get('dbname', None),
                 'schema': self.postgres_schema}
@@ -120,7 +154,7 @@ class PostgresTarget(SQLInterface):
 
         cur.execute(
             sql.SQL('''
-                SELECT c.relname, obj_description(c.oid)
+                SELECT c.relname, obj_description(c.oid, 'pg_class')
                 FROM pg_namespace AS n
                   INNER JOIN pg_class AS c ON n.oid = c.relnamespace
                 WHERE n.nspname = {};
@@ -659,9 +693,6 @@ class PostgresTarget(SQLInterface):
         metadata['name'] = name
         metadata['type'] = 'TABLE_SCHEMA'
         metadata['schema'] = {'properties': properties}
-
-        if 0 == metadata.get('schema_version', 0):
-            return _update_schema_0_to_1(metadata)
 
         return metadata
 
