@@ -5,16 +5,13 @@ import pkg_resources
 import sys
 import threading
 
-import singer
 from singer import utils, metadata, metrics
 
 from target_postgres import json_schema
 from target_postgres.exceptions import TargetError
+from target_postgres.globals import LOGGER
 from target_postgres.singer_stream import BufferedSingerStream
 from target_postgres.stream_tracker import StreamTracker
-
-
-LOGGER = singer.get_logger()
 
 
 def main(target):
