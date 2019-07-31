@@ -42,19 +42,8 @@ class StreamTracker:
 
         return flushables
 
-    def flush_streams(self, force=False):
-        for stream_buffer in self.flushable_streams(force):
-            self.target.write_batch(stream_buffer)
-            stream_buffer.flush_buffer()
-
-        self._emit_safe_queued_states(force=force)
-
-    def new_handle_state_message(self, value):
-        self.state_queue.append({'state': value, 'watermark': self.message_counter})
-
     def handle_state_message(self, value):
-        self.new_handle_state_message(value)
-        self._emit_safe_queued_states()
+        self.state_queue.append({'state': value, 'watermark': self.message_counter})
 
     def handle_record_message(self, stream, line_data):
         if stream not in self.streams:
@@ -87,10 +76,3 @@ class StreamTracker:
             self.last_emitted_state = emittable_state
 
         return state_to_emit
-
-    def _emit_safe_queued_states(self, force=False):
-        state = self.emittable_state(force)
-        if state:
-            line = json.dumps(state)
-            sys.stdout.write("{}\n".format(line))
-            sys.stdout.flush()

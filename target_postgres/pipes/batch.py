@@ -61,7 +61,7 @@ def _line_handler(state_tracker,
         return [_stream_buffer_to_batch(stream_buffer), line_data]
 
     elif line_data['type'] == 'STATE':
-        state_tracker.new_handle_state_message(line_data)
+        state_tracker.handle_state_message(line_data)
         state = state_tracker.emittable_state(False)
         if state:
             return [state]
