@@ -11,7 +11,7 @@ from target_postgres import json_schema
 from target_postgres import postgres
 from target_postgres import singer_stream
 from target_postgres import main
-from target_postgres.target_tools import TargetError
+from target_postgres.exceptions import InputError
 
 
 ## TODO: create and test more fake streams
@@ -147,7 +147,7 @@ def test_loading__invalid__configuration__schema(db_cleanup):
     stream.schema = deepcopy(stream.schema)
     stream.schema['schema']['type'] = 'invalid type for a JSON Schema'
 
-    with pytest.raises(TargetError, match=r'.*invalid JSON Schema instance.*'):
+    with pytest.raises(InputError, match=r'.*invalid JSON Schema instance.*'):
         main(CONFIG, input_stream=stream)
 
 
