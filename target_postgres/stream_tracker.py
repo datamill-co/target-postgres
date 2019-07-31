@@ -64,13 +64,13 @@ class StreamTracker:
         self.stream_add_watermarks[stream] = self.message_counter
         self.streams[stream].add_record_message(line_data)
 
-    def emittable_states(self, force):
+    def emittable_state(self, force):
         # State messages that occured before the least recently flushed record are safe to emit.
         # If they occurred after some records that haven't yet been flushed, they aren't safe to emit.
         # Because records arrive at different rates from different streams, we take the earliest unflushed record as the threshold for what
         # STATE messages are safe to emit.
         if not self.emit_states:
-            return []
+            return None
 
         all_flushed_watermark = min(self.stream_flush_watermarks.values(), default=0)
         emittable_state = None
@@ -78,18 +78,19 @@ class StreamTracker:
         while len(self.state_queue) > 0 and (force or self.state_queue[0]['watermark'] <= all_flushed_watermark):
             emittable_state = self.state_queue.popleft()['state']
 
-        emittables = []
+        state_to_emit = None
 
         if emittable_state:
             if len(statediff.diff(emittable_state, self.last_emitted_state or {})) > 0:
-                emittables.append(emittable_state)
+                state_to_emit = emittable_state
 
             self.last_emitted_state = emittable_state
 
-        return emittables
+        return state_to_emit
 
     def _emit_safe_queued_states(self, force=False):
-        for state in self.emittable_states(force):
+        state = self.emittable_state(force)
+        if state:
             line = json.dumps(state)
             sys.stdout.write("{}\n".format(line))
             sys.stdout.flush()
