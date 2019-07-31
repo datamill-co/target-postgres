@@ -22,7 +22,7 @@ setup(
         'arrow==0.13.0',
         'psycopg2==2.8.2',
         'psycopg2-binary==2.8.2',
-        'singer-python==5.6.0'
+        'singer-python==5.6.1'
     ],
     setup_requires=[
         "pytest-runner"
