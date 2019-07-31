@@ -190,7 +190,7 @@ def _get_streamed_table_records(key_properties, records):
 
     :param key_properties: [string, ...]
     :param records: [{...}, ...]
-    :return: {TableName string: [{(path_0, path_1, ...): (_json_schema_string_type, value), ...}, ...],
+    :return: {TableName (string, ...): [{(path_0, path_1, ...): (_json_schema_string_type, value), ...}, ...],
               ...}
     """
 
