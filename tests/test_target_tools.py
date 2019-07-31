@@ -21,7 +21,7 @@ class Target(SQLInterface):
         self.calls['write_batch'].append({'records_count': line_data['count']})
         return None
 
-    def activate_version(self, stream_buffer, version):
+    def activate_version(self, line_data):
         self.calls['activate_version'] += 1
         return None
 

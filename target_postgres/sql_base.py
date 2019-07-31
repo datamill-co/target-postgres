@@ -773,9 +773,7 @@ class SQLInterface:
 
         :param connection: remote connection, type left to be determined by implementing class
         :param root_table_name: string
-        :param schema: SingerStreamSchema
-        :param key_properties: [string, ...]
-        :param records: [{...}, ...]
+        :param line_data: __DataMill__TABLE_BATCH message
         :param metadata: additional metadata needed by implementing class
         :return: {'records_persisted': int,
                   'rows_persisted': int}
@@ -834,22 +832,21 @@ class SQLInterface:
                     'rows_persisted': batch_counter.value
                 }
 
-    def write_batch(self, stream_buffer):
+    def write_batch(self, line_data):
         """
         Persist `stream_buffer.records` to remote.
 
-        :param stream_buffer: SingerStreamBuffer
+        :param line_data: __DataMill__TABLE_BATCH message
         :return: {'records_persisted': int,
                   'rows_persisted': int}
         """
         raise NotImplementedError('`write_batch` not implemented.')
 
-    def activate_version(self, stream_buffer, version):
+    def activate_version(self, line_data):
         """
         Activate the given `stream_buffer`'s remote to `version`
 
-        :param stream_buffer: SingerStreamBuffer
-        :param version: integer
+        :param line_data: ACTIVATE_VERSION Singer message
         :return: boolean
         """
         raise NotImplementedError('`activate_version` not implemented.')

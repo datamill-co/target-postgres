@@ -81,8 +81,7 @@ def stream_to_target(stream, target, config={}):
                 sys.stdout.flush()
 
             elif line_data['type'] == 'ACTIVATE_VERSION':
-                target.activate_version(BatchStreamBufferAdapter(line_data),
-                                        line_data['version'])
+                target.activate_version(line_data)
 
             elif line_data['type'] == '__DataMill__TABLE_BATCH':
                 target.write_batch(line_data)

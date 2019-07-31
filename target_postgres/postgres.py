@@ -87,7 +87,6 @@ class MillisLoggingConnection(LoggingConnection):
         return LoggingConnection.cursor(self, *args, **kwargs)
 
 
-
 class TransformStream:
     def __init__(self, fun):
         self.fun = fun
@@ -264,7 +263,8 @@ class PostgresTarget(SQLInterface):
                         canonicalized_key, remote_column_schema = self.fetch_column_from_path((key_property,),
                                                                                               current_table_schema)
                         if self.json_schema_to_sql_type(remote_column_schema) \
-                                != self.json_schema_to_sql_type(root_batch_schema['schema']['properties'][(key_property,)]):
+                                != self.json_schema_to_sql_type(
+                            root_batch_schema['schema']['properties'][(key_property,)]):
                             raise PostgresError(
                                 ('`key_properties` type change detected for "{}". ' +
                                  'Existing values are: {}. ' +
@@ -274,7 +274,8 @@ class PostgresTarget(SQLInterface):
                                     json_schema.get_type(root_batch_schema['schema']['properties'][(key_property,)]),
                                     self.json_schema_to_sql_type(
                                         current_table_schema['schema']['properties'][key_property]),
-                                    self.json_schema_to_sql_type(root_batch_schema['schema']['properties'][(key_property,)])
+                                    self.json_schema_to_sql_type(
+                                        root_batch_schema['schema']['properties'][(key_property,)])
                                 ))
 
                 target_table_version = current_table_version or line_data['max_version']
@@ -315,24 +316,25 @@ class PostgresTarget(SQLInterface):
                 self.LOGGER.exception(message)
                 raise PostgresError(message, ex)
 
-    def activate_version(self, stream_buffer, version):
+    def activate_version(self, line_data):
         with self.conn.cursor() as cur:
             try:
                 cur.execute('BEGIN;')
 
                 self.setup_table_mapping_cache(cur)
-                root_table_name = self.add_table_mapping(cur, (stream_buffer.stream,), {})
+                root_table_name = self.add_table_mapping(cur, (line_data['stream'],), {})
                 current_table_schema = self.get_table_schema(cur, root_table_name)
 
                 if not current_table_schema:
                     self.LOGGER.error('{} - Table for stream does not exist'.format(
-                        stream_buffer.stream))
-                elif current_table_schema.get('version') is not None and current_table_schema.get('version') >= version:
+                        line_data['stream']))
+                elif current_table_schema.get('version') is not None and current_table_schema.get('version') >= \
+                        line_data['version']:
                     self.LOGGER.warning('{} - Table version {} already active'.format(
-                        stream_buffer.stream,
-                        version))
+                        line_data['stream'],
+                        line_data['version']))
                 else:
-                    versioned_root_table = root_table_name + SEPARATOR + str(version)
+                    versioned_root_table = root_table_name + SEPARATOR + str(line_data['version'])
 
                     names_to_paths = dict([(v, k) for k, v in self.table_mapping_cache.items()])
 
@@ -371,8 +373,8 @@ class PostgresTarget(SQLInterface):
             except Exception as ex:
                 cur.execute('ROLLBACK;')
                 message = '{} - Exception activating table version {}'.format(
-                    stream_buffer.stream,
-                    version)
+                    line_data['stream'],
+                    line_data['version'])
                 self.LOGGER.exception(message)
                 raise PostgresError(message, ex)
 
