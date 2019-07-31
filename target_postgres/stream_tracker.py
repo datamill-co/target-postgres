@@ -49,10 +49,12 @@ class StreamTracker:
 
         self._emit_safe_queued_states(force=force)
 
+    def new_handle_state_message(self, value):
+        self.state_queue.append({'state': value, 'watermark': self.message_counter})
+
     def handle_state_message(self, value):
-        if self.emit_states:
-            self.state_queue.append({'state': value, 'watermark': self.message_counter})
-            self._emit_safe_queued_states()
+        self.new_handle_state_message(value)
+        self._emit_safe_queued_states()
 
     def handle_record_message(self, stream, line_data):
         if stream not in self.streams:
@@ -67,6 +69,9 @@ class StreamTracker:
         # If they occurred after some records that haven't yet been flushed, they aren't safe to emit.
         # Because records arrive at different rates from different streams, we take the earliest unflushed record as the threshold for what
         # STATE messages are safe to emit.
+        if not self.emit_states:
+            return []
+
         all_flushed_watermark = min(self.stream_flush_watermarks.values(), default=0)
         emittable_state = None
 
