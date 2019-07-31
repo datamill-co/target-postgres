@@ -9,6 +9,7 @@ from singer import utils, metadata, metrics
 
 from target_postgres.globals import LOGGER
 from target_postgres.pipes.batch import batch
+from target_postgres.pipes.sql_flatten import flatten
 from target_postgres.pipes.load import load
 
 
@@ -69,7 +70,8 @@ def stream_to_target(stream, target, config={}):
         if not config.get('disable_collection', False):
             _async_send_usage_stats()
 
-        for line_data in batch(config, load(stream)):
+        for line_data in flatten(batch(config, load(stream))):
+            LOGGER.info('Handlindgline with type: {}'.format(line_data['type']))
             if line_data['type'] == 'STATE':
                 line = json.dumps(line_data)
                 sys.stdout.write("{}\n".format(line))
@@ -79,8 +81,8 @@ def stream_to_target(stream, target, config={}):
                 target.activate_version(BatchStreamBufferAdapter(line_data),
                                         line_data['version'])
 
-            elif line_data['type'] == '__DataMill__BATCH':
-                target.write_batch(BatchStreamBufferAdapter(line_data))
+            elif line_data['type'] == '__DataMill__TABLE_BATCH':
+                target.write_batch(line_data)
 
     except Exception as e:
         LOGGER.critical(e)

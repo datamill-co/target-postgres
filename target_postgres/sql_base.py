@@ -18,7 +18,6 @@ import time
 import singer
 import singer.metrics as metrics
 
-from target_postgres import denest
 from target_postgres import json_schema
 
 SEPARATOR = '__'
@@ -768,7 +767,7 @@ class SQLInterface:
         """
         raise NotImplementedError('`write_table_batch` not implemented.')
 
-    def write_batch_helper(self, connection, root_table_name, schema, key_properties, records, metadata):
+    def write_batch_helper(self, connection, root_table_name, line_data, metadata):
         """
         Write all `table_batch`s associated with the given `schema` and `records` to remote.
 
@@ -787,13 +786,13 @@ class SQLInterface:
             with self._set_counter_tags(metrics.record_counter(None),
                                         'batch_rows_persisted',
                                         (root_table_name,)) as batch_counter:
-                self.LOGGER.info('Writing batch with {} records for `{}` with `key_properties`: `{}`'.format(
-                    len(records),
-                    root_table_name,
-                    key_properties
-                ))
+                # self.LOGGER.info('Writing batch with {} records for `{}` with `key_properties`: `{}`'.format(
+                #     len(records),
+                #     root_table_name,
+                #     key_properties
+                # ))
 
-                for table_batch in denest.to_table_batches(schema, key_properties, records):
+                for table_batch in line_data['batches']:
                     table_batch['streamed_schema']['path'] = (root_table_name,) + \
                                                              table_batch['streamed_schema']['path']
 
@@ -831,7 +830,6 @@ class SQLInterface:
                             batch_counter.increment(batch_rows_persisted)
 
                 return {
-                    'records_persisted': len(records),
                     'rows_persisted': batch_counter.value
                 }
 
