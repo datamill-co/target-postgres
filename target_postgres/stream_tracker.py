@@ -33,12 +33,19 @@ class StreamTracker:
         self.stream_add_watermarks[stream] = 0
         self.stream_flush_watermarks[stream] = 0
 
-    def flush_streams(self, force=False):
+    def flushable_streams(self, force):
+        flushables = []
         for (stream, stream_buffer) in self.streams.items():
             if force or stream_buffer.buffer_full:
-                self.target.write_batch(stream_buffer)
-                stream_buffer.flush_buffer()
+                flushables.append(stream_buffer)
                 self.stream_flush_watermarks[stream] = self.stream_add_watermarks[stream]
+
+        return flushables
+
+    def flush_streams(self, force=False):
+        for stream_buffer in self.flushable_streams(force):
+            self.target.write_batch(stream_buffer)
+            stream_buffer.flush_buffer()
 
         self._emit_safe_queued_states(force=force)
 
@@ -55,7 +62,7 @@ class StreamTracker:
         self.stream_add_watermarks[stream] = self.message_counter
         self.streams[stream].add_record_message(line_data)
 
-    def _emit_safe_queued_states(self, force=False):
+    def emittable_states(self, force):
         # State messages that occured before the least recently flushed record are safe to emit.
         # If they occurred after some records that haven't yet been flushed, they aren't safe to emit.
         # Because records arrive at different rates from different streams, we take the earliest unflushed record as the threshold for what
@@ -66,10 +73,18 @@ class StreamTracker:
         while len(self.state_queue) > 0 and (force or self.state_queue[0]['watermark'] <= all_flushed_watermark):
             emittable_state = self.state_queue.popleft()['state']
 
+        emittables = []
+
         if emittable_state:
             if len(statediff.diff(emittable_state, self.last_emitted_state or {})) > 0:
-                line = json.dumps(emittable_state)
-                sys.stdout.write("{}\n".format(line))
-                sys.stdout.flush()
+                emittables.append(emittable_state)
 
             self.last_emitted_state = emittable_state
+
+        return emittables
+
+    def _emit_safe_queued_states(self, force=False):
+        for state in self.emittable_states(force):
+            line = json.dumps(state)
+            sys.stdout.write("{}\n".format(line))
+            sys.stdout.flush()
