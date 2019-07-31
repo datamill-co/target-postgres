@@ -70,7 +70,11 @@ def stream_to_target(stream, target, config={}):
         if not config.get('disable_collection', False):
             _async_send_usage_stats()
 
-        for line_data in flatten(batch(config, load(stream))):
+        as_loaded = load(stream)
+        as_batches = batch(config, as_loaded)
+        as_table_batches = flatten(as_batches)
+
+        for line_data in as_table_batches:
             LOGGER.info('Handlindgline with type: {}'.format(line_data['type']))
             if line_data['type'] == 'STATE':
                 line = json.dumps(line_data)
