@@ -226,16 +226,9 @@ class PostgresTarget(SQLInterface):
                 self.table_mapping_cache[tuple(table_path)] = mapped_name
 
     def write_batch(self, line_data):
-        if not self.persist_empty_tables:
-            records_exist = False
-            for table_batch in line_data['batches']:
-                if len(table_batch['records']) != 0:
-                    records_exist = True
-                    break
-
-            if not records_exist:
-                self.LOGGER.info('Empty batch detected for stream {}'.format(line_data['stream']))
-                return None
+        if not self.persist_empty_tables and line_data['count'] == 0:
+            self.LOGGER.info('Empty batch detected for stream {}'.format(line_data['stream']))
+            return None
 
         with self.conn.cursor() as cur:
             try:

@@ -5,6 +5,7 @@ def _batch_to_table_batch(batch):
     return {'type': '__DataMill__TABLE_BATCH',
             'stream': batch['stream'],
             'max_version': batch['max_version'],
+            'count': len(batch['records']),
             'batches': denest.to_table_batches(batch['schema'],
                                                batch['key_properties'],
                                                batch['records'])}

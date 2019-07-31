@@ -786,11 +786,11 @@ class SQLInterface:
             with self._set_counter_tags(metrics.record_counter(None),
                                         'batch_rows_persisted',
                                         (root_table_name,)) as batch_counter:
-                # self.LOGGER.info('Writing batch with {} records for `{}` with `key_properties`: `{}`'.format(
-                #     len(records),
-                #     root_table_name,
-                #     key_properties
-                # ))
+                self.LOGGER.info('Writing batch with {} records for `{}` with {} tables.'.format(
+                    line_data['count'],
+                    root_table_name,
+                    len(line_data['batches'])
+                ))
 
                 for table_batch in line_data['batches']:
                     table_batch['streamed_schema']['path'] = (root_table_name,) + \
@@ -830,6 +830,7 @@ class SQLInterface:
                             batch_counter.increment(batch_rows_persisted)
 
                 return {
+                    'records_persisted': line_data['count'],
                     'rows_persisted': batch_counter.value
                 }
 
