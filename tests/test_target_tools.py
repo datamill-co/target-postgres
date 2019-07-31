@@ -17,8 +17,8 @@ class Target(SQLInterface):
     def __init__(self):
         self.calls = {'write_batch': [], 'activate_version': []}
 
-    def write_batch(self, stream_buffer):
-        self.calls['write_batch'].append({'records_count': len(stream_buffer.peek_buffer())})
+    def write_batch(self, line_data):
+        self.calls['write_batch'].append({'records_count': line_data['count']})
         return None
 
     def activate_version(self, stream_buffer, version):
