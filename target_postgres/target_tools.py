@@ -75,7 +75,6 @@ def stream_to_target(stream, target, config={}):
         as_table_batches = flatten(as_batches)
 
         for line_data in as_table_batches:
-            LOGGER.info('Handlindgline with type: {}'.format(line_data['type']))
             if line_data['type'] == 'STATE':
                 line = json.dumps(line_data)
                 sys.stdout.write("{}\n".format(line))
