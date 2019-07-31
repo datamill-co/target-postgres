@@ -1,13 +1,9 @@
 from collections import deque
 import json
-import sys
 import singer.statediff as statediff
+import sys
 
-
-class TargetError(Exception):
-    """
-    Raise when there is an Exception streaming data to the target.
-    """
+from target_postgres.exceptions import TargetError
 
 
 class StreamTracker:

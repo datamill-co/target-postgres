@@ -3,6 +3,7 @@ import re
 
 from jsonschema import Draft4Validator
 from jsonschema.exceptions import SchemaError
+from target_postgres.exceptions import JSONSchemaError
 
 NULL = 'null'
 OBJECT = 'object'
@@ -20,12 +21,6 @@ _PYTHON_TYPE_TO_JSON_SCHEMA = {
     str: STRING,
     type(None): NULL
 }
-
-
-class JSONSchemaError(Exception):
-    """
-    Raise this when there is an error with regards to an instance of JSON Schema
-    """
 
 
 def python_type(x):
