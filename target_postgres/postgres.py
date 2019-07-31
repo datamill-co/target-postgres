@@ -12,6 +12,7 @@ from psycopg2 import sql
 from psycopg2.extras import LoggingConnection, LoggingCursor
 
 from target_postgres import json_schema
+from target_postgres.exceptions import PostgresError
 from target_postgres.sql_base import SEPARATOR, SQLInterface
 from target_postgres.singer_stream import (
     SINGER_SEQUENCE,
@@ -72,11 +73,6 @@ class MillisLoggingConnection(LoggingConnection):
         kwargs.setdefault('cursor_factory', _MillisLoggingCursor)
         return LoggingConnection.cursor(self, *args, **kwargs)
 
-
-class PostgresError(Exception):
-    """
-    Raise this when there is an error with regards to Postgres streaming
-    """
 
 
 class TransformStream:

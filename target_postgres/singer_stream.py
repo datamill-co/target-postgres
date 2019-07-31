@@ -6,13 +6,8 @@ from jsonschema import Draft4Validator, FormatChecker
 from jsonschema.exceptions import ValidationError
 
 from target_postgres import json_schema
+from target_postgres.exceptions import SingerStreamError
 from target_postgres.pysize import get_size
-
-
-class SingerStreamError(Exception):
-    """
-    Raise when there is an Exception with Singer Streams.
-    """
 
 
 SINGER_RECEIVED_AT = '_sdc_received_at'

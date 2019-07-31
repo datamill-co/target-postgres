@@ -49,9 +49,9 @@ pip install singer-target-postgres
    ```bash
    ~/.virtualenvs/tap-something/bin/tap-something \
      | ~/.virtualenvs/target-postgres/bin/target-postgres \
-       --config ~/singer.io/target_postgres_config.json
+       --config ~/singer.io/target_postgres_config.json >> state.json
    ```
-   
+
    If you are running windows, the following is equivalent:
    ```
    venvs\tap-exchangeratesapi\Scripts\tap-exchangeratesapi.exe | ^
@@ -82,6 +82,7 @@ here.
 | `disable_collection`        | `["string", "null"]`  | `false`                          | Include `true` in your config to disable [Singer Usage Logging](#usage-logging).                                                                                                                                                 |
 | `logging_level`             | `["string", "null"]`  | `"INFO"`                         | The level for logging. Set to `DEBUG` to get things like queries executed, timing of those queries, etc. See [Python's Logger Levels](https://docs.python.org/3/library/logging.html#levels) for information about valid values. |
 | `persist_empty_tables`      | `["boolean", "null"]` | `False`                          | Whether the Target should create tables which have no records present in Remote.                                                                                                                                                 |
+| `state_support`             | `["boolean", "null"]` | `True`                           | Whether the Target should emit `STATE` messages to stdout for further consumption. In this mode, which is on by default, STATE messages are buffered in memory until all the records that occurred before them are flushed according to the batch flushing schedule the target is configured with.    |
 
 ### Supported Versions
 
@@ -105,7 +106,6 @@ _The above is copied from the [current list of versions](https://www.postgresql.
 
 ## Known Limitations
 
-- Ignores `STATE` Singer messages.
 - Requires a [JSON Schema](https://json-schema.org/) for every stream.
 - Only string, string with date-time format, integer, number, boolean,
   object, and array types with or without null are supported. Arrays can
