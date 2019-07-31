@@ -66,6 +66,9 @@ def _line_handler(state_tracker,
         if state:
             return [state]
 
+    else:
+        return [line_data]
+
     return []
 
 
