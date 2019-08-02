@@ -22,7 +22,7 @@ class Target(SQLInterface):
         return None
 
     def activate_version(self, stream_buffer, version):
-        self.calls['activate_version'] += 1
+        self.calls['activate_version'].append({'records_count': len(stream_buffer.peek_buffer())})
         return None
 
 
