@@ -80,8 +80,8 @@ def test_loading__invalid__records__threshold():
 
 def test_state__capture(capsys):
     stream = [
-        json.dumps({'type': 'STATE', 'value': { 'test': 'state-1' }}),
-        json.dumps({'type': 'STATE', 'value': { 'test': 'state-2' }})]
+        json.dumps({'type': 'STATE', 'value': {'test': 'state-1'}}),
+        json.dumps({'type': 'STATE', 'value': {'test': 'state-2'}})]
 
     target_tools.stream_to_target(stream, Target())
     output = filtered_output(capsys)
@@ -93,8 +93,8 @@ def test_state__capture(capsys):
 
 def test_state__capture_can_be_disabled(capsys):
     stream = [
-        json.dumps({'type': 'STATE', 'value': { 'test': 'state-1' }}),
-        json.dumps({'type': 'STATE', 'value': { 'test': 'state-2' }})]
+        json.dumps({'type': 'STATE', 'value': {'test': 'state-1'}}),
+        json.dumps({'type': 'STATE', 'value': {'test': 'state-2'}})]
 
     target_tools.stream_to_target(stream, Target(), {'state_support': False})
     output = filtered_output(capsys)
@@ -113,13 +113,13 @@ def test_state__emits_only_messages_when_all_records_before_have_been_flushed(ca
         yield rows[0]
         for row in rows[slice(1, 5)]:
             yield row
-        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-1' }})
+        yield json.dumps({'type': 'STATE', 'value': {'test': 'state-1'}})
         for row in rows[slice(6, 10)]:
             yield row
-        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-2' }})
+        yield json.dumps({'type': 'STATE', 'value': {'test': 'state-2'}})
         for row in rows[slice(11, 15)]:
             yield row
-        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-3' }})
+        yield json.dumps({'type': 'STATE', 'value': {'test': 'state-3'}})
 
         # After some state messages but before the batch size has been hit no state messages should have been emitted
         assert len(target.calls['write_batch']) == 0
@@ -128,7 +128,7 @@ def test_state__emits_only_messages_when_all_records_before_have_been_flushed(ca
 
         for row in rows[slice(16, 25)]:
             yield row
-        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-4' }})
+        yield json.dumps({'type': 'STATE', 'value': {'test': 'state-4'}})
 
         # After the batch size has been hit and a write_batch call was made, the most recent safe to emit state should have been emitted
         assert len(target.calls['write_batch']) == 1
@@ -152,7 +152,7 @@ def test_state__emits_most_recent_state_when_final_flush_occurs(capsys):
     config['max_batch_rows'] = 20
     config['batch_detection_threshold'] = 1
     rows = list(CatStream(5))
-    rows.append(json.dumps({'type': 'STATE', 'value': { 'test': 'state-1' }}))
+    rows.append(json.dumps({'type': 'STATE', 'value': {'test': 'state-1'}}))
 
     target_tools.stream_to_target(rows, Target(), config=config)
 
@@ -188,15 +188,15 @@ def test_state__doesnt_emit_when_only_one_of_several_streams_is_flushing(capsys)
             yield row
         for row in dog_rows[slice(1, 5)]:
             yield row
-        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-1' }})
+        yield json.dumps({'type': 'STATE', 'value': {'test': 'state-1'}})
 
         for row in cat_rows[slice(6, 45)]:
             yield row
-        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-2' }})
+        yield json.dumps({'type': 'STATE', 'value': {'test': 'state-2'}})
 
         for row in cat_rows[slice(46, 65)]:
             yield row
-        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-3' }})
+        yield json.dumps({'type': 'STATE', 'value': {'test': 'state-3'}})
 
         # After some state messages but before the batch size has been hit for both streams no state messages should have been emitted
         assert len(target.calls['write_batch']) == 3
@@ -205,7 +205,7 @@ def test_state__doesnt_emit_when_only_one_of_several_streams_is_flushing(capsys)
 
         for row in dog_rows[slice(6, 25)]:
             yield row
-        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-4' }})
+        yield json.dumps({'type': 'STATE', 'value': {'test': 'state-4'}})
 
         # After the batch size has been hit and a write_batch call was made, the most recent safe to emit state should have been emitted
         assert len(target.calls['write_batch']) == 4
@@ -232,13 +232,13 @@ def test_state__doesnt_emit_when_it_isnt_different_than_the_previous_emission(ca
         yield rows[0]
         for row in rows[slice(1, 21)]:
             yield row
-        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-1' }})
+        yield json.dumps({'type': 'STATE', 'value': {'test': 'state-1'}})
         output = filtered_output(capsys)
         assert len(output) == 1
 
         for row in rows[slice(22, 99)]:
             yield row
-        yield json.dumps({'type': 'STATE', 'value': { 'test': 'state-1' }})
+        yield json.dumps({'type': 'STATE', 'value': {'test': 'state-1'}})
 
         output = filtered_output(capsys)
         assert len(output) == 0
