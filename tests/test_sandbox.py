@@ -4,7 +4,7 @@ import psycopg2
 import psycopg2.extras
 import pytest
 
-from fixtures import CONFIG, db_cleanup, TEST_DB
+from fixtures import CONFIG, db_cleanup, ListStream, TEST_DB
 from target_postgres import main
 
 
@@ -33,26 +33,7 @@ def assert_count_equal(cursor, table_name, n):
     assert cursor.fetchone()[0] == n
 
 
-class SandboxStream:
-    idx = None
-    stream = NotImplementedError()
-
-    def __init__(self):
-        self.idx = -1
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        self.idx += 1
-
-        if self.idx < len(self.stream):
-            return json.dumps(self.stream[self.idx])
-
-        raise StopIteration
-
-
-class BigCommerceStream(SandboxStream):
+class BigCommerceStream(ListStream):
     stream = [
         {"type": "SCHEMA",
          "stream": "products",
@@ -377,7 +358,7 @@ def test_bigcommerce__sandbox(db_cleanup):
                                  })
 
 
-class HubspotStream(SandboxStream):
+class HubspotStream(ListStream):
     stream = [
         {"type": "SCHEMA",
          "stream": "deals",
