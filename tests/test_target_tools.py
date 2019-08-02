@@ -8,7 +8,7 @@ from target_postgres import singer_stream
 from target_postgres import target_tools
 from target_postgres.sql_base import SQLInterface
 
-from fixtures import CONFIG, CatStream, InvalidCatStream
+from fixtures import CONFIG, CatStream, ListStream, InvalidCatStream
 
 
 class Target(SQLInterface):
@@ -76,6 +76,43 @@ def test_loading__invalid__records__threshold():
         target_tools.stream_to_target(InvalidCatStream(20), target, config=config)
 
     assert len(target.calls['write_batch']) == 0
+
+
+def test_activate_version():
+    config = CONFIG.copy()
+    config['max_batch_rows'] = 20
+    config['batch_detection_threshold'] = 11
+
+    records = [{"type": "RECORD",
+                "stream": "abc",
+                "record": {},
+                "version": 123}] * (config['batch_detection_threshold'] - 1)
+
+    class TestStream(ListStream):
+        stream = [
+                     {"type": "SCHEMA",
+                      "stream": "abc",
+                      "schema": {
+                          "type": "object",
+                          "properties": {
+                              'a': {'type': 'number'}}},
+                      "key_properties": []}
+                 ] + records + [
+                     {'type': 'ACTIVATE_VERSION',
+                      'stream': "abc",
+                      'version': 123}
+                 ] + records
+
+    target = Target()
+
+    target_tools.stream_to_target(TestStream(), target, config=config)
+
+    rows_persisted = 0
+    for call in target.calls['write_batch']:
+        rows_persisted += call['records_count']
+
+    expected_rows = (2 * len(records))
+    assert rows_persisted == expected_rows
 
 
 def test_state__capture(capsys):
