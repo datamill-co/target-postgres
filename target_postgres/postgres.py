@@ -89,7 +89,7 @@ class PostgresTarget(SQLInterface):
     # TODO: Figure out way to `SELECT` value from commands
     IDENTIFIER_FIELD_LENGTH = 63
 
-    def __init__(self, connection, *args, postgres_schema='public', logging_level=None, persist_empty_tables=False, **kwargs):
+    def __init__(self, connection, *args, postgres_schema='public', logging_level=None, persist_empty_tables=False, initial_sql=None, **kwargs):
         self.LOGGER.info(
             'PostgresTarget created with established connection: `{}`, PostgreSQL schema: `{}`'.format(connection.dsn,
                                                                                                        postgres_schema))
@@ -103,6 +103,11 @@ class PostgresTarget(SQLInterface):
             self.LOGGER.debug('PostgresTarget set to log all queries.')
         except AttributeError:
             self.LOGGER.debug('PostgresTarget disabling logging all queries.')
+
+        if initial_sql:
+            with connection.cursor() as cur:
+                cur.execute(initial_sql)
+                self.LOGGER.debug('Initial SQL executed')
 
         self.conn = connection
         self.postgres_schema = postgres_schema

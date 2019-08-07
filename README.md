@@ -83,6 +83,7 @@ here.
 | `logging_level`             | `["string", "null"]`  | `"INFO"`                         | The level for logging. Set to `DEBUG` to get things like queries executed, timing of those queries, etc. See [Python's Logger Levels](https://docs.python.org/3/library/logging.html#levels) for information about valid values. |
 | `persist_empty_tables`      | `["boolean", "null"]` | `False`                          | Whether the Target should create tables which have no records present in Remote.                                                                                                                                                 |
 | `state_support`             | `["boolean", "null"]` | `True`                           | Whether the Target should emit `STATE` messages to stdout for further consumption. In this mode, which is on by default, STATE messages are buffered in memory until all the records that occurred before them are flushed according to the batch flushing schedule the target is configured with.    |
+| `initial_sql`               | `["string", "null"]`  | `None`                           | Raw SQL statement(s) to execute as soon as the connection to Postgres is opened by the target. Useful for setup like `SET ROLE` or other connection state that is important. |
 
 ### Supported Versions
 
