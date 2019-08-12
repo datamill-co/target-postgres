@@ -33,12 +33,20 @@ class StreamTracker:
         self.stream_add_watermarks[stream] = 0
         self.stream_flush_watermarks[stream] = 0
 
+    def _flush_stream(self, stream):
+        stream_buffer = self.streams[stream]
+        stream_buffer.flush_buffer()
+        self.stream_flush_watermarks[stream] = self.stream_add_watermarks[stream]
+
+    def flush_stream(self, stream):
+        self._flush_stream(stream)
+        self._emit_safe_queued_states()
+
     def flush_streams(self, force=False):
         for (stream, stream_buffer) in self.streams.items():
             if force or stream_buffer.buffer_full:
                 self.target.write_batch(stream_buffer)
-                stream_buffer.flush_buffer()
-                self.stream_flush_watermarks[stream] = self.stream_add_watermarks[stream]
+                self._flush_stream(stream)
 
         self._emit_safe_queued_states(force=force)
 
