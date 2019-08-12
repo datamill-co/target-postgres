@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.9
+
+- **Singer-Python:** bumped to latest _5.6.1_
+- **Psycopg2:** bumped to latest _2.8.2_
+- **FEATURES:**
+  - [`STATE` Message support](https://github.com/datamill-co/target-postgres/pull/130)
+    - Emits message only when all records buffered _before_ the `STATE` message have been persisted to remote.
+  - [SSL Support for Postgres](https://github.com/datamill-co/target-postgres/pull/124)
+    - Added config options for enabling/supporting SSL support.
+- **BUG FIX:** `ACTIVATE_VERSION` Messages did not flush buffer
+  - [FIX LINK](https://github.com/datamill-co/target-postgres/pull/135)
+  - When we issue an activate version record, we presently do not flush the buffer after writing the batch. This results in more records being written to remote than need to be.
+  - This results in no functionality change, and should not alleviate any _known_ bugs.
+  - This should be purely performance related.
+
 ## 0.1.8
 
 - **Singer-Python:** bumped to latest
