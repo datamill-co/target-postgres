@@ -27,11 +27,12 @@ setup(
     setup_requires=[
         "pytest-runner"
     ],
-    tests_require=[
-        "chance==0.110",
-        "Faker==1.0.7",
-        "pytest==4.5.0"
-    ],
+    extras_require={
+        'tests': [
+            "chance==0.110",
+            "Faker==1.0.7",
+            "pytest==4.5.0"
+        ]},
     entry_points='''
       [console_scripts]
       target-postgres=target_postgres:cli

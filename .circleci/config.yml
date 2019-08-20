@@ -112,7 +112,7 @@ jobs:
           command: |
             python -m venv venv--target-postgres
             source venv--target-postgres/bin/activate
-            python setup.py install
+            pip install -e .[tests]
             deactivate
 
       - run:
@@ -229,6 +229,7 @@ jobs:
           name: Data -> Target
           command: |
             source venv--target-postgres/bin/activate
+            pip install .
             cd /code/.circleci/integration
 
             cat /code/artifacts/data/tap | target-postgres --config target-config.json
@@ -255,6 +256,7 @@ jobs:
           name: Repeatability of Data -> Target
           command: |
             source venv--target-postgres/bin/activate
+            pip install .
             cd /code/.circleci/integration
 
             cat /code/artifacts/data/tap | target-postgres --config target-config.json
