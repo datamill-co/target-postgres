@@ -116,6 +116,10 @@ jobs:
             deactivate
 
       - run:
+          name: Install older versions of target-postgres for migration testing
+          command: ./tests/migrations/scripts/install_schema_versions.sh
+
+      - run:
           name: Install tap-github
           command: |
             python -m venv venv--tap-github
