@@ -88,7 +88,7 @@ test__base: &test__base
         name: Run Tests
         command: |
           source venv/target-postgres/bin/activate
-          python setup.py pytest --verbose tests/unit
+          pytest --verbose tests/unit
         environment:
           POSTGRES_HOST: "localhost"
           POSTGRES_DATABASE: "target_postgres_test"

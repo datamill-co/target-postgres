@@ -99,4 +99,4 @@ ENV/
 
 /venv--*
 /venv
-config--migration_testing*
+/tests/migrations/artifacts
