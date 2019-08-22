@@ -62,6 +62,7 @@ workflows:
           <<: *filters__tags
           requires:
             - test--tap-github
+            - test--migrations
             - build
       - approve-release:
           <<: *filters__tags
