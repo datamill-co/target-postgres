@@ -4,7 +4,7 @@ import psycopg2
 import psycopg2.extras
 import pytest
 
-from fixtures import CONFIG, db_cleanup, ListStream, TEST_DB
+from utils.fixtures import CONFIG, db_cleanup, ListStream, TEST_DB
 from target_postgres import main
 
 

@@ -8,7 +8,7 @@ from target_postgres.singer_stream import (
     SINGER_SEQUENCE,
     SINGER_TABLE_VERSION
 )
-from fixtures import CatStream, InvalidCatStream, CATS_SCHEMA
+from utils.fixtures import CatStream, InvalidCatStream, CATS_SCHEMA
 
 
 def missing_sdc_properties(stream_buffer):
