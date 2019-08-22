@@ -166,4 +166,11 @@ def assert_tables_equal():
 
 def test(db_cleanup):
     _test_versions(['schema0', 'schema1', 'LATEST'])
+
+    schemas = list_schemas()
+    assert list_schemas(), "There should have been at least one generated schema..."
+
+    tables = tables_in_schema(schemas[0])
+    assert tables, "There should have been at least one generated table..."
+
     assert_tables_equal()
