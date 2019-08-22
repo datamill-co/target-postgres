@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 set -e -x
 
-source /code/venv/target-postgres/bin/activate
+cd /code
 
-cat /code/tests/migrations/data/tap | target-postgres --config ${1}
+source venv/target-postgres/bin/activate
+pip install .
+
+cat tests/migrations/data/tap | target-postgres --config ${1}
 X="$?"
 
 deactivate
