@@ -87,7 +87,7 @@ test__base: &test__base
     - run:
         name: Run Tests
         command: |
-          source venv--target-postgres/bin/activate
+          source venv/target-postgres/bin/activate
           python setup.py pytest --verbose tests/unit
         environment:
           POSTGRES_HOST: "localhost"
@@ -110,8 +110,8 @@ jobs:
       - run:
           name: Install target-postgres
           command: |
-            python -m venv venv--target-postgres
-            source venv--target-postgres/bin/activate
+            python -m venv venv/target-postgres
+            source venv/target-postgres/bin/activate
             pip install -e .[tests]
             deactivate
 
@@ -122,32 +122,30 @@ jobs:
       - run:
           name: Install tap-github
           command: |
-            python -m venv venv--tap-github
-            source venv--tap-github/bin/activate
+            python -m venv venv/tap-github
+            source venv/tap-github/bin/activate
             pip install tap-github
             deactivate
 
       - run:
           name: Install tap-postgres
           command: |
-            python -m venv venv--tap-postgres
-            source venv--tap-postgres/bin/activate
+            python -m venv venv/tap-postgres
+            source venv/tap-postgres/bin/activate
             pip install tap-postgres
             deactivate
 
       - save_cache:
           key: *cache
           paths:
-            - "./venv--target-postgres"
-            - "./venv--tap-github"
-            - "./venv--tap-postgres"
+            - "./venv"
             - "/usr/local/bin"
             - "/usr/local/lib/python3.7/site-packages"
 
       - persist_to_workspace:
           root: "./"
           paths:
-            - "./venv--target-postgres"
+            - "./venv"
 
   test--11.3:
     <<: *test__base
@@ -222,7 +220,7 @@ jobs:
       - run:
           name: Tap -> Data
           command: |
-            source venv--tap-github/bin/activate
+            source venv/tap-github/bin/activate
             cd /code/.circleci/integration/tap-github
 
             tap-github --config config.json --properties properties.json > /code/artifacts/data/tap
@@ -232,7 +230,7 @@ jobs:
       - run:
           name: Data -> Target
           command: |
-            source venv--target-postgres/bin/activate
+            source venv/target-postgres/bin/activate
             pip install .
             cd /code/.circleci/integration
 
@@ -243,7 +241,7 @@ jobs:
       - run:
           name: Target -> Data
           command: |
-            source venv--tap-postgres/bin/activate
+            source venv/tap-postgres/bin/activate
             cd /code/.circleci/integration/tap-postgres
 
             tap-postgres --config config.json --discover > tmp-properties.json
@@ -259,7 +257,7 @@ jobs:
       - run:
           name: Repeatability of Data -> Target
           command: |
-            source venv--target-postgres/bin/activate
+            source venv/target-postgres/bin/activate
             pip install .
             cd /code/.circleci/integration
 
@@ -269,7 +267,7 @@ jobs:
 
             cd /code
 
-            source venv--tap-postgres/bin/activate
+            source venv/tap-postgres/bin/activate
             cd /code/.circleci/integration/tap-postgres
 
             tap-postgres --config config.json --discover > tmp-properties.json
@@ -300,7 +298,7 @@ jobs:
       - run:
           name: Build distribution
           command: |
-            source venv--target-postgres/bin/activate
+            source venv/target-postgres/bin/activate
 
             pip install --upgrade setuptools wheel twine
 
