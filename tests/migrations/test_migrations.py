@@ -33,12 +33,17 @@ def abs_path(relative_path):
     return FILE_PATH + relative_path
 
 
+def _cursor_list(cursor, idx=0):
+    return [x[idx] for x in cursor.fetchall()]
+
+
 def list_schemas():
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE '{}%'".format(SCHEMA_PREFIX))
-            return cur.fetchall()
+                "SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE '{}%'".format(
+                    SCHEMA_PREFIX))
+            return _cursor_list(cur.fetchall())
 
 
 def clear_schema(schema):
@@ -121,5 +126,44 @@ def _test_versions(versions):
         tap_to_target(version, schema)
 
 
+def tables_in_schema(schema):
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql.SQL(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = {}"
+            ).format(sql.Literal(schema)))
+            return set(_cursor_list(cur))
+
+
+def table_length(schema, table):
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql.SQL(
+                "SELECT count(*) FROM {}.{}"
+            ).format(
+                sql.Identifier(schema),
+                sql.Identifier(table)))
+            return cur.fetchone()[0]
+
+
+def assert_table_lengths_equal(schema_a, schema_b, table):
+    assert table_length(schema_a, table) == table_length(schema_b, table), \
+        "Table {} in schemas {}, {} does not match in length".format(table, schema_a, schema_b)
+
+
+def assert_tables_equal():
+    schemas = list_schemas()
+    tables = tables_in_schema(schemas[0])
+
+    for idx in range(1, len(schemas)):
+        schema = schemas[idx]
+        assert tables == tables_in_schema(schema), \
+            "Schema: {} differs from the rest. Processed {} of {}".format(schema, idx, len(schemas))
+
+        for table in tables:
+            assert_table_lengths_equal(schemas[0], schema, table)
+
+
 def test(db_cleanup):
     _test_versions(['schema0', 'schema1', 'LATEST'])
+    assert_tables_equal()
