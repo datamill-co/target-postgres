@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.10
+
+- **FEATURES:**
+  - [Root Table Name Canonicalization](https://github.com/datamill-co/target-postgres/pull/131)
+    - The `stream` name is used for the value of the root table name in Postgres
+    - `stream` names are controlled exclusively by the tap and do _not_ have to meet many standards
+    - Previously, only `stream` names which were lowercase, alphanumeric, etc.
+    - Now, the `target` can canonicalize the root table name, allowing for the input `stream` name to be
+      whatever the `tap` provides.
+
 ## 0.1.9
 
 - **Singer-Python:** bumped to latest _5.6.1_
