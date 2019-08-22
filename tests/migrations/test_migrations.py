@@ -75,7 +75,7 @@ def create_schema(schema):
 def setup_config(version, psql_schema):
     os.makedirs(abs_path("artifacts"), exist_ok=True)
 
-    config_path =  abs_path("artifacts/config--{}.json".format(psql_schema))
+    config_path = abs_path("artifacts/config--{}.json".format(psql_schema))
 
     if not os.path.exists(config_path):
         target_config = deepcopy(CONFIG)
