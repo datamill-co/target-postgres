@@ -84,7 +84,7 @@ def setup_config(version, psql_schema):
 
     if not os.path.exists(config_path):
         target_config = deepcopy(CONFIG)
-        target_config['schema'] = psql_schema
+        target_config['postgres_schema'] = psql_schema
 
         with open(config_path, 'w') as outfile:
             json.dump(target_config, outfile)
