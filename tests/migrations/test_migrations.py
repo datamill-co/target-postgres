@@ -43,7 +43,7 @@ def list_schemas():
             cur.execute(
                 "SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE '{}%'".format(
                     SCHEMA_PREFIX))
-            return _cursor_list(cur.fetchall())
+            return _cursor_list(cur)
 
 
 def clear_schema(schema):
