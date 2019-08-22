@@ -169,7 +169,7 @@ As soon as you see `INFO: Dev environment ready.` you can shell into the contain
 
 ```sh
 $ docker exec -it target-postgres_target-postgres_1 bash # Your container names might differ
-root@... $ source /code/venv--target-postgres/bin/activate
+root@... $ source /code/venv/target-postgres/bin/activate
 root@... $ pytest
 ```
 

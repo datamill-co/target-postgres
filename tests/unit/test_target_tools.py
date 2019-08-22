@@ -8,7 +8,7 @@ from target_postgres import singer_stream
 from target_postgres import target_tools
 from target_postgres.sql_base import SQLInterface
 
-from fixtures import CONFIG, CatStream, ListStream, InvalidCatStream
+from utils.fixtures import CONFIG, CatStream, ListStream, InvalidCatStream
 
 
 class Target(SQLInterface):

@@ -3,7 +3,7 @@ import re
 import pytest
 
 from target_postgres import json_schema
-from fixtures import CATS_SCHEMA
+from utils.fixtures import CATS_SCHEMA
 
 
 def test_python_type():
