@@ -46,6 +46,10 @@ workflows:
           <<: *filters
           requires:
             - cache
+      - test--migrations:
+          <<: *filters
+          requires:
+            - cache
       - test--tap-github:
           <<: *filters
           requires:
@@ -285,6 +289,33 @@ jobs:
 
       - store_artifacts:
           path: /code/artifacts
+
+  test--migrations:
+    working_directory: /code/
+    docker:
+      - image: python:3.7.3-stretch
+      - image: postgres:9.4.22
+        environment:
+          POSTGRES_DB: target_postgres_test
+    steps:
+      - checkout
+      - *restore__cache
+      - attach_workspace:
+          at: "./"
+
+      - run:
+          name: Run Tests
+          command: |
+            source venv/target-postgres/bin/activate
+            pytest --verbose tests/migrations
+          environment:
+            POSTGRES_HOST: "localhost"
+            POSTGRES_DATABASE: "target_postgres_test"
+            POSTGRES_USERNAME: "postgres"
+
+      - store_artifacts:
+          path: /code/tests/migrations/artifacts
+          destination: raw-test-output
 
   build:
     working_directory: /code/
