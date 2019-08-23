@@ -50,9 +50,9 @@ class StreamTracker:
 
         self._emit_safe_queued_states(force=force)
 
-    def handle_state_message(self, value):
+    def handle_state_message(self, line_data):
         if self.emit_states:
-            self.state_queue.append({'state': value, 'watermark': self.message_counter})
+            self.state_queue.append({'state': line_data['value'], 'watermark': self.message_counter})
             self._emit_safe_queued_states()
 
     def handle_record_message(self, stream, line_data):
