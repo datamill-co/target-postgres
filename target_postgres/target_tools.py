@@ -13,7 +13,6 @@ from target_postgres.exceptions import TargetError
 from target_postgres.singer_stream import BufferedSingerStream
 from target_postgres.stream_tracker import StreamTracker
 
-
 LOGGER = singer.get_logger()
 
 
@@ -61,7 +60,7 @@ def stream_to_target(stream, target, config={}):
                           max_batch_rows,
                           max_batch_size,
                           line
-            )
+                          )
             if line_count > 0 and line_count % batch_detection_threshold == 0:
                 state_tracker.flush_streams()
             line_count += 1
@@ -86,7 +85,8 @@ def _report_invalid_records(streams):
             ))
 
 
-def _line_handler(state_tracker, target, invalid_records_detect, invalid_records_threshold, max_batch_rows, max_batch_size, line):
+def _line_handler(state_tracker, target, invalid_records_detect, invalid_records_threshold, max_batch_rows,
+                  max_batch_size, line):
     try:
         line_data = json.loads(line)
     except json.decoder.JSONDecodeError:
@@ -146,6 +146,7 @@ def _line_handler(state_tracker, target, invalid_records_detect, invalid_records
 
         stream_buffer = state_tracker.streams[line_data['stream']]
         target.write_batch(stream_buffer)
+        state_tracker.flush_stream(line_data['stream'])
         target.activate_version(stream_buffer, line_data['version'])
     elif line_data['type'] == 'STATE':
         state_tracker.handle_state_message(line_data)

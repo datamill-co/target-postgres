@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-python -m venv venv--target-postgres
-source /code/venv--target-postgres/bin/activate
+python -m venv venv/target-postgres
+source /code/venv/target-postgres/bin/activate
 
-pip install -e .
+pip install -e .[tests]
 
 echo -e "\n\nINFO: Dev environment ready."
 

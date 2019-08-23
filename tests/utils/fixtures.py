@@ -486,3 +486,22 @@ def db_cleanup():
     yield
 
     clear_db()
+
+
+class ListStream:
+    idx = None
+    stream = NotImplementedError()
+
+    def __init__(self):
+        self.idx = -1
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.idx += 1
+
+        if self.idx < len(self.stream):
+            return json.dumps(self.stream[self.idx])
+
+        raise StopIteration

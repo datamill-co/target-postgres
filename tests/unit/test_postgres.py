@@ -6,7 +6,7 @@ from psycopg2 import sql
 import psycopg2.extras
 import pytest
 
-from fixtures import CatStream, CONFIG, db_cleanup, MultiTypeStream, NestedStream, TEST_DB, TypeChangeStream
+from utils.fixtures import CatStream, CONFIG, db_cleanup, MultiTypeStream, NestedStream, TEST_DB, TypeChangeStream
 from target_postgres import json_schema
 from target_postgres import postgres
 from target_postgres import singer_stream
@@ -163,7 +163,7 @@ def test_loading__invalid__default_null_value__non_nullable_column(db_cleanup):
         main(CONFIG, input_stream=NullDefaultCatStream(20))
 
 
-def test_loading__schema_version_0_gets_migrated_to_1(db_cleanup):
+def test_loading__schema_version_0_gets_migrated_to_2(db_cleanup):
     main(CONFIG, input_stream=CatStream(100))
 
     with psycopg2.connect(**TEST_DB) as conn:
@@ -171,9 +171,32 @@ def test_loading__schema_version_0_gets_migrated_to_1(db_cleanup):
             target = postgres.PostgresTarget(conn)
             metadata = target._get_table_metadata(cur, 'cats')
             metadata.pop('schema_version')
+            metadata.pop('path')
+            metadata['table_mappings'] = [{'from': ['cats', 'adoption', 'immunizations'],
+                                           'to': 'cats__adoption__immunizations'}]
             target._set_table_metadata(cur, 'cats', metadata)
 
+            metadata = target._get_table_metadata(cur, 'cats__adoption__immunizations')
+            metadata.pop('schema_version')
+            metadata.pop('path')
+            target._set_table_metadata(cur, 'cats__adoption__immunizations', metadata)
+
     main(CONFIG, input_stream=CatStream(100))
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            target = postgres.PostgresTarget(conn)
+            metadata = target._get_table_metadata(cur, 'cats')
+
+            assert metadata['schema_version'] == 2
+            assert metadata['path']
+            assert not metadata.get('table_mappings')
+
+            metadata = target._get_table_metadata(cur, 'cats__adoption__immunizations')
+
+            assert metadata['schema_version'] == 2
+            assert metadata['path']
+            assert not metadata.get('table_mappings')
 
 
 def test_loading__simple(db_cleanup):
@@ -848,19 +871,18 @@ def test_loading__multi_types_columns(db_cleanup):
 
 
 def test_loading__invalid__table_name__stream(db_cleanup):
-    def invalid_stream_named(stream_name, postgres_error_regex):
+    def invalid_stream_named(stream_name):
         stream = CatStream(100)
         stream.stream = stream_name
         stream.schema = deepcopy(stream.schema)
         stream.schema['stream'] = stream_name
 
-        with pytest.raises(postgres.PostgresError, match=postgres_error_regex):
-            main(CONFIG, input_stream=stream)
+        main(CONFIG, input_stream=stream)
 
-    invalid_stream_named('', r'.*non empty.*')
-    invalid_stream_named('x' * 1000, r'Length.*')
-    invalid_stream_named('INVALID_name', r'.*must start.*')
-    invalid_stream_named('a!!!invalid_name', r'.*only contain.*')
+    invalid_stream_named('')
+    invalid_stream_named('x' * 1000)
+    invalid_stream_named('INVALID_name')
+    invalid_stream_named('a!!!invalid_name')
 
     borderline_length_stream_name = 'x' * 61
     stream = CatStream(100, version=1)
@@ -873,9 +895,72 @@ def test_loading__invalid__table_name__stream(db_cleanup):
     stream.stream = borderline_length_stream_name
     stream.schema = deepcopy(stream.schema)
     stream.schema['stream'] = borderline_length_stream_name
+    main(CONFIG, input_stream=stream)
 
-    with pytest.raises(postgres.PostgresError, match=r'Length.*'):
-        main(CONFIG, input_stream=stream)
+
+def test_loading__table_name__stream__simple(db_cleanup):
+    def assert_tables_equal(cursor, expected_table_names):
+        cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
+        tables = []
+        for table in cursor.fetchall():
+            tables.append(table[0])
+
+        assert (not tables and not expected_table_names) \
+               or set(tables) == expected_table_names
+
+    stream_name = "C@ts"
+    stream = CatStream(100)
+    stream.stream = stream_name
+    stream.schema = deepcopy(stream.schema)
+    stream.schema['stream'] = stream_name
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
+            tables = []
+            for table in cur.fetchall():
+                tables.append(table[0])
+
+            assert {'c_ts', 'c_ts__adoption__immunizations'} == set(tables)
+
+            assert_columns_equal(cur,
+                                 'c_ts',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'c_ts__adoption__immunizations',
+                                 {
+                                     ('_sdc_level_0_id', 'bigint', 'NO'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_source_key_id', 'bigint', 'NO'),
+                                     ('date_administered', 'timestamp with time zone', 'YES'),
+                                     ('type', 'text', 'YES')
+                                 })
+
+            cur.execute(get_count_sql('c_ts'))
+            assert cur.fetchone()[0] == 100
+
+        for record in stream.records:
+            record['paw_size'] = 314159
+            record['paw_colour'] = ''
+            record['flea_check_complete'] = False
+
+        assert_records(conn, stream.records, 'c_ts', 'id')
 
 
 def test_loading__invalid__table_name__nested(db_cleanup):
