@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.11
+
+- **BUG FIX:** `canonicalize_identifier` Not called on _all_ identifiers persisted to remote
+  - [FIX LINK](https://github.com/datamill-co/target-postgres/pull/144)
+  - Presently, on column splits/name collisions, we add a suffix to an identifier
+  - Previously, we did not canonicalize these suffixes
+  - While this was not an issue for any `targets` currently in production, it was an issue
+    for some up and coming `targets`.
+  - This fix simply makes sure to call `canonicalize_identifier` before persisting an identifier to remote
+
 ## 0.1.10
 
 - **FEATURES:**
