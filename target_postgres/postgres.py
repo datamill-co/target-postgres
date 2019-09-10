@@ -182,8 +182,6 @@ class PostgresTarget(SQLInterface):
                 except:
                     pass
 
-            print(mapped_name, metadata and metadata.get('schema_version', 0), metadata)
-
             if metadata and metadata.get('schema_version', 0) == 1 and metadata.get('table_mappings'):
                 self.LOGGER.info('Migrating root_table `{}` children from schema_version 1 to 2'.format(mapped_name))
 
