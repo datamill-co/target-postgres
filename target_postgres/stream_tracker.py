@@ -21,22 +21,29 @@ class StreamTracker:
         self.emit_states = emit_states
 
         self.streams = {}
+
+        # dict of {'<stream_name>': number}, where the number is the message counter of the most recently received record for that stream. Will contain a value for all registered streams.
         self.stream_add_watermarks = {}
+
+        # dict of {'<stream_name>': number}, where the number is the message counter of the most recently flushed record for that stream. Will contain a value for all registered streams.
         self.stream_flush_watermarks = {}
 
+        self.streams_added_to = set()  # list of stream names which have seen records
         self.state_queue = deque()  # contains dicts of {'state': <state blob>, 'watermark': number}
         self.message_counter = 0
         self.last_emitted_state = None
 
     def register_stream(self, stream, buffered_stream):
         self.streams[stream] = buffered_stream
-        self.stream_add_watermarks[stream] = 0
         self.stream_flush_watermarks[stream] = 0
 
     def _flush_stream(self, stream):
         stream_buffer = self.streams[stream]
-        stream_buffer.flush_buffer()
-        self.stream_flush_watermarks[stream] = self.stream_add_watermarks[stream]
+
+        # Flush the buffer if any records have been added to the stream
+        if stream in self.streams_added_to:
+            stream_buffer.flush_buffer()
+            self.stream_flush_watermarks[stream] = self.stream_add_watermarks[stream]
 
     def flush_stream(self, stream):
         self._flush_stream(stream)
@@ -60,18 +67,24 @@ class StreamTracker:
             raise TargetError('A record for stream {} was encountered before a corresponding schema'.format(stream))
 
         self.message_counter += 1
+        self.streams_added_to.add(stream)
         self.stream_add_watermarks[stream] = self.message_counter
         self.streams[stream].add_record_message(line_data)
 
     def _emit_safe_queued_states(self, force=False):
         # State messages that occured before the least recently flushed record are safe to emit.
         # If they occurred after some records that haven't yet been flushed, they aren't safe to emit.
-        # Because records arrive at different rates from different streams, we take the earliest unflushed record as the threshold for what
-        # STATE messages are safe to emit.
-        all_flushed_watermark = min(self.stream_flush_watermarks.values(), default=0)
-        emittable_state = None
+        # Because records arrive at different rates from different streams, we take the earliest unflushed record
+        # as the threshold for what STATE messages are safe to emit. We ignore the threshold of 0 for streams that
+        # have been registered (via a SCHEMA message) but where no records have arrived yet.
+        valid_flush_watermarks = []
+        for stream, watermark in self.stream_flush_watermarks.items():
+            if stream in self.streams_added_to:
+                valid_flush_watermarks.append(watermark)
+        safe_flush_threshold = min(valid_flush_watermarks, default=0)
 
-        while len(self.state_queue) > 0 and (force or self.state_queue[0]['watermark'] <= all_flushed_watermark):
+        emittable_state = None
+        while len(self.state_queue) > 0 and (force or self.state_queue[0]['watermark'] <= safe_flush_threshold):
             emittable_state = self.state_queue.popleft()['state']
 
         if emittable_state:
