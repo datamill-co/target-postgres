@@ -124,8 +124,8 @@ def test_state__capture(capsys):
     output = filtered_output(capsys)
 
     assert len(output) == 2
-    assert json.loads(output[0])['value']['test'] == 'state-1'
-    assert json.loads(output[1])['value']['test'] == 'state-2'
+    assert json.loads(output[0])['test'] == 'state-1'
+    assert json.loads(output[1])['test'] == 'state-2'
 
 
 def test_state__capture_can_be_disabled(capsys):
@@ -171,7 +171,7 @@ def test_state__emits_only_messages_when_all_records_before_have_been_flushed(ca
         assert len(target.calls['write_batch']) == 1
         output = filtered_output(capsys)
         assert len(output) == 1
-        assert json.loads(output[0])['value']['test'] == 'state-3'
+        assert json.loads(output[0])['test'] == 'state-3'
 
         for row in rows[slice(26, 31)]:
             yield row
@@ -181,7 +181,7 @@ def test_state__emits_only_messages_when_all_records_before_have_been_flushed(ca
     # The final state message should have been outputted after the last records were loaded
     output = filtered_output(capsys)
     assert len(output) == 1
-    assert json.loads(output[0])['value']['test'] == 'state-4'
+    assert json.loads(output[0])['test'] == 'state-4'
 
 
 def test_state__emits_most_recent_state_when_final_flush_occurs(capsys):
@@ -197,7 +197,7 @@ def test_state__emits_most_recent_state_when_final_flush_occurs(capsys):
     # one full flushable batch
     output = filtered_output(capsys)
     assert len(output) == 1
-    assert json.loads(output[0])['value']['test'] == 'state-1'
+    assert json.loads(output[0])['test'] == 'state-1'
 
 
 class DogStream(CatStream):
@@ -248,14 +248,14 @@ def test_state__doesnt_emit_when_only_one_of_several_streams_is_flushing(capsys)
         assert len(target.calls['write_batch']) == 4
         output = filtered_output(capsys)
         assert len(output) == 1
-        assert json.loads(output[0])['value']['test'] == 'state-2'
+        assert json.loads(output[0])['test'] == 'state-2'
 
     target_tools.stream_to_target(test_stream(), target, config=config)
 
     # The final state message should have been outputted after the last dog records were loaded despite not reaching one full flushable batch
     output = filtered_output(capsys)
     assert len(output) == 1
-    assert json.loads(output[0])['value']['test'] == 'state-4'
+    assert json.loads(output[0])['test'] == 'state-4'
 
 
 def test_state__doesnt_emit_when_it_isnt_different_than_the_previous_emission(capsys):

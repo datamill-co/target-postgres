@@ -169,14 +169,15 @@ class SQLInterface:
             return from_type__to_name[(path, json_schema.shorthand(schema))]
 
         raw_canonicalized_column_name = self.canonicalize_identifier(SEPARATOR.join(path))
-        canonicalized_column_name = raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH]
+        canonicalized_column_name = self.canonicalize_identifier(raw_canonicalized_column_name[:self.IDENTIFIER_FIELD_LENGTH])
 
         raw_suffix = ''
         ## NO TYPE MATCH
         if path in existing_paths:
             raw_suffix = SEPARATOR + json_schema.shorthand(schema)
-            canonicalized_column_name = raw_canonicalized_column_name[
-                                        :self.IDENTIFIER_FIELD_LENGTH - len(raw_suffix)] + raw_suffix
+            canonicalized_column_name = self.canonicalize_identifier(
+                                          raw_canonicalized_column_name[
+                                            :self.IDENTIFIER_FIELD_LENGTH - len(raw_suffix)] + raw_suffix)
 
             self.LOGGER.warning(
                 'FIELD COLLISION: Field `{}` exists in remote already. No compatible type found. Appending type suffix: `{}`'.format(
@@ -195,8 +196,9 @@ class SQLInterface:
 
             i += 1
             suffix = raw_suffix + SEPARATOR + str(i)
-            canonicalized_column_name = raw_canonicalized_column_name[
-                                        :self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix
+            canonicalized_column_name = self.canonicalize_identifier(
+                                          raw_canonicalized_column_name[
+                                            :self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix)
 
         return canonicalized_column_name
 
@@ -239,7 +241,7 @@ class SQLInterface:
         name = SEPARATOR.join(from_path)
 
         raw_canonicalized_name = self.canonicalize_identifier(name)
-        canonicalized_name = raw_canonicalized_name[:self.IDENTIFIER_FIELD_LENGTH]
+        canonicalized_name = self.canonicalize_identifier(raw_canonicalized_name[:self.IDENTIFIER_FIELD_LENGTH])
 
         i = 0
         ## NAME COLLISION
@@ -252,8 +254,8 @@ class SQLInterface:
 
             i += 1
             suffix = SEPARATOR + str(i)
-            canonicalized_name = raw_canonicalized_name[
-                                 :self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix
+            canonicalized_name = self.canonicalize_identifier(raw_canonicalized_name[
+                                   :self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix)
 
         return {'exists': False, 'to': canonicalized_name}
 
