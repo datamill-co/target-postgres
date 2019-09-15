@@ -315,6 +315,17 @@ class SQLInterface:
         """
         raise NotImplementedError('`make_column_nullable` not implemented.')
 
+    def add_index(self, connection, table_name, column_names):
+        """
+        Add an index on a group of `column_names` in `table_name`.
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param table_name: string
+        :param column_names: (string, ...)
+        :return: None
+        """
+        raise NotImplementedError('`add_index` not implemented.')
+
     def add_column_mapping(self, connection, table_name, from_path, to_name, schema):
         """
         Given column path `from_path` add a column mapping to `to_name` for `schema`. A column mapping is an entry
@@ -384,9 +395,11 @@ class SQLInterface:
 
             existing_schema = self._get_table_schema(connection, table_name)
 
+            existing_table = True
             if existing_schema is None:
                 self.add_table(connection, table_path, table_name, _metadata)
                 existing_schema = self._get_table_schema(connection, table_name)
+                existing_table = False
 
             self.add_key_properties(connection, table_name, schema.get('key_properties', None))
 
@@ -617,6 +630,10 @@ class SQLInterface:
                         ))
 
                 log_message(upsert_table_helper__column)
+
+            if not existing_table:
+                for column_names in self.new_table_indexes(schema):
+                    self.add_index(connection, table_name, column_names)
 
             return self._get_table_schema(connection, table_name)
 
@@ -856,3 +873,15 @@ class SQLInterface:
         :return: boolean
         """
         raise NotImplementedError('`activate_version` not implemented.')
+
+    def new_table_indexes(self, schema):
+        """
+        Returns a list of lists of string column names to add indexes for a new table once that new table has been fully created.
+        For subclassess where indexes don't make any sense, like Redshift, this can safely always return false.
+
+        :param schema: TABLE_SCHEMA(local)
+        :param column_name: string
+        :return: [[column_name: string], [column_name: string, column_name: string],...]
+        """
+        return []
+

@@ -27,7 +27,8 @@ def main(config, input_stream=None):
             connection,
             postgres_schema=config.get('postgres_schema', 'public'),
             logging_level=config.get('logging_level'),
-            persist_empty_tables=config.get('persist_empty_tables'))
+            persist_empty_tables=config.get('persist_empty_tables'),
+            add_upsert_indexes=config.get('add_upsert_indexes', True))
 
         if input_stream:
             target_tools.stream_to_target(input_stream, postgres_target, config=config)
