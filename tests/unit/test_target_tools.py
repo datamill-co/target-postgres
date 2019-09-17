@@ -8,7 +8,7 @@ from target_postgres import singer_stream
 from target_postgres import target_tools
 from target_postgres.sql_base import SQLInterface
 
-from utils.fixtures import CONFIG, CatStream, ListStream, InvalidCatStream
+from utils.fixtures import CONFIG, CatStream, ListStream, InvalidCatStream, DogStream
 
 
 class Target(SQLInterface):
@@ -198,14 +198,6 @@ def test_state__emits_most_recent_state_when_final_flush_occurs(capsys):
     output = filtered_output(capsys)
     assert len(output) == 1
     assert json.loads(output[0])['test'] == 'state-1'
-
-
-class DogStream(CatStream):
-    stream = 'dogs'
-    schema = CatStream.schema.copy()
-
-
-DogStream.schema['stream'] = 'dogs'
 
 
 def test_state__doesnt_emit_when_only_one_of_several_streams_is_flushing(capsys):
