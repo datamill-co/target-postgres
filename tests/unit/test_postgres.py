@@ -1717,13 +1717,17 @@ def test_multiple_batches_by_memory_upsert(db_cleanup):
         assert_records(conn, stream.records, 'cats', 'id')
 
 
-def test_initial_sql_is_executed_upon_construction(db_cleanup):
+def test_before_run_sql_is_executed_upon_construction(db_cleanup):
     config = CONFIG.copy()
-    config['initial_sql'] = 'CREATE TABLE sql_test ( code char(5) CONSTRAINT firstkey PRIMARY KEY );'
+    config['before_run_sql'] = 'CREATE TABLE before_sql_test ( code char(5) CONSTRAINT firstkey PRIMARY KEY );'
+    config['after_run_sql'] = 'CREATE TABLE after_sql_test ( code char(5) CONSTRAINT secondkey PRIMARY KEY );'
 
     main(config, input_stream=CatStream(100))
 
     with psycopg2.connect(**TEST_DB) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name='sql_test';")
-            assert cur.fetchone()[0] == 'sql_test'
+            cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name='before_sql_test';")
+            assert cur.fetchone()[0] == 'before_sql_test'
+
+            cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name='after_sql_test';")
+            assert cur.fetchone()[0] == 'after_sql_test'

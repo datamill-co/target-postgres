@@ -40,6 +40,7 @@ def stream_to_target(stream, target, config={}):
 
     state_support = config.get('state_support', True)
     state_tracker = StreamTracker(target, state_support)
+    _run_sql_hook('before_run_sql', config, target)
 
     try:
         if not config.get('disable_collection', False):
@@ -66,6 +67,7 @@ def stream_to_target(stream, target, config={}):
             line_count += 1
 
         state_tracker.flush_streams(force=True)
+        _run_sql_hook('after_run_sql', config, target)
 
         return None
 
@@ -178,3 +180,10 @@ def _async_send_usage_stats():
                 'To disable sending anonymous usage data, set ' +
                 'the config parameter "disable_collection" to true')
     threading.Thread(target=_send_usage_stats()).start()
+
+
+def _run_sql_hook(hook_name, config, target):
+    if hook_name in config:
+        with target.conn.cursor() as cur:
+            cur.execute(config[hook_name])
+            LOGGER.debug('{} SQL executed'.format(hook_name))
