@@ -48,9 +48,9 @@ def stream_to_target(stream, target, config={}):
 
         invalid_records_detect = config.get('invalid_records_detect')
         invalid_records_threshold = config.get('invalid_records_threshold')
-        max_batch_rows = config.get('max_batch_rows')
-        max_batch_size = config.get('max_batch_size')
-        batch_detection_threshold = config.get('batch_detection_threshold', 5000)
+        max_batch_rows = config.get('max_batch_rows', 200000)
+        max_batch_size = config.get('max_batch_size', 104857600)  # 100MB
+        batch_detection_threshold = config.get('batch_detection_threshold', max(max_batch_rows / 40, 50))
 
         line_count = 0
         for line in stream:

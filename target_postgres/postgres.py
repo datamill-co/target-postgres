@@ -182,8 +182,6 @@ class PostgresTarget(SQLInterface):
                 except:
                     pass
 
-            print(mapped_name, metadata and metadata.get('schema_version', 0), metadata)
-
             if metadata and metadata.get('schema_version', 0) == 1 and metadata.get('table_mappings'):
                 self.LOGGER.info('Migrating root_table `{}` children from schema_version 1 to 2'.format(mapped_name))
 
@@ -579,15 +577,16 @@ class PostgresTarget(SQLInterface):
     def write_table_batch(self, cur, table_batch, metadata):
         remote_schema = table_batch['remote_schema']
 
-        target_table_name = 'tmp_' + str(uuid.uuid4()).replace('-', '_')
-
         ## Create temp table to upload new data to
-        target_schema = deepcopy(remote_schema)
-        target_schema['path'] = (target_table_name,)
-        self.upsert_table_helper(cur,
-                                 target_schema,
-                                 {'version': remote_schema['version']},
-                                 log_schema_changes=False)
+        target_table_name = self.canonicalize_identifier('tmp_' + str(uuid.uuid4()))
+        cur.execute(sql.SQL(
+            '''
+            CREATE TABLE {schema}.{temp_table} (LIKE {schema}.{table})
+            ''').format(
+            schema=sql.Identifier(self.postgres_schema),
+            temp_table=sql.Identifier(target_table_name),
+            table=sql.Identifier(remote_schema['name'])
+        ))
 
         ## Make streamable CSV records
         csv_headers = list(remote_schema['schema']['properties'].keys())

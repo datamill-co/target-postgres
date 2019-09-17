@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.0
+
+- **NOTE:** The `minor` version bump is not expected to have much effect on folks. This was done to signal the
+  output change from the below bug fix. It is our impression not many are using this feature yet anyways. Since
+  this was _not_ a `patch` change, we decided to make this a `minor` instead of `major` change to raise _less_
+  concern. Thank you for your patience!
+- **FEATURES:**
+  - [Performance improvement for creating `tmp` tables necessary for uploading data](https://github.com/datamill-co/target-postgres/pull/147)
+    - PostgreSQL dialects allow for creating a table identical to a parent table in a single command
+    - [`CREATE TABLE <name> (LIKE <parent-name>);`](https://www.postgresql.org/docs/9.1/sql-createtable.html)
+    - Previously we leveraged using our `upsert` helpers to create new tables. This resulted in _many_ calls
+      to remote, of varying complexity.
+- **BUG FIX:** No `STATE` Message Wrapper necessary
+  - [FIX LINK](https://github.com/datamill-co/target-postgres/pull/142)
+  - `STATE` messages are formatted as `{"value": ...}`
+  - `target-potgres` emitted the _full_ message
+  - The official `singer-target-template`, doesn't write out that `value` "wrapper", and just writes
+    the JSON blob contained in it
+  - This fix makes `target-postgres` do the same
+
 ## 0.1.11
 
 - **BUG FIX:** `canonicalize_identifier` Not called on _all_ identifiers persisted to remote
