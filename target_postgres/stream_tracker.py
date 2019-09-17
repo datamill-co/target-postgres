@@ -37,23 +37,14 @@ class StreamTracker:
         self.streams[stream] = buffered_stream
         self.stream_flush_watermarks[stream] = 0
 
-    def _flush_stream(self, stream):
-        stream_buffer = self.streams[stream]
-
-        # Flush the buffer if any records have been added to the stream
-        if stream in self.streams_added_to:
-            stream_buffer.flush_buffer()
-            self.stream_flush_watermarks[stream] = self.stream_add_watermarks[stream]
-
     def flush_stream(self, stream):
-        self._flush_stream(stream)
+        self._write_batch_and_update_watermarks(stream)
         self._emit_safe_queued_states()
 
     def flush_streams(self, force=False):
         for (stream, stream_buffer) in self.streams.items():
             if force or stream_buffer.buffer_full:
-                self.target.write_batch(stream_buffer)
-                self._flush_stream(stream)
+                self._write_batch_and_update_watermarks(stream)
 
         self._emit_safe_queued_states(force=force)
 
@@ -70,6 +61,12 @@ class StreamTracker:
         self.streams_added_to.add(stream)
         self.stream_add_watermarks[stream] = self.message_counter
         self.streams[stream].add_record_message(line_data)
+
+    def _write_batch_and_update_watermarks(self, stream):
+        stream_buffer = self.streams[stream]
+        self.target.write_batch(stream_buffer)
+        stream_buffer.flush_buffer()
+        self.stream_flush_watermarks[stream] = self.stream_add_watermarks.get(stream, 0)
 
     def _emit_safe_queued_states(self, force=False):
         # State messages that occured before the least recently flushed record are safe to emit.
