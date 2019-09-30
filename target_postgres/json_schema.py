@@ -115,6 +115,18 @@ def _is_ref(schema):
     return '$ref' in schema
 
 
+def _is_allof(schema):
+    """
+    Given a JSON Schema compatible dict, returns True when the schema implements `$allOf`,
+    AND has allOf elements.
+
+    :param schema:
+    :return: Boolean
+    """
+
+    return not _is_ref(schema) and 'allOf' in schema and schema['allOf']
+
+
 def is_object(schema):
     """
     Given a JSON Schema compatible dict, returns True when schema's type allows being an Object.
@@ -186,6 +198,33 @@ def make_nullable(schema):
     return ret_schema
 
 
+def _allof_sort_key(schema):
+    '''
+    We prefer scalars over combinations.
+    With scalars we prefer date-times over strings.
+    With combinations, we prefer objects.
+    With all, we prefer nullables.
+    '''
+    if is_nullable(schema):
+        sort_value = 0
+    else:
+        sort_value = 1
+
+    if is_datetime(schema):
+        sort_value += 0
+    elif is_literal(schema):
+        sort_value += 10
+    elif is_object(schema):
+        sort_value += 100
+    elif is_iterable(schema):
+        sort_value += 200
+    else:
+        # Unknown schema...maybe a $ref?
+        sort_value += 1000
+
+    return sort_value
+
+
 def _helper_simplify(root_schema, child_schema):
     ret_schema = {}
 
@@ -195,6 +234,25 @@ def _helper_simplify(root_schema, child_schema):
             ret_schema = _helper_simplify(root_schema, get_ref(root_schema, child_schema['$ref']))
         except RecursionError:
             raise JSONSchemaError('`$ref` path "{}" is recursive'.format(get_ref(root_schema, child_schema['$ref'])))
+
+    elif _is_allof(child_schema):
+        simplified_schemas = []
+        for schema in child_schema['allOf']:
+            simplified_schemas.append(_helper_simplify(root_schema, schema))
+
+        schemas = sorted(simplified_schemas, key=_allof_sort_key)
+
+        ret_schema = schemas[0]
+
+        if is_object(ret_schema):
+            # Merge objects together preferring later allOfs over earlier
+            next_schemas = schemas[1:]
+            while next_schemas and is_object(next_schemas[0]):
+                ret_schema['properties'] = {
+                    **ret_schema['properties'],
+                    **next_schemas[0]['properties']}
+
+                next_schemas = next_schemas[1:]
 
     else:
 
