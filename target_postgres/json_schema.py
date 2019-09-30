@@ -42,14 +42,14 @@ def get_type(schema):
     :param schema: dict, JSON Schema
     :return: [string ...]
     """
-    _type = schema.get('type', None)
-    if not _type:
+    t = schema.get('type', None)
+    if not t:
         return [OBJECT]
 
-    if isinstance(_type, str):
-        return [_type]
+    if isinstance(t, str):
+        return [t]
 
-    return _type
+    return deepcopy(t)
 
 
 def simple_type(schema):
@@ -67,13 +67,13 @@ def simple_type(schema):
     :param schema: dict, JSON Schema
     :return: dict, JSON Schema
     """
-    _type = get_type(schema)
+    t = get_type(schema)
 
     if is_datetime(schema):
-        return {'type': _type,
+        return {'type': t,
                 'format': DATE_TIME_FORMAT}
 
-    return {'type': _type}
+    return {'type': t}
 
 
 def _get_ref(schema, paths):
@@ -189,12 +189,12 @@ def make_nullable(schema):
     `is_nullable` will return true on the output.
     :return: dict, JSON Schema
     """
-    type = get_type(schema)
-    if NULL in type:
+    t = get_type(schema)
+    if NULL in t:
         return schema
 
     ret_schema = deepcopy(schema)
-    ret_schema['type'] = type + [NULL]
+    ret_schema['type'] = t + [NULL]
     return ret_schema
 
 
@@ -361,8 +361,8 @@ _shorthand_mapping = {
 def _type_shorthand(type_s):
     if isinstance(type_s, list):
         shorthand = ''
-        for type in sorted(type_s):
-            shorthand += _type_shorthand(type)
+        for t in sorted(type_s):
+            shorthand += _type_shorthand(t)
         return shorthand
 
     if not type_s in _shorthand_mapping:
@@ -375,10 +375,10 @@ def _type_shorthand(type_s):
 
 
 def shorthand(schema):
-    _type = deepcopy(get_type(schema))
+    t = deepcopy(get_type(schema))
 
-    if 'format' in schema and 'date-time' == schema['format'] and STRING in _type:
-        _type.remove(STRING)
-        _type.append('date-time')
+    if 'format' in schema and 'date-time' == schema['format'] and STRING in t:
+        t.remove(STRING)
+        t.append('date-time')
 
-    return _type_shorthand(_type)
+    return _type_shorthand(t)
