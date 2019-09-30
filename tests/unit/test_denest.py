@@ -3,14 +3,7 @@ import random
 import pytest
 from chance import chance
 
-from target_postgres import denest
-from target_postgres import json_schema
-from target_postgres.singer_stream import (
-    SINGER_BATCHED_AT,
-    SINGER_RECEIVED_AT,
-    SINGER_SEQUENCE,
-    SINGER_TABLE_VERSION,
-)
+from target_postgres import denest, json_schema, singer
 
 
 def non_path_properties(table_batch):
@@ -265,6 +258,24 @@ def test__records__nested__child_table__a_b():
 
 
 def test__records__nested__child_table__a_b_c_e():
+    denested = denest.to_table_batches(NESTED_SCHEMA, [], NESTED_RECORDS)
+    table_batch = _get_table_batch_with_path(denested,
+                                             ('a', 'b', 'c', 'e'))
+
+    assert {'type': ['string']} == table_batch['streamed_schema']['schema']['properties'][('f',)]
+    assert {'type': ['boolean']} == table_batch['streamed_schema']['schema']['properties'][('g',)]
+
+    assert 2 == len(table_batch['records'])
+
+    for record in table_batch['records']:
+        assert 'string' == record[('f',)][0]
+        assert str == type(record[('f',)][1])
+
+        assert 'boolean' == record[('g',)][0]
+        assert bool == type(record[('g',)][1])
+
+
+def test__anyOf__():
     denested = denest.to_table_batches(NESTED_SCHEMA, [], NESTED_RECORDS)
     table_batch = _get_table_batch_with_path(denested,
                                              ('a', 'b', 'c', 'e'))

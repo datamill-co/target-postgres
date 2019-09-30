@@ -1,12 +1,6 @@
 from copy import deepcopy
 
-from target_postgres import json_schema
-from target_postgres.singer_stream import (
-    SINGER_LEVEL,
-    SINGER_SEQUENCE,
-    SINGER_SOURCE_PK_PREFIX,
-    SINGER_VALUE
-)
+from target_postgres import json_schema, singer
 
 
 def to_table_batches(schema, key_properties, records):
@@ -129,19 +123,19 @@ def _create_subtable(table_path, table_json_schema, key_prop_schemas, subtables,
     if json_schema.is_object(table_json_schema['items']):
         new_properties = table_json_schema['items']['properties']
     else:
-        new_properties = {SINGER_VALUE: table_json_schema['items']}
+        new_properties = {singer.VALUE: table_json_schema['items']}
 
     key_properties = []
     for pk, item_json_schema in key_prop_schemas.items():
-        key_properties.append(SINGER_SOURCE_PK_PREFIX + pk)
-        new_properties[SINGER_SOURCE_PK_PREFIX + pk] = item_json_schema
+        key_properties.append(singer.SOURCE_PK_PREFIX + pk)
+        new_properties[singer.SOURCE_PK_PREFIX + pk] = item_json_schema
 
-    new_properties[SINGER_SEQUENCE] = {
+    new_properties[singer.SEQUENCE] = {
         'type': ['null', 'integer']
     }
 
     for i in range(0, level + 1):
-        new_properties[SINGER_LEVEL.format(i)] = {
+        new_properties[singer.LEVEL_FMT.format(i)] = {
             'type': ['integer']
         }
 
@@ -317,13 +311,13 @@ def _denest_records(table_path, records, records_map, key_properties, pk_fks=Non
     for record in records:
         if pk_fks:
             record_pk_fks = pk_fks.copy()
-            record_pk_fks[SINGER_LEVEL.format(level)] = row_index
+            record_pk_fks[singer.LEVEL_FMT.format(level)] = row_index
 
             if not isinstance(record, dict):
                 """
                 [...] | literal
                 """
-                record = {SINGER_VALUE: record}
+                record = {singer.VALUE: record}
 
             for key, value in record_pk_fks.items():
                 record[key] = value
@@ -331,9 +325,9 @@ def _denest_records(table_path, records, records_map, key_properties, pk_fks=Non
         else:  ## top level
             record_pk_fks = {}
             for key in key_properties:
-                record_pk_fks[SINGER_SOURCE_PK_PREFIX + key] = record[key]
-            if SINGER_SEQUENCE in record:
-                record_pk_fks[SINGER_SEQUENCE] = record[SINGER_SEQUENCE]
+                record_pk_fks[singer.SOURCE_PK_PREFIX + key] = record[key]
+            if singer.SEQUENCE in record:
+                record_pk_fks[singer.SEQUENCE] = record[singer.SEQUENCE]
 
         """
         {...}

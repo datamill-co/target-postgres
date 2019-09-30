@@ -8,10 +8,7 @@ import psycopg2.extras
 import pytest
 
 from utils.fixtures import CatStream, CONFIG, db_cleanup, MultiTypeStream, NestedStream, TEST_DB, TypeChangeStream, DogStream
-from target_postgres import json_schema
-from target_postgres import postgres
-from target_postgres import singer_stream
-from target_postgres import main
+from target_postgres import json_schema, main, postgres, singer, singer_stream
 from target_postgres.target_tools import TargetError
 
 
@@ -67,8 +64,8 @@ def flatten_record(old_obj, subtables, subpks, new_obj=None, current_path=None, 
                 for key, value in subpks.items():
                     new_subobj[key] = value
                 new_subpks = subpks.copy()
-                new_subobj[singer_stream.SINGER_LEVEL.format(level)] = row_index
-                new_subpks[singer_stream.SINGER_LEVEL.format(level)] = row_index
+                new_subobj[singer_stream.singer.LEVEL_FMT.format(level)] = row_index
+                new_subpks[singer_stream.singer.LEVEL_FMT.format(level)] = row_index
                 subtables[next_path].append(flatten_record(item,
                                                            subtables,
                                                            new_subpks,
@@ -115,13 +112,13 @@ def assert_records(conn, records, table_name, pks, match_pks=False):
             persisted_record = persisted_records[pk]
             subpks = {}
             for pk in pks:
-                subpks[singer_stream.SINGER_SOURCE_PK_PREFIX + pk] = persisted_record[pk]
+                subpks[singer_stream.singer.SOURCE_PK_PREFIX + pk] = persisted_record[pk]
             assert_record(record, persisted_record, subtables, subpks)
 
         if match_pks:
             assert sorted(list(persisted_records.keys())) == sorted(records_pks)
 
-        sub_pks = list(map(lambda pk: singer_stream.SINGER_SOURCE_PK_PREFIX + pk, pks))
+        sub_pks = list(map(lambda pk: singer_stream.singer.SOURCE_PK_PREFIX + pk, pks))
         for subtable_name, items in subtables.items():
             cur.execute('SELECT * FROM {}'.format(
                 table_name + '__' + subtable_name))

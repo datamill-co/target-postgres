@@ -5,19 +5,9 @@ import arrow
 from jsonschema import Draft4Validator, FormatChecker
 from jsonschema.exceptions import ValidationError
 
-from target_postgres import json_schema
+from target_postgres import json_schema, singer
 from target_postgres.exceptions import SingerStreamError
 from target_postgres.pysize import get_size
-
-
-SINGER_RECEIVED_AT = '_sdc_received_at'
-SINGER_BATCHED_AT = '_sdc_batched_at'
-SINGER_SEQUENCE = '_sdc_sequence'
-SINGER_TABLE_VERSION = '_sdc_table_version'
-SINGER_PK = '_sdc_primary_key'
-SINGER_SOURCE_PK_PREFIX = '_sdc_source_key_'
-SINGER_LEVEL = '_sdc_level_{}_id'
-SINGER_VALUE = '_sdc_value'
 
 
 class BufferedSingerStream():
@@ -68,32 +58,32 @@ class BufferedSingerStream():
 
         properties = self.schema['properties']
 
-        if SINGER_RECEIVED_AT not in properties:
-            properties[SINGER_RECEIVED_AT] = {
+        if singer.RECEIVED_AT not in properties:
+            properties[singer.RECEIVED_AT] = {
                 'type': ['null', 'string'],
                 'format': 'date-time'
             }
 
-        if SINGER_SEQUENCE not in properties:
-            properties[SINGER_SEQUENCE] = {
+        if singer.SEQUENCE not in properties:
+            properties[singer.SEQUENCE] = {
                 'type': ['null', 'integer']
             }
 
-        if SINGER_TABLE_VERSION not in properties:
-            properties[SINGER_TABLE_VERSION] = {
+        if singer.TABLE_VERSION not in properties:
+            properties[singer.TABLE_VERSION] = {
                 'type': ['null', 'integer']
             }
 
-        if SINGER_BATCHED_AT not in properties:
-            properties[SINGER_BATCHED_AT] = {
+        if singer.BATCHED_AT not in properties:
+            properties[singer.BATCHED_AT] = {
                 'type': ['null', 'string'],
                 'format': 'date-time'
             }
 
         if len(self.key_properties) == 0:
             self.use_uuid_pk = True
-            self.key_properties = [SINGER_PK]
-            properties[SINGER_PK] = {
+            self.key_properties = [singer.PK]
+            properties[singer.PK] = {
                 'type': ['string']
             }
         else:
@@ -163,20 +153,20 @@ class BufferedSingerStream():
             record = record_message['record']
 
             if 'version' in record_message:
-                record[SINGER_TABLE_VERSION] = record_message['version']
+                record[singer.TABLE_VERSION] = record_message['version']
 
-            if 'time_extracted' in record_message and record.get(SINGER_RECEIVED_AT) is None:
-                record[SINGER_RECEIVED_AT] = record_message['time_extracted']
+            if 'time_extracted' in record_message and record.get(singer.RECEIVED_AT) is None:
+                record[singer.RECEIVED_AT] = record_message['time_extracted']
 
-            if self.use_uuid_pk and record.get(SINGER_PK) is None:
-                record[SINGER_PK] = str(uuid.uuid4())
+            if self.use_uuid_pk and record.get(singer.PK) is None:
+                record[singer.PK] = str(uuid.uuid4())
 
-            record[SINGER_BATCHED_AT] = current_time
+            record[singer.BATCHED_AT] = current_time
 
             if 'sequence' in record_message:
-                record[SINGER_SEQUENCE] = record_message['sequence']
+                record[singer.SEQUENCE] = record_message['sequence']
             else:
-                record[SINGER_SEQUENCE] = arrow.get().timestamp
+                record[singer.SEQUENCE] = arrow.get().timestamp
 
             records.append(record)
 

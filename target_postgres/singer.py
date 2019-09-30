@@ -1,0 +1,12 @@
+'''
+Module for Singer literals and helpers.
+'''
+_PREFIX = '_sdc_'
+RECEIVED_AT =      _PREFIX + 'received_at'
+BATCHED_AT =       _PREFIX + 'batched_at'
+SEQUENCE =         _PREFIX + 'sequence'
+TABLE_VERSION =    _PREFIX + 'table_version'
+PK =               _PREFIX + 'primary_key'
+SOURCE_PK_PREFIX = _PREFIX + 'source_key_'
+LEVEL_FMT =        _PREFIX + 'level_{}_id'
+VALUE =            _PREFIX + 'value'

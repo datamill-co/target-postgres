@@ -2,20 +2,15 @@ from copy import deepcopy
 
 import pytest
 
-from target_postgres.singer_stream import (
-    BufferedSingerStream, SingerStreamError,
-    SINGER_BATCHED_AT,
-    SINGER_PK,
-    SINGER_RECEIVED_AT,
-    SINGER_SEQUENCE,
-    SINGER_TABLE_VERSION
-)
+from target_postgres import singer
+from target_postgres.singer_stream import BufferedSingerStream, SingerStreamError
+
 from utils.fixtures import CatStream, InvalidCatStream, CATS_SCHEMA
 
 
 def missing_sdc_properties(stream_buffer):
     errors = []
-    for p in [SINGER_BATCHED_AT, SINGER_RECEIVED_AT, SINGER_SEQUENCE, SINGER_TABLE_VERSION]:
+    for p in [singer.BATCHED_AT, singer.RECEIVED_AT, singer.SEQUENCE, singer.TABLE_VERSION]:
         if not p in stream_buffer.schema['properties']:
             errors.append({'_sdc': p,
                            'message': '`_sdc` missing'})
@@ -43,12 +38,12 @@ def test_init__empty_key_properties():
 
     assert singer_stream
     assert [] == missing_sdc_properties(singer_stream)
-    assert [SINGER_PK] == singer_stream.key_properties
+    assert [singer.PK] == singer_stream.key_properties
 
     rows_missing_pk = []
     rows_checked = 0
     for r in singer_stream.get_batch():
-        if not r[SINGER_PK]:
+        if not r[singer.PK]:
             rows_missing_pk.append(r)
 
         rows_checked += 1
