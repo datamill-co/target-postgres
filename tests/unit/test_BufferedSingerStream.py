@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import pytest
 
 from target_postgres.singer_stream import (
@@ -72,6 +74,103 @@ def test_add_record_message__invalid_record():
                                          CATS_SCHEMA['key_properties'])
     with pytest.raises(SingerStreamError):
         singer_stream.add_record_message(stream.generate_record_message())
+
+    assert singer_stream.peek_invalid_records()
+    assert singer_stream.count == 0
+    assert [] == missing_sdc_properties(singer_stream)
+
+
+SIMPLE_ALLOF_SCHEMA = {
+  'type': 'object',
+  'properties': {
+      'allOfKey': {
+          'allOf': [
+              { 'type': ['string'] },
+              { 'maxLength': 5 }
+              ]}}}
+
+
+def test_add_record_message__allOf():
+    stream_name = 'test'
+    singer_stream = BufferedSingerStream(stream_name,
+                                         deepcopy(SIMPLE_ALLOF_SCHEMA),
+                                         [])
+
+    strs_shorter_than_6 = [
+        'hello',
+        'I',
+        'am',
+        'a set',
+        'of',
+        'short',
+        'strs'
+    ]
+
+    for string in strs_shorter_than_6:
+        singer_stream.add_record_message(
+            {
+                'type': 'RECORD',
+                'stream': stream_name,
+                'record': {'allOfKey': string},
+                'sequence': 0
+            }
+        )
+
+    assert not singer_stream.peek_invalid_records()
+    assert singer_stream.count == len(strs_shorter_than_6)
+    assert [] == missing_sdc_properties(singer_stream)
+
+
+def test_add_record_message__allOf__invalid_record():
+    stream_name = 'test'
+    singer_stream = BufferedSingerStream(stream_name,
+                                         deepcopy(SIMPLE_ALLOF_SCHEMA),
+                                         [])
+
+    with pytest.raises(SingerStreamError):
+        singer_stream.add_record_message(
+            {
+                'type': 'RECORD',
+                'stream': stream_name,
+                'record': {'allOfKey': 'this is a string which is much too long to be allowed'},
+                'sequence': 0
+            }
+        )
+
+    assert singer_stream.peek_invalid_records()
+    assert singer_stream.count == 0
+    assert [] == missing_sdc_properties(singer_stream)
+
+
+def test_add_record_message__allOf__impossible_schema():
+    stream_name = 'test'
+
+    schema = deepcopy(SIMPLE_ALLOF_SCHEMA)
+    schema['properties']['allOfKey']['allOf'].append({'type': ['number']})
+
+    singer_stream = BufferedSingerStream(stream_name,
+                                         schema,
+                                         [])
+
+
+    with pytest.raises(SingerStreamError):
+        singer_stream.add_record_message(
+            {
+                'type': 'RECORD',
+                'stream': stream_name,
+                'record': {'allOfKey': 'short'},
+                'sequence': 0
+            }
+        )
+    with pytest.raises(SingerStreamError):
+        singer_stream.add_record_message(
+            {
+                'type': 'RECORD',
+                'stream': stream_name,
+                'record': {'allOfKey': 314159},
+                'sequence': 0
+            }
+        )
 
     assert singer_stream.peek_invalid_records()
     assert singer_stream.count == 0
