@@ -125,7 +125,7 @@ _The above is copied from the [current list of versions](https://www.postgresql.
     - `['integer', 'number']`
     - `['any']`
     - `['null']`
-- JSON Schema combinations such as `anyOf` and `allOf` are not supported.
+- JSON Schema combinations such as `anyOf` and `oneOf` are not supported.
 - JSON Schema \$ref is partially supported:
   - **_NOTE:_** The following limitations are known to **NOT** fail gracefully
   - Presently you cannot have any circular or recursive `$ref`s
