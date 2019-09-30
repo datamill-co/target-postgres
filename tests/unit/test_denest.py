@@ -245,7 +245,8 @@ def test__records__nested__child_table__a_b():
     table_batch = _get_table_batch_with_path(denested,
                                              ('a', 'b'))
 
-    assert {'type': ['integer']} == table_batch['streamed_schema']['schema']['properties'][('c', 'd')]
+    assert 1 == len(table_batch['streamed_schema']['schema']['properties'][('c', 'd')]['anyOf'])
+    assert {'type': ['integer']} == table_batch['streamed_schema']['schema']['properties'][('c', 'd')]['anyOf'][0]
 
     assert 7 == len(table_batch['records'])
 
@@ -262,8 +263,10 @@ def test__records__nested__child_table__a_b_c_e():
     table_batch = _get_table_batch_with_path(denested,
                                              ('a', 'b', 'c', 'e'))
 
-    assert {'type': ['string']} == table_batch['streamed_schema']['schema']['properties'][('f',)]
-    assert {'type': ['boolean']} == table_batch['streamed_schema']['schema']['properties'][('g',)]
+    assert 1 == len(table_batch['streamed_schema']['schema']['properties'][('f',)]['anyOf'])
+    assert {'type': ['string']} == table_batch['streamed_schema']['schema']['properties'][('f',)]['anyOf'][0]
+    assert 1 == len(table_batch['streamed_schema']['schema']['properties'][('g',)]['anyOf'])
+    assert {'type': ['boolean']} == table_batch['streamed_schema']['schema']['properties'][('g',)]['anyOf'][0]
 
     assert 2 == len(table_batch['records'])
 
