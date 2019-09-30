@@ -253,6 +253,17 @@ def _helper_simplify(root_schema, child_schema):
                     **next_schemas[0]['properties']}
 
                 next_schemas = next_schemas[1:]
+        elif is_iterable(ret_schema):
+            # Recurse on all of the item schemas to create a single item schema
+            item_schemas = []
+
+            next_schemas = schemas
+            while next_schemas and is_iterable(next_schemas[0]):
+                item_schemas.append(next_schemas[0]['items'])
+
+                next_schemas = next_schemas[1:]
+
+            ret_schema['items'] = _helper_simplify(root_schema, {'allOf': item_schemas})
 
     else:
 

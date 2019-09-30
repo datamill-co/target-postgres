@@ -112,10 +112,82 @@ def test_simplify__allOf__objects():
     ))
 
 
+
+def test_simplify__allOf__objects__merges():
+    assert \
+        json_schema.simplify({
+            'allOf': [
+                {},
+                {'properties': {'a': {'type': 'number'}}},
+                {'properties': {'c': {'type': 'integer'}}},
+                {'properties': {'b': {'type': 'string', 'format': 'date-time'}}}]
+        }) \
+        == {
+            'type': ['object'],
+            'properties': {
+                'a': {'type': ['number']},
+                'b': {'type': ['string'], 'format': 'date-time'},
+                'c': {'type': ['integer']}
+            }}
+
+
+
 def test_simplify__allOf__iterables():
     assert json_schema.is_iterable(json_schema.simplify(
         {'allOf': [{'type': 'array', 'items': {'type': 'integer'}}]}
     ))
+
+
+def test_simplify__allOf__iterables__merges():
+    '''
+    NOTE: We assume that the schemas passed into json_schema make sense. ie, there is a possible
+    way for data to _actually validate_ against them. ie, something cannot be a scalar and an
+    object at the same time, etc.
+    '''
+    assert \
+        json_schema.simplify({
+            'allOf': [
+                {'type': 'array', 'items': {
+                    'type': 'object',
+                    'properties': {
+                        'a': {'type': 'integer'}
+                }}},
+                {'type': 'array', 'items': {
+                    'type': 'object',
+                    'properties': {
+                        'c': {'type': 'string'}
+                }}},
+                {'type': 'array', 'items': {
+                    'type': 'object',
+                    'properties': {
+                        'b': {'type': 'integer'}
+                }}}]
+        }) \
+        == {
+            'type': ['array'],
+            'items': {
+                'type': ['object'],
+                'properties': {
+                    'a': {'type': ['integer']},
+                    'b': {'type': ['integer']},
+                    'c': {'type': ['string']}
+                }}}
+
+    assert \
+        json_schema.simplify({
+            'allOf': [
+                {'type': 'array', 'items': {
+                    'type': 'array',
+                    'items': {'type': 'integer'}}},
+                {'type': 'array', 'items': {
+                    'type': 'array',
+                    'items': {'type': ['number', 'null']}}}]
+        }) \
+        == {
+            'type': ['array'],
+            'items': {
+                'type': ['array'],
+                'items': {'type': ['number', 'null']}}}
 
 
 def test_simplify__allOf__picks_scalars():
