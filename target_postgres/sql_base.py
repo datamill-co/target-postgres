@@ -523,7 +523,7 @@ class SQLInterface:
                     mapping['to'] = canonicalized_column_name
                     mappings.append(mapping)
 
-                    log_message("Made existing column nullable. New column is nullable, existing column is not")
+                    log_message("Made existing column nullable.")
 
                     continue
 
@@ -637,12 +637,11 @@ class SQLInterface:
 
             return self._get_table_schema(connection, table_name)
 
-    def _serialize_table_record_field_name(self, remote_schema, streamed_schema, path, value_json_schema):
+    def _serialize_table_record_field_name(self, remote_schema, path, value_json_schema):
         """
         Returns the appropriate remote field (column) name for `path`.
 
         :param remote_schema: TABLE_SCHEMA(remote)
-        :param streamed_schema: TABLE_SCHEMA(local)
         :param path: (string, ...)
         :value_json_schema: dict, JSON Schema
         :return: string
@@ -762,7 +761,6 @@ class SQLInterface:
                 value = self.serialize_table_record_null_value(remote_schema, streamed_schema, path, value)
 
                 field_name = self._serialize_table_record_field_name(remote_schema,
-                                                                     streamed_schema,
                                                                      path,
                                                                      value_json_schema)
 
