@@ -45,8 +45,9 @@ def test_is_iterable():
 
 
 def test_is_nullable():
-    assert json_schema.is_iterable({'type': ['array', 'null'], 'items': {'type': ['boolean']}})
-    assert not json_schema.is_iterable({'type': ['string']})
+    assert json_schema.is_nullable({'type': ['array', 'null'], 'items': {'type': ['boolean']}})
+    assert json_schema.is_nullable({'type': ['integer', 'null']})
+    assert not json_schema.is_nullable({'type': ['string']})
     assert not json_schema.is_nullable({})
 
 
