@@ -62,7 +62,9 @@ class BufferedSingerStream():
         # In order to determine whether a value _is in_ properties _or not_ we need to flatten `$ref`s etc.
         self.schema = json_schema.simplify(schema)
         self.key_properties = deepcopy(key_properties)
-        self.validator = Draft4Validator(self.schema, format_checker=FormatChecker())
+
+        # The validator can handle _many_ more things than our simplified schema, and is, in general handled by third party code
+        self.validator = Draft4Validator(schema, format_checker=FormatChecker())
 
         properties = self.schema['properties']
 
