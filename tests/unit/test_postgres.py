@@ -244,6 +244,77 @@ def test_loading__simple(db_cleanup):
         assert_records(conn, stream.records, 'cats', 'id')
 
 
+def test_loading__simple__allOf(db_cleanup):
+    stream = CatStream(100)
+    stream.schema = deepcopy(stream.schema)
+
+    name = stream.schema['schema']['properties']['name']
+    stream.schema['schema']['properties']['name'] = {
+        'allOf': [
+            name,
+            {'maxLength': 100000000}
+            ]
+    }
+    adoption = stream.schema['schema']['properties']['adoption']['properties']
+    stream.schema['schema']['properties']['adoption'] = {
+        'allOf': [
+            {
+                'type': ['object', 'null'],
+                'properties': {
+                    'adopted_on': adoption['adopted_on'],
+                    'immunizations': adoption['immunizations'],
+                }
+            },
+            {
+                'properties': {
+                    'was_foster': adoption['was_foster']
+                }
+            }
+        ]
+    }
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'cats__adoption__immunizations',
+                                 {
+                                     ('_sdc_level_0_id', 'bigint', 'NO'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_source_key_id', 'bigint', 'NO'),
+                                     ('date_administered', 'timestamp with time zone', 'YES'),
+                                     ('type', 'text', 'YES')
+                                 })
+
+            cur.execute(get_count_sql('cats'))
+            assert cur.fetchone()[0] == 100
+
+        for record in stream.records:
+            record['paw_size'] = 314159
+            record['paw_colour'] = ''
+            record['flea_check_complete'] = False
+
+        assert_records(conn, stream.records, 'cats', 'id')
+
+
 def test_loading__empty(db_cleanup):
     stream = CatStream(0)
     main(CONFIG, input_stream=stream)
