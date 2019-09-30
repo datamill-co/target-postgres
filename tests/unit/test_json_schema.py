@@ -88,6 +88,55 @@ def test_simplify__empty_becomes_object():
     assert json_schema.simplify({}) == {'properties': {}, 'type': ['object']}
 
 
+def test_simplify__allOf__datetime():
+    assert json_schema.is_datetime(json_schema.simplify(
+        {'allOf': [{'type': 'string'}, {'type': 'string', 'format': 'date-time'}]}
+    ))
+
+    assert \
+        json_schema.simplify({
+            'allOf': [{'type': 'number'}, {'type': 'string', 'format': 'date-time'}]
+        }) \
+        == {'type': ['string'], 'format': 'date-time'}
+
+
+def test_simplify__allOf__nullable():
+    assert json_schema.is_nullable(json_schema.simplify(
+        {'allOf': [{'type': ['integer']}, {'type': ['string', 'null']}]}
+    ))
+
+
+def test_simplify__allOf__objects():
+    assert json_schema.is_object(json_schema.simplify(
+        {'allOf': [{'type': ['object']}]}
+    ))
+
+
+def test_simplify__allOf__iterables():
+    assert json_schema.is_iterable(json_schema.simplify(
+        {'allOf': [{'type': 'array', 'items': {'type': 'integer'}}]}
+    ))
+
+
+def test_simplify__allOf__picks_scalars():
+    assert \
+        json_schema.simplify({
+            'allOf': [
+                {},
+                {'type': 'integer'},
+                {'type': 'array', 'items': {'type': 'number'}}]
+        }) \
+        == {'type': ['integer']}
+
+    assert \
+        json_schema.simplify({
+            "allOf": [
+                { "type": "string" },
+                { "maxLength": 5 }
+            ]}) \
+        == {'type': ['string']}
+
+
 def test_simplify__types_into_arrays():
     assert \
         json_schema.simplify(
@@ -294,6 +343,40 @@ def test_simplify__refs():
                         'street_address': {'type': ['string']},
                         'city': {'type': ['string']},
                         'state': {'type': ['string']}}}}}
+
+    assert json_schema.simplify(
+        {
+            "definitions": {
+                "address": {
+                    "type": "object",
+                    "properties": {
+                        "street_address": { "type": "string" },
+                        "city": { "type": "string" },
+                        "state": { "type": "string" }
+                    },
+                    "required": ["street_address", "city", "state"]
+                }
+            },
+
+            "allOf": [
+                { "$ref": "#/definitions/address" },
+                { "properties": {
+                    "state": {'type': ['integer']},
+                    "extra": { "type": ["string"] }
+                    }
+                }
+            ]
+        }) \
+        == {
+            'type': ['object'],
+            "properties": {
+                    "street_address": { "type": ["string"] },
+                    "city": { "type": ["string"] },
+                    "state": {'type': ['integer']},
+                    "extra": { "type": ["string"] }
+                }
+            }
+        # NOTE: Objects get merged together by simplify
 
 
 def test_simplify__refs__invalid_format():
