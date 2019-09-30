@@ -405,25 +405,9 @@ class SQLInterface:
 
             ## Only process columns which have single, nullable, types
             single_type_columns = []
-            for column_name__or__path, column_schema in schema['schema']['properties'].items():
-                column_path = column_name__or__path
-                if isinstance(column_name__or__path, str):
-                    column_path = (column_name__or__path,)
-
-                single_type_column_schema = deepcopy(column_schema)
-                column_types = json_schema.get_type(single_type_column_schema)
-                make_nullable = json_schema.is_nullable(column_schema)
-
-                for type in column_types:
-                    if type == json_schema.NULL:
-                        continue
-
-                    single_type_column_schema['type'] = [type]
-
-                    if make_nullable:
-                        single_type_columns.append((column_path, json_schema.make_nullable(single_type_column_schema)))
-                    else:
-                        single_type_columns.append((column_path, deepcopy(single_type_column_schema)))
+            for column_path, column_schema in schema['schema']['properties'].items():
+                for sub_schema in column_schema['anyOf']:
+                    single_type_columns.append((column_path, deepcopy(sub_schema)))
 
             ## Process new columns against existing
             raw_mappings = existing_schema.get('mappings', {})
@@ -715,11 +699,15 @@ class SQLInterface:
         :return: [{...}, ...]
         """
 
-        datetime_paths = [k for k, v in streamed_schema['schema']['properties'].items()
-                          if json_schema.is_datetime(v)]
+        datetime_paths = set()
+        default_paths = {}
 
-        default_paths = {k: v.get('default') for k, v in streamed_schema['schema']['properties'].items()
-                         if v.get('default') is not None}
+        for column_path, column_schema in streamed_schema['schema']['properties'].items():
+            for sub_schema in column_schema['anyOf']:
+                if json_schema.is_datetime(sub_schema):
+                    datetime_paths.add(column_path)
+                if sub_schema.get('default') is not None:
+                    default_paths[column_path] = sub_schema.get('default')
 
         ## Get the default NULL value so we can assign row values when value is _not_ NULL
         NULL_DEFAULT = self.serialize_table_record_null_value(remote_schema, streamed_schema, None, None)

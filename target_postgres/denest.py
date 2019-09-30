@@ -72,18 +72,29 @@ def _to_table_schema(path, level, keys, properties):
 
 
 def _literal_only_schema(schema):
-    ret = deepcopy(schema)
 
-    ret_type = json_schema.get_type(ret)
+    ret_types = json_schema.get_type(schema)
 
-    if json_schema.is_object(ret):
-        ret_type.remove(json_schema.OBJECT)
-    if json_schema.is_iterable(ret):
-        ret_type.remove(json_schema.ARRAY)
+    if json_schema.is_object(schema):
+        ret_types.remove(json_schema.OBJECT)
+    if json_schema.is_iterable(schema):
+        ret_types.remove(json_schema.ARRAY)
+    if json_schema.is_nullable(schema):
+        ret_types.remove(json_schema.NULL)
 
-    ret['type'] = ret_type
+    ret_schemas = []
+    for t in ret_types:
+        s = deepcopy(schema)
+        s['type'] = [t]
 
-    return ret
+        if json_schema.is_nullable(schema):
+            s = json_schema.make_nullable(s)
+
+        ret_schemas.append(s)
+
+    return {
+        'anyOf': ret_schemas
+    }
 
 
 def _denest_schema_helper(table_path,
