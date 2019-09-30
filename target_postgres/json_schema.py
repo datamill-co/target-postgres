@@ -42,14 +42,14 @@ def get_type(schema):
     :param schema: dict, JSON Schema
     :return: [string ...]
     """
-    type = schema.get('type', None)
-    if not type:
+    _type = schema.get('type', None)
+    if not _type:
         return [OBJECT]
 
-    if isinstance(type, str):
-        return [type]
+    if isinstance(_type, str):
+        return [_type]
 
-    return type
+    return _type
 
 
 def simple_type(schema):
@@ -67,13 +67,13 @@ def simple_type(schema):
     :param schema: dict, JSON Schema
     :return: dict, JSON Schema
     """
-    type = get_type(schema)
+    _type = get_type(schema)
 
     if is_datetime(schema):
-        return {'type': type,
+        return {'type': _type,
                 'format': DATE_TIME_FORMAT}
 
-    return {'type': type}
+    return {'type': _type}
 
 
 def _get_ref(schema, paths):
@@ -103,7 +103,7 @@ def get_ref(schema, ref):
                     re.split('/', re.sub(r'^#/', '', ref)))
 
 
-def is_ref(schema):
+def _is_ref(schema):
     """
     Given a JSON Schema compatible dict, returns True when the schema implements `$ref`
 
@@ -122,7 +122,7 @@ def is_object(schema):
     :return: Boolean
     """
 
-    return not is_ref(schema) \
+    return not _is_ref(schema) \
            and (OBJECT in get_type(schema)
                 or 'properties' in schema
                 or not schema)
@@ -135,7 +135,7 @@ def is_iterable(schema):
     :return: Boolean
     """
 
-    return not is_ref(schema) \
+    return not _is_ref(schema) \
            and ARRAY in get_type(schema) \
            and 'items' in schema
 
@@ -190,7 +190,7 @@ def _helper_simplify(root_schema, child_schema):
     ret_schema = {}
 
     ## Refs override all other type definitions
-    if is_ref(child_schema):
+    if _is_ref(child_schema):
         try:
             ret_schema = _helper_simplify(root_schema, get_ref(root_schema, child_schema['$ref']))
         except RecursionError:
