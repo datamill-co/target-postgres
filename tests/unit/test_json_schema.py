@@ -52,7 +52,8 @@ def test_is_nullable():
 
 
 def test_is_literal():
-    assert json_schema.is_literal({'type': ['null']})
+    # null is a weird value...it _is_ a literal...but...
+    assert not json_schema.is_literal({'type': ['null']})
     assert json_schema.is_literal({'type': ['integer', 'null']})
     assert json_schema.is_literal({'type': ['integer', 'object', 'null']})
     assert json_schema.is_literal({'type': ['string']})
@@ -220,6 +221,12 @@ def test_simplify__types_into_arrays():
 
     assert \
         json_schema.simplify(
+            {'type': 'null'}
+        ) \
+        == {'type': ['null']}
+
+    assert \
+        json_schema.simplify(
             {'type': ['object'],
              'properties': {
                  'a': {'type': 'string'}}}) \
@@ -248,6 +255,9 @@ def test_simplify__complex():
             'type': ['object'],
             'properties': {
                 'every_type': {'anyOf': [
+                    {'type': ['boolean', 'null']},
+                    {'type': ['integer', 'null']},
+                    {'type': ['number', 'null']},
                     {
                         'type': ['string', 'null'],
                         'format': 'date-time'},
@@ -259,10 +269,7 @@ def test_simplify__complex():
                             'b': {'type': ['boolean']}}},
                     {
                         'type': ['array', 'null'],
-                        'items': {'type': ['integer']}},
-                    {'type': ['boolean', 'null']},
-                    {'type': ['integer', 'null']},
-                    {'type': ['number', 'null']}]}}}
+                        'items': {'type': ['integer']}}]}}}
 
     assert \
         json_schema.simplify({
@@ -633,9 +640,6 @@ def test_validation_errors__invalid_schemas():
     non_standard_schema_version = json_schema.validation_errors({'$schema': 'clearly not a valid schema version'})
     assert non_standard_schema_version
     assert not _non_string_elements(non_standard_schema_version)
-
-    only_null_schema = json_schema.validation_errors({'type': 'null'})
-    assert only_null_schema
 
 
 def test_validation_errors__invalid_draft_version():
