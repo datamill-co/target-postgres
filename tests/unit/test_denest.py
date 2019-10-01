@@ -23,6 +23,13 @@ def missing_key_properties(table_batch):
             errors.append({'path': tuple(p),
                            'message': 'key_property missing'})
 
+    for p, s in table_batch['streamed_schema']['schema']['properties'].items():
+        if not json_schema.is_anyof(s):
+            errors.append({
+                'path': tuple(p),
+                'message': 'Expected anyOf json schema for propery schema, got: {}'.format(s)
+            })
+
     return errors
 
 
@@ -30,18 +37,24 @@ def errors(table_batch):
     return non_path_properties(table_batch) + missing_key_properties(table_batch)
 
 
-def test_empty():
-    denested = denest.to_table_batches({}, [], [])
-    assert 1 == len(denested)
-    assert [] == denested[0]['records']
-    assert [] == denested[0]['streamed_schema']['key_properties']
+def error_check_denest(schema, key_properties, records):
+    denested = denest.to_table_batches(schema, key_properties, records)
 
     for table_batch in denested:
         assert [] == errors(table_batch)
 
+    return denested
+
+
+def test_empty():
+    denested = error_check_denest({}, [], [])
+    assert 1 == len(denested)
+    assert [] == denested[0]['records']
+    assert [] == denested[0]['streamed_schema']['key_properties']
+
 
 def test__schema__objects_add_fields():
-    denested = denest.to_table_batches({'properties':
+    denested = error_check_denest({'properties':
                                             {'a': {'type': 'integer'},
                                              'b': {'type': 'object',
                                                    'properties': {
@@ -53,9 +66,6 @@ def test__schema__objects_add_fields():
     assert 1 == len(denested)
     assert ('b', 'c') in denested[0]['streamed_schema']['schema']['properties']
     assert ('b', 'd') in denested[0]['streamed_schema']['schema']['properties']
-
-    for table_batch in denested:
-        assert [] == errors(table_batch)
 
 
 def random_object_schema():
@@ -78,7 +88,7 @@ def random_object_schema():
 def test__schema__nested_objects_add_fields():
     for _ in range(0, 100):
         r = random_object_schema()
-        denested = denest.to_table_batches(r['schema'],
+        denested = error_check_denest(r['schema'],
                                            [],
                                            [])
 
@@ -89,12 +99,9 @@ def test__schema__nested_objects_add_fields():
         assert 1 == len(denested)
         assert tuple(r['path']) in denested[0]['streamed_schema']['schema']['properties']
 
-        for table_batch in denested:
-            assert [] == errors(table_batch)
-
 
 def test__schema__arrays_add_tables():
-    denested = denest.to_table_batches({'properties':
+    denested = error_check_denest({'properties':
                                             {'a': {'type': 'integer'},
                                              'b': {'type': 'array',
                                                    'items': {'properties': {
@@ -103,8 +110,6 @@ def test__schema__arrays_add_tables():
                                        ['a'],
                                        [])
     assert 2 == len(denested)
-    for table_batch in denested:
-        assert [] == errors(table_batch)
 
 
 def random_array_schema():
@@ -134,7 +139,7 @@ def random_array_schema():
 def test__schema__nested_arrays_add_tables():
     for _ in range(0, 100):
         r = random_array_schema()
-        denested = denest.to_table_batches(r['schema'],
+        denested = error_check_denest(r['schema'],
                                            [],
                                            [])
 
@@ -143,9 +148,6 @@ def test__schema__nested_arrays_add_tables():
         print('denested:', denested)
 
         assert len(r['path']) + 1 == len(denested)
-
-        for table_batch in denested:
-            assert [] == errors(table_batch)
 
         table_path_accum = []
         tables_checked = 0
@@ -206,7 +208,7 @@ NESTED_RECORDS = [{"a": {"b": []}},
 
 
 def test__records__nested__tables():
-    denested = denest.to_table_batches(NESTED_SCHEMA, [], NESTED_RECORDS)
+    denested = error_check_denest(NESTED_SCHEMA, [], NESTED_RECORDS)
 
     print('denested:', denested)
 
@@ -217,7 +219,6 @@ def test__records__nested__tables():
                {tuple(),
                 ('a', 'b'),
                 ('a', 'b', 'c', 'e')}
-        assert [] == errors(table_batch)
 
 
 def _get_table_batch_with_path(table_batches, path):
@@ -228,7 +229,7 @@ def _get_table_batch_with_path(table_batches, path):
 
 
 def test__records__nested__root_empty():
-    denested = denest.to_table_batches(NESTED_SCHEMA, [], NESTED_RECORDS)
+    denested = error_check_denest(NESTED_SCHEMA, [], NESTED_RECORDS)
     table_batch = _get_table_batch_with_path(denested,
                                              tuple())
 
@@ -241,7 +242,7 @@ def test__records__nested__root_empty():
 
 
 def test__records__nested__child_table__a_b():
-    denested = denest.to_table_batches(NESTED_SCHEMA, [], NESTED_RECORDS)
+    denested = error_check_denest(NESTED_SCHEMA, [], NESTED_RECORDS)
     table_batch = _get_table_batch_with_path(denested,
                                              ('a', 'b'))
 
@@ -259,7 +260,7 @@ def test__records__nested__child_table__a_b():
 
 
 def test__records__nested__child_table__a_b_c_e():
-    denested = denest.to_table_batches(NESTED_SCHEMA, [], NESTED_RECORDS)
+    denested = error_check_denest(NESTED_SCHEMA, [], NESTED_RECORDS)
     table_batch = _get_table_batch_with_path(denested,
                                              ('a', 'b', 'c', 'e'))
 
@@ -279,7 +280,7 @@ def test__records__nested__child_table__a_b_c_e():
 
 
 def test__anyOf__schema__stitch_date_times():
-    denested = denest.to_table_batches(
+    denested = error_check_denest(
         {'properties': {
             'a': {
                 "anyOf": [
@@ -300,7 +301,7 @@ def test__anyOf__schema__stitch_date_times():
     assert 1 == len([x for x in anyof_schemas if json_schema.is_datetime(x)])
 
 def test__anyOf__schema__implicit_any_of():
-    denested = denest.to_table_batches(
+    denested = error_check_denest(
         {
             'properties': {
                 'every_type': {
@@ -333,7 +334,7 @@ def test__anyOf__schema__implicit_any_of():
 
 
 def test__anyOf__schema__implicit_any_of__arrays():
-    denested = denest.to_table_batches(
+    denested = error_check_denest(
         {
             'properties': {
                 'every_type': {
@@ -363,7 +364,7 @@ def test__anyOf__schema__implicit_any_of__arrays():
 
 
 def test__anyOf__schema__implicit_any_of__objects():
-    denested = denest.to_table_batches(
+    denested = error_check_denest(
         {
             'properties': {
                 'every_type': {
