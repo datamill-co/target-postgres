@@ -37,6 +37,9 @@ def test_is_object():
     assert json_schema.is_object({'type': ['object']})
     assert json_schema.is_object({'properties': {}})
     assert json_schema.is_object({})
+    assert not json_schema.is_object({'anyOf': [
+        {'type': ['object', 'null'], 'properties': {'i': {'type': ['integer']}}},
+        {'type': ['string', 'null'], 'format': 'date-time'}]})
 
 
 def test_is_iterable():

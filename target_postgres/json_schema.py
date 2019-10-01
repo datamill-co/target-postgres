@@ -145,7 +145,7 @@ def is_object(schema):
     :return: Boolean
     """
 
-    return not _is_ref(schema) \
+    return not _is_ref(schema) and not is_anyof(schema) and not _is_allof(schema) \
            and (OBJECT in get_type(schema)
                 or 'properties' in schema
                 or not schema)
@@ -216,30 +216,28 @@ class Cachable(dict):
     helpers which extend it so that we avoid recursion in some instances.
     '''
     def __init__(self, raw_dict, simplified=True):
-        self.simplified = simplified
         self._c = None
         super(Cachable, self).__init__(self, **raw_dict)
 
-    def is_simplified(self):
-        return self.simplified
-
-    def __setitem__(self, key, value):
-        self.simplified = False
-        super(Cachable, self).__setitem__(key, value)
-
-    def __delitem__(self, key):
-        self.simplified = False
-        super(Cachable, self).__delitem__(key)
-
     def __hash__(self):
-        if not self.is_simplified():
-            raise JSONSchemaError('A non simplified json_schema cannot be hashed.')
-
-        return json.dumps(self).__hash__()
+        return self._comparator().__hash__()
 
     def _comparator(self):
         if not self._c:
-            self._c = (tuple(sorted(get_type(self))), self.__hash__())
+            item_c = tuple()
+            if is_iterable(self):
+                item_c = self['items']._comparator()
+
+            props_c = tuple()
+            if is_object(self):
+                props_c = tuple(sorted(self.get('properties', {}).items()))
+
+            self._c = (
+                tuple(sorted(get_type(self))),
+                self.get('format', ''),
+                item_c,
+                props_c)
+
         return self._c
 
     def __lt__(self, other):
@@ -461,7 +459,7 @@ def _simplify__anyof(root_schema, schema):
 
 def _helper_simplify(root_schema, child_schema):
     # We check this value to make simplify a noop for schemas which have _already_ been simplified
-    if isinstance(child_schema, Cachable) and child_schema.is_simplified():
+    if isinstance(child_schema, Cachable):
         return child_schema
 
     ## Refs override all other type definitions
