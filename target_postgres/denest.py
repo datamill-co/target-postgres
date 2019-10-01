@@ -105,29 +105,43 @@ def _denest_schema_helper(table_path,
                           key_prop_schemas,
                           subtables,
                           level):
-    for prop, item_json_schema in table_json_schema['properties'].items():
-        if json_schema.is_object(item_json_schema):
-            _denest_schema_helper(table_path + (prop,),
-                                  prop_path + (prop,),
-                                  item_json_schema,
-                                  nullable,
-                                  top_level_schema,
-                                  key_prop_schemas,
-                                  subtables,
-                                  level)
+    assert json_schema.is_object(table_json_schema), 'Cannot denest non-object json_schema for tables. Passed: {}'.format(table_json_schema)
 
-        if json_schema.is_iterable(item_json_schema):
-            _create_subtable(table_path + (prop,),
-                             item_json_schema,
-                             key_prop_schemas,
-                             subtables,
-                             level + 1)
+    for prop, sub_schema in table_json_schema['properties'].items():
+        singular_sub_schemas = [sub_schema]
+        if json_schema.is_anyof(sub_schema):
+            singular_sub_schemas = sub_schema['anyOf']
 
-        if json_schema.is_literal(item_json_schema):
-            if nullable:
-                item_json_schema = json_schema.make_nullable(item_json_schema)
+        for item_json_schema in singular_sub_schemas:
+            if json_schema.is_object(item_json_schema):
+                _denest_schema_helper(table_path + (prop,),
+                                    prop_path + (prop,),
+                                    item_json_schema,
+                                    nullable,
+                                    top_level_schema,
+                                    key_prop_schemas,
+                                    subtables,
+                                    level)
 
-            top_level_schema[prop_path + (prop,)] = _literal_only_schema(item_json_schema)
+            elif json_schema.is_iterable(item_json_schema):
+                _create_subtable(table_path + (prop,),
+                                item_json_schema,
+                                key_prop_schemas,
+                                subtables,
+                                level + 1)
+
+            elif json_schema.is_literal(item_json_schema):
+                if nullable:
+                    item_json_schema = json_schema.make_nullable(item_json_schema)
+
+                p = prop_path + (prop,)
+                if p in top_level_schema:
+                    top_level_schema[p]['anyOf'].append(item_json_schema)
+                else:
+                    top_level_schema[p] = {'anyOf': [item_json_schema]}
+
+            else:
+                raise Exception('Schema cannot be denested: {}'.format(item_json_schema))
 
 
 def _create_subtable(table_path, table_json_schema, key_prop_schemas, subtables, level):
@@ -161,28 +175,40 @@ def _create_subtable(table_path, table_json_schema, key_prop_schemas, subtables,
 
 
 def _denest_schema(table_path, table_json_schema, key_prop_schemas, subtables, level=-1):
+    assert json_schema.is_object(table_json_schema), 'Cannot denest non-object json_schema for tables. Passed: {}'.format(table_json_schema)
+
     new_properties = {}
-    for prop, item_json_schema in table_json_schema['properties'].items():
+    for prop, sub_schema in table_json_schema['properties'].items():
+        singular_sub_schemas = [sub_schema]
+        if json_schema.is_anyof(sub_schema):
+            singular_sub_schemas = sub_schema['anyOf']
 
-        if json_schema.is_object(item_json_schema):
-            _denest_schema_helper(table_path + (prop,),
-                                  (prop,),
-                                  item_json_schema,
-                                  json_schema.is_nullable(item_json_schema),
-                                  new_properties,
-                                  key_prop_schemas,
-                                  subtables,
-                                  level)
+        for item_json_schema in singular_sub_schemas:
+            if json_schema.is_object(item_json_schema):
+                _denest_schema_helper(table_path + (prop,),
+                                    (prop,),
+                                    item_json_schema,
+                                    json_schema.is_nullable(item_json_schema),
+                                    new_properties,
+                                    key_prop_schemas,
+                                    subtables,
+                                    level)
 
-        if json_schema.is_iterable(item_json_schema):
-            _create_subtable(table_path + (prop,),
-                             item_json_schema,
-                             key_prop_schemas,
-                             subtables,
-                             level + 1)
+            elif json_schema.is_iterable(item_json_schema):
+                _create_subtable(table_path + (prop,),
+                                item_json_schema,
+                                key_prop_schemas,
+                                subtables,
+                                level + 1)
 
-        if json_schema.is_literal(item_json_schema):
-            new_properties[(prop,)] = _literal_only_schema(item_json_schema)
+            elif json_schema.is_literal(item_json_schema):
+                if (prop,) in new_properties:
+                    new_properties[(prop,)]['anyOf'].append(item_json_schema)
+                else:
+                    new_properties[(prop,)] = {'anyOf': [item_json_schema]}
+
+            else:
+                raise Exception('Schema cannot be denested: {}'.format(item_json_schema))
 
     table_json_schema['properties'] = new_properties
 
