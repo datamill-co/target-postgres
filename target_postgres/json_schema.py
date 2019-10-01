@@ -117,7 +117,7 @@ def _is_ref(schema):
 
 def _is_allof(schema):
     """
-    Given a JSON Schema compatible dict, returns True when the schema implements `$allOf`,
+    Given a JSON Schema compatible dict, returns True when the schema implements `allOf`,
     AND has allOf elements.
 
     :param schema:
@@ -225,6 +225,35 @@ def _allof_sort_key(schema):
     return sort_value
 
 
+def _simplify__allof__merge__objects(schemas):
+    ret_schema = schemas[0]
+    # Merge objects together preferring later allOfs over earlier
+    next_schemas = schemas[1:]
+    while next_schemas and is_object(next_schemas[0]):
+        ret_schema['properties'] = {
+            **ret_schema['properties'],
+            **next_schemas[0]['properties']}
+
+        next_schemas = next_schemas[1:]
+
+    return ret_schema
+
+
+def _simplify__allof__merge__iterables(root_schema, schemas):
+    ret_schema = schemas[0]
+    # Recurse on all of the item schemas to create a single item schema
+    item_schemas = []
+
+    next_schemas = schemas
+    while next_schemas and is_iterable(next_schemas[0]):
+        item_schemas.append(next_schemas[0]['items'])
+
+        next_schemas = next_schemas[1:]
+
+    ret_schema['items'] = _helper_simplify(root_schema, {'allOf': item_schemas})
+    return ret_schema
+
+
 def _helper_simplify(root_schema, child_schema):
     ret_schema = {}
 
@@ -245,25 +274,9 @@ def _helper_simplify(root_schema, child_schema):
         ret_schema = schemas[0]
 
         if is_object(ret_schema):
-            # Merge objects together preferring later allOfs over earlier
-            next_schemas = schemas[1:]
-            while next_schemas and is_object(next_schemas[0]):
-                ret_schema['properties'] = {
-                    **ret_schema['properties'],
-                    **next_schemas[0]['properties']}
-
-                next_schemas = next_schemas[1:]
+            ret_schema = _simplify__allof__merge__objects(schemas)
         elif is_iterable(ret_schema):
-            # Recurse on all of the item schemas to create a single item schema
-            item_schemas = []
-
-            next_schemas = schemas
-            while next_schemas and is_iterable(next_schemas[0]):
-                item_schemas.append(next_schemas[0]['items'])
-
-                next_schemas = next_schemas[1:]
-
-            ret_schema['items'] = _helper_simplify(root_schema, {'allOf': item_schemas})
+            ret_schema = _simplify__allof__merge__iterables(root_schema, schemas)
 
     else:
 
