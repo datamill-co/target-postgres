@@ -278,19 +278,116 @@ def test__records__nested__child_table__a_b_c_e():
         assert bool == type(record[('g',)][1])
 
 
-def test__anyOf__():
-    denested = denest.to_table_batches(NESTED_SCHEMA, [], NESTED_RECORDS)
-    table_batch = _get_table_batch_with_path(denested,
-                                             ('a', 'b', 'c', 'e'))
+def test__anyOf__schema__stitch_date_times():
+    denested = denest.to_table_batches(
+        {'properties': {
+            'a': {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    {"type": ["string", "null"]}]}}},
+        [],
+        [])
+    table_batch = _get_table_batch_with_path(denested, tuple())
 
-    assert {'type': ['string']} == table_batch['streamed_schema']['schema']['properties'][('f',)]
-    assert {'type': ['boolean']} == table_batch['streamed_schema']['schema']['properties'][('g',)]
+    anyof_schemas = table_batch['streamed_schema']['schema']['properties'][('a',)]['anyOf']
 
-    assert 2 == len(table_batch['records'])
+    assert 2 == len(anyof_schemas)
+    assert 2 == len([x for x in anyof_schemas if json_schema.is_literal(x)])
+    assert 2 == len([x for x in anyof_schemas if json_schema.is_nullable(x)])
+    assert 1 == len([x for x in anyof_schemas if json_schema.is_datetime(x)])
 
-    for record in table_batch['records']:
-        assert 'string' == record[('f',)][0]
-        assert str == type(record[('f',)][1])
+def test__anyOf__schema__implicit_any_of():
+    denested = denest.to_table_batches(
+        {
+            'properties': {
+                'every_type': {
+                    'type': ['integer', 'null', 'number', 'boolean', 'string', 'array', 'object'],
+                    'items': {'type': 'integer'},
+                    'format': 'date-time',
+                    'properties': {
+                        'i': {'type': 'integer'},
+                        'n': {'type': 'number'},
+                        'b': {'type': 'boolean'}
+                    }
+                }
+            }
+        },
+        [],
+        [])
+    assert 2 == len(denested)
 
-        assert 'boolean' == record[('g',)][0]
-        assert bool == type(record[('g',)][1])
+    table_batch = _get_table_batch_with_path(denested, tuple())
+    denested_props = table_batch['streamed_schema']['schema']['properties']
+
+    assert 4 == len(denested_props)
+
+    anyof_schemas = denested_props[('every_type',)]['anyOf']
+
+    assert 4 == len(anyof_schemas)
+    assert 4 == len([x for x in anyof_schemas if json_schema.is_literal(x)])
+    assert 4 == len([x for x in anyof_schemas if json_schema.is_nullable(x)])
+    assert 1 == len([x for x in anyof_schemas if json_schema.is_datetime(x)])
+
+
+def test__anyOf__schema__implicit_any_of__arrays():
+    denested = denest.to_table_batches(
+        {
+            'properties': {
+                'every_type': {
+                    'type': ['null', 'string', 'array', 'object'],
+                    'items': {
+                        'anyOf': [
+                            {'type': 'integer'},
+                            {'type': 'number'}]
+                    },
+                    'format': 'date-time',
+                    'properties': {
+                        'i': {'type': 'integer'}
+                    }
+                }
+            }
+        },
+        [],
+        [])
+    assert 2 == len(denested)
+
+    table_batch = _get_table_batch_with_path(denested, ('every_type',))
+    denested_props = table_batch['streamed_schema']['schema']['properties']
+    anyof_schemas = denested_props[(singer.VALUE,)]['anyOf']
+
+    assert 2 == len(anyof_schemas)
+    assert 2 == len([x for x in anyof_schemas if json_schema.is_literal(x)])
+
+
+def test__anyOf__schema__implicit_any_of__objects():
+    denested = denest.to_table_batches(
+        {
+            'properties': {
+                'every_type': {
+                    'type': ['integer', 'null', 'number', 'boolean', 'string', 'array', 'object'],
+                    'items': {'type': 'integer'},
+                    'format': 'date-time',
+                    'properties': {
+                        'i': {'anyOf': [
+                            {'type': 'integer'},
+                            {'type': 'number'},
+                            {'type': 'boolean'}]
+                        }
+                    }
+                }
+            }
+        },
+        [],
+        [])
+    assert 2 == len(denested)
+
+    table_batch = _get_table_batch_with_path(denested, tuple())
+    denested_props = table_batch['streamed_schema']['schema']['properties']
+    print(denested_props)
+    anyof_schemas = denested_props[('every_type', 'i')]['anyOf']
+
+    assert 3 == len(anyof_schemas)
+    assert 3 == len([x for x in anyof_schemas if json_schema.is_literal(x)])
