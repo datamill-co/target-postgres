@@ -212,6 +212,239 @@ def test_simplify__allOf__picks_scalars():
         == {'type': ['string']}
 
 
+def test_simplify__anyOf__duplicates():
+    assert \
+        json_schema.simplify(
+            {'anyOf': [
+                {'type': 'string'},
+                {'type': 'string'},
+                {'type': 'integer'},
+                {'type': 'string'},
+                {'type': 'string'},
+                {'type': 'integer'},
+                {'type': ['number']},
+                {'type': 'integer'},
+                {'type': 'integer'},
+            ]}
+        ) \
+        == {'anyOf': [
+                {'type': ['integer']},
+                {'type': ['number']},
+                {'type': ['string']}
+            ]}
+
+    assert \
+        json_schema.simplify(
+            {'anyOf': [
+                {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                {
+                    "type": "string",
+                    "format": "date-time"
+                }
+            ]}
+        ) \
+        == {
+                "type": ["string"],
+                "format": "date-time"
+            }
+
+    assert \
+        json_schema.simplify(
+            {'anyOf': [
+                {
+                    "properties": {'a': {'type': 'number'}}
+                },
+                {
+                    "properties": {'a': {'type': 'number'}}
+                },
+                {
+                    "properties": {'a': {'type': 'number'}}
+                }
+            ]}
+        ) \
+        == {
+                'type': ['object'],
+                "properties": {'a': {'type': ['number']}}
+            }
+
+    assert \
+        json_schema.simplify(
+            {'anyOf': [
+                {
+                    'type': 'array',
+                    "items": {'type': 'number'}
+                },
+                {
+                    'type': 'array',
+                    "items": {'type': 'number'}
+                },
+                {
+                    'type': 'array',
+                    "items": {'type': 'number'}
+                }
+            ]}
+        ) \
+        == {
+                'type': ['array'],
+                "items": {'type': ['number']}
+            }
+
+
+def test_simplify__anyOf__duplicate_literals__merges_same_types_nullable():
+    assert \
+        json_schema.simplify(
+            {'anyOf': [
+                {'type': 'string'},
+                {'type': ['null', 'string']}
+            ]}
+        ) \
+        == {'type': ['string', 'null']}
+
+    assert \
+        json_schema.simplify(
+            {'anyOf': [
+                {
+                    "type": ["string", 'null'],
+                    "format": "date-time"
+                },
+                {
+                    "type": "string",
+                    "format": "date-time"
+                }
+            ]}
+        ) \
+        == {
+                "type": ["string", 'null'],
+                "format": "date-time"
+            }
+
+    assert \
+        json_schema.simplify(
+            {'anyOf': [
+                {
+                    "properties": {'a': {'type': 'number'}}
+                },
+                {
+                    'type': ['object', 'null'],
+                    "properties": {'a': {'type': 'number'}}
+                }
+            ]}) \
+        == {
+                'type': ['object', 'null'],
+                "properties": {'a': {'type': ['number']}}
+            }
+
+    assert \
+        json_schema.simplify(
+            {'anyOf': [
+                {
+                    'type': ['array', 'null'],
+                    "items": {'type': 'number'}
+                },
+                {
+                    'type': 'array',
+                    "items": {'type': 'number'}
+                }
+            ]}
+        ) \
+        == {
+                'type': ['array', 'null'],
+                "items": {'type': ['number']}
+            }
+
+
+def test_simplify__anyOf__datetimes_dont_merge_with_strings():
+    assert \
+        json_schema.simplify(
+            {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    {"type": ["string", "null"]}]}) \
+        == {
+                "anyOf": [
+                    {"type": ["string", "null"]},
+                    {
+                        "type": ["string", 'null'],
+                        "format": "date-time"
+                    }]}
+
+def test_simplify__anyOf__single_nullable_makes_all_nullable():
+    assert \
+        json_schema.simplify(
+            {'anyOf': [
+                {'type': 'string'},
+                {'type': 'integer'},
+                {'type': ['number', 'null']},
+                {
+                    'type': 'string',
+                    'format': 'date-time'},
+                {'type': ['boolean']}
+            ]}
+        ) \
+        == {'anyOf': [
+                {'type': ['boolean', 'null']},
+                {'type': ['integer', 'null']},
+                {'type': ['number', 'null']},
+                {'type': ['string', 'null']},
+                {
+                    'type': ['string', 'null'],
+                    'format': 'date-time'
+                }
+            ]}
+
+
+def test_simplify__anyOf__objects__no_overlapping_keys():
+    assert \
+        json_schema.simplify(
+            {
+                "anyOf": [
+                    {
+                        "properties": {'a': {'type': 'string'}}
+                    },
+                    {
+                        "properties": {'b': {'type': 'integer'}}
+                    },
+                    {
+                        "properties": {'c': {'type': 'string'}}
+                    }]}) \
+        == {
+            'type': ['object'],
+            'properties': {
+                'a': {'type': ['string']},
+                'b': {'type': ['integer']},
+                'c': {'type': ['string']}
+            }
+        }
+
+def test_simplify__anyOf__objects__overlapping_keys():
+    assert \
+        json_schema.simplify(
+            {
+                "anyOf": [
+                    {
+                        "properties": {'a': {'type': 'string'}}
+                    },
+                    {
+                        "properties": {'a': {'type': 'integer'}}
+                    },
+                    {
+                        "properties": {'a': {'type': 'number'}}
+                    }]}) \
+        == {
+            'type': ['object'],
+            'properties': {
+                'a': {'anyOf': [
+                    {'type': ['integer']},
+                    {'type': ['number']},
+                    {'type': ['string']}]}}}
+
+
 def test_simplify__types_into_arrays():
     assert \
         json_schema.simplify(
@@ -255,12 +488,12 @@ def test_simplify__complex():
             'type': ['object'],
             'properties': {
                 'every_type': {'anyOf': [
+                    {
+                        'type': ['array', 'null'],
+                        'items': {'type': ['integer']}},
                     {'type': ['boolean', 'null']},
                     {'type': ['integer', 'null']},
                     {'type': ['number', 'null']},
-                    {
-                        'type': ['string', 'null'],
-                        'format': 'date-time'},
                     {
                         'type': ['object', 'null'],
                         'properties': {
@@ -268,8 +501,8 @@ def test_simplify__complex():
                             'n': {'type': ['number']},
                             'b': {'type': ['boolean']}}},
                     {
-                        'type': ['array', 'null'],
-                        'items': {'type': ['integer']}}]}}}
+                        'type': ['string', 'null'],
+                        'format': 'date-time'}]}}}
 
     assert \
         json_schema.simplify({
