@@ -381,6 +381,7 @@ def _simplify__anyof(root_schema, schema):
     - all iterables' `items` schemas are merged as simplified `anyOf` schemas
     - all `anyOf`s are flattened to the topmost
     - if there is only a single element in an `anyOf`, that is denested
+    - if any `anyOf`s are nullable, all are nullable
     '''
 
     schemas = [
@@ -388,15 +389,15 @@ def _simplify__anyof(root_schema, schema):
             for schema in schema['anyOf']]
 
     literals = set()
+    any_nullable = False
     any_merged_objects = False
-    any_merged_objects_nullable = False
     merged_object_properties = {}
     any_merged_iters = False
-    any_merged_iters_nullable = False
     merged_item_schemas = []
 
     while schemas:
         sub_schema = schemas.pop()
+        any_nullable = any_nullable or is_nullable(sub_schema)
 
         if is_literal(sub_schema):
             literals.add(sub_schema)
@@ -407,7 +408,6 @@ def _simplify__anyof(root_schema, schema):
 
         elif is_object(sub_schema):
             any_merged_objects = True
-            any_merged_objects_nullable = any_merged_objects_nullable or is_nullable(sub_schema)
             for k, s in sub_schema.get('properties', {}).items():
                 if k in merged_object_properties:
                     merged_object_properties[k].append(s)
@@ -416,10 +416,15 @@ def _simplify__anyof(root_schema, schema):
 
         elif is_iterable(sub_schema):
             any_merged_iters = True
-            any_merged_iters_nullable = any_merged_iters_nullable or is_nullable(sub_schema)
             merged_item_schemas.append(sub_schema['items'])
 
-    merged_schemas = sorted(literals)
+    merged_schemas = set()
+    for l in literals:
+        s = l
+        if any_nullable:
+            s = make_nullable(l)
+
+        merged_schemas.add(Cachable(s))
 
     if any_merged_objects:
         for k, v in merged_object_properties.items():
@@ -430,10 +435,10 @@ def _simplify__anyof(root_schema, schema):
             'properties': merged_object_properties
         }
 
-        if any_merged_objects_nullable:
+        if any_nullable:
             s = make_nullable(s)
 
-        merged_schemas.append(Cachable(s))
+        merged_schemas.add(Cachable(s))
 
     if any_merged_iters:
         merged_item_schemas = _helper_simplify(root_schema, {'anyOf': merged_item_schemas})
@@ -443,15 +448,15 @@ def _simplify__anyof(root_schema, schema):
             'items': merged_item_schemas
         }
 
-        if any_merged_iters_nullable:
+        if any_nullable:
             s = make_nullable(s)
 
-        merged_schemas.append(Cachable(s))
+        merged_schemas.add(Cachable(s))
 
     if len(merged_schemas) == 1:
-        return merged_schemas[0]
+        return merged_schemas.pop()
 
-    return Cachable({'anyOf': merged_schemas})
+    return Cachable({'anyOf': sorted(merged_schemas)})
 
 
 def _helper_simplify(root_schema, child_schema):
