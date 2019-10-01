@@ -124,8 +124,8 @@ def _denest_schema_helper(table_path,
                              level + 1)
 
         if json_schema.is_literal(item_json_schema):
-            if nullable and not json_schema.is_nullable(item_json_schema):
-                item_json_schema['type'].append('null')
+            if nullable:
+                item_json_schema = json_schema.make_nullable(item_json_schema)
 
             top_level_schema[prop_path + (prop,)] = _literal_only_schema(item_json_schema)
 

@@ -170,7 +170,7 @@ def is_literal(schema):
     :return: Boolean
     """
 
-    return not {STRING, INTEGER, NUMBER, BOOLEAN}.isdisjoint(set(get_type(schema)))
+    return not {STRING, INTEGER, NUMBER, BOOLEAN, NULL}.isdisjoint(set(get_type(schema)))
 
 
 def is_datetime(schema):
@@ -254,9 +254,49 @@ def _simplify__allof__merge__iterables(root_schema, schemas):
     return ret_schema
 
 
-def _helper_simplify(root_schema, child_schema):
-    ret_schema = {}
+def _simplify__literals(root_schema, schema):
+    '''
+    Typically literals are simple and have at most two types, one of which being NULL.
+    However, they _can_ have many types wrapped up inside them as an implicit `anyOf`.
 
+    Since we support `anyOf`, it is simpler to unwrap and "flatten" this implicit
+    combination type.
+    '''
+    schemas = []
+    types = set(get_type(schema))
+    types.discard(NULL)
+
+    if is_datetime(schema):
+        schemas.append({
+            'type': [STRING],
+            'format': DATE_TIME_FORMAT
+        })
+        types.remove(STRING)
+
+    for t in get_type(schema):
+        s = deepcopy(schema)
+        s['type'] = [t]
+        schemas.append(_helper_simplify(root_schema, s))
+    
+    if is_nullable(schema):
+        schemas = [make_nullable(s) for s in schemas]
+    
+    if len(schemas) == 1:
+        ret_schema = schemas[0]
+    else:
+        # TODO: merge/simplify anyOf schemas
+        ret_schema = {'anyOf': schemas}
+
+
+def _simplify__combinations(root_schema, schemas):
+    simplified_schemas = [
+        _helper_simplify(root_schema, schema)
+        for schema in schemas]
+
+    return sorted(simplified_schemas, key=_allof_sort_key)
+
+
+def _helper_simplify(root_schema, child_schema):
     ## Refs override all other type definitions
     if _is_ref(child_schema):
         try:
@@ -265,11 +305,7 @@ def _helper_simplify(root_schema, child_schema):
             raise JSONSchemaError('`$ref` path "{}" is recursive'.format(get_ref(root_schema, child_schema['$ref'])))
 
     elif _is_allof(child_schema):
-        simplified_schemas = []
-        for schema in child_schema['allOf']:
-            simplified_schemas.append(_helper_simplify(root_schema, schema))
-
-        schemas = sorted(simplified_schemas, key=_allof_sort_key)
+        schemas = _simplify__combinations(root_schema, child_schema['allOf'])
 
         ret_schema = schemas[0]
 
@@ -278,22 +314,30 @@ def _helper_simplify(root_schema, child_schema):
         elif is_iterable(ret_schema):
             ret_schema = _simplify__allof__merge__iterables(root_schema, schemas)
 
+    elif is_literal(child_schema):
+        ret_schema = _simplify__literals(root_schema, child_schema)
+
+    elif is_object(child_schema):
+        properties = {}
+        for field, field_json_schema in child_schema.get('properties', {}).items():
+            properties[field] = _helper_simplify(root_schema, field_json_schema)
+
+        ret_schema = {
+            'type': [OBJECT],
+            'properties': properties
+        }
+
+    elif is_iterable(child_schema):
+        ret_schema = {
+            'type': [ARRAY],
+            'items': _helper_simplify(root_schema, child_schema.get('items', {}))
+        }
+
     else:
+        raise JSONSchemaError('Unsupported schema: {}'.format(child_schema))
 
-        ret_schema = {'type': get_type(child_schema)}
-
-        if is_object(child_schema):
-            properties = {}
-            for field, field_json_schema in child_schema.get('properties', {}).items():
-                properties[field] = _helper_simplify(root_schema, field_json_schema)
-
-            ret_schema['properties'] = properties
-
-        if is_iterable(child_schema):
-            ret_schema['items'] = _helper_simplify(root_schema, child_schema.get('items', {}))
-
-        if 'format' in child_schema:
-            ret_schema['format'] = child_schema.get('format')
+    if 'format' in child_schema:
+        ret_schema['format'] = child_schema.get('format')
 
     if 'default' in child_schema:
         ret_schema['default'] = child_schema.get('default')

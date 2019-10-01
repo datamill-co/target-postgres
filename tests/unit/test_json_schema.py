@@ -52,7 +52,9 @@ def test_is_nullable():
 
 
 def test_is_literal():
+    assert json_schema.is_literal({'type': ['null']})
     assert json_schema.is_literal({'type': ['integer', 'null']})
+    assert json_schema.is_literal({'type': ['integer', 'null', 'object']})
     assert json_schema.is_literal({'type': ['string']})
     assert not json_schema.is_literal({'type': ['array'], 'items': {'type': ['boolean']}})
     assert not json_schema.is_literal({})
