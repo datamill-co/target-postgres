@@ -54,7 +54,7 @@ def test_is_nullable():
 def test_is_literal():
     assert json_schema.is_literal({'type': ['null']})
     assert json_schema.is_literal({'type': ['integer', 'null']})
-    assert json_schema.is_literal({'type': ['integer', 'null', 'object']})
+    assert json_schema.is_literal({'type': ['integer', 'object', 'null']})
     assert json_schema.is_literal({'type': ['string']})
     assert not json_schema.is_literal({'type': ['array'], 'items': {'type': ['boolean']}})
     assert not json_schema.is_literal({})
@@ -70,7 +70,7 @@ def test_is_datetime():
 
 def test_complex_objects__logical_statements():
     every_type = {
-        'type': ['null', 'integer', 'number', 'boolean', 'string', 'array', 'object'],
+        'type': ['integer', 'null', 'number', 'boolean', 'string', 'array', 'object'],
         'items': {'type': 'integer'},
         'format': 'date-time',
         'properties': {
@@ -82,7 +82,7 @@ def test_complex_objects__logical_statements():
 
     assert json_schema.is_iterable(every_type)
     assert json_schema.is_nullable(every_type)
-    assert json_schema.is_iterable(every_type)
+    assert json_schema.is_literal(every_type)
     assert json_schema.is_object(every_type)
 
 
@@ -214,9 +214,9 @@ def test_simplify__allOf__picks_scalars():
 def test_simplify__types_into_arrays():
     assert \
         json_schema.simplify(
-            {'type': 'null'}
+            {'type': 'number'}
         ) \
-        == {'type': ['null']}
+        == {'type': ['number']}
 
     assert \
         json_schema.simplify(
@@ -233,7 +233,7 @@ def test_simplify__complex():
         json_schema.simplify({
             'properties': {
                 'every_type': {
-                    'type': ['null', 'integer', 'number', 'boolean', 'string', 'array', 'object'],
+                    'type': ['integer', 'null', 'number', 'boolean', 'string', 'array', 'object'],
                     'items': {'type': 'integer'},
                     'format': 'date-time',
                     'properties': {
@@ -247,38 +247,42 @@ def test_simplify__complex():
         == {
             'type': ['object'],
             'properties': {
-                'every_type': {
-                    'type': ['null', 'integer', 'number', 'boolean', 'string', 'array', 'object'],
-                    'items': {'type': ['integer']},
-                    'format': 'date-time',
-                    'properties': {
-                        'i': {'type': ['integer']},
-                        'n': {'type': ['number']},
-                        'b': {'type': ['boolean']}
-                    }
-                }
-            }
-        }
+                'every_type': {'anyOf': [
+                    {
+                        'type': ['string', 'null'],
+                        'format': 'date-time'},
+                    {
+                        'type': ['object', 'null'],
+                        'properties': {
+                            'i': {'type': ['integer']},
+                            'n': {'type': ['number']},
+                            'b': {'type': ['boolean']}}},
+                    {
+                        'type': ['array', 'null'],
+                        'items': {'type': ['integer']}},
+                    {'type': ['boolean', 'null']},
+                    {'type': ['integer', 'null']},
+                    {'type': ['number', 'null']}]}}}
 
     assert \
         json_schema.simplify({
-            'type': ['null', 'array'],
+            'type': ['array', 'null'],
             'items': {
                 'type': 'object',
                 'properties': {
                     'type': {
-                        'type': ['null', 'string']
+                        'type': ['string', 'null']
                     },
                     'date_administered': {
                         'type': 'string',
                         'format': 'date-time'}}}}) \
         == {
-            'type': ['null', 'array'],
+            'type': ['array', 'null'],
             'items': {
                 'type': ['object'],
                 'properties': {
                     'type': {
-                        'type': ['null', 'string']
+                        'type': ['string', 'null']
                     },
                     'date_administered': {
                         'type': ['string'],
@@ -308,31 +312,31 @@ def test_simplify__complex():
                     'default': False
                 },
                 'pattern': {
-                    'type': ['null', 'string']
+                    'type': ['string', 'null']
                 },
                 'age': {
-                    'type': ['null', 'integer']
+                    'type': ['integer', 'null']
                 },
                 'adoption': {
                     'type': ['object', 'null'],
                     'properties': {
                         'adopted_on': {
-                            'type': ['null', 'string'],
+                            'type': ['string', 'null'],
                             'format': 'date-time'
                         },
                         'was_foster': {
                             'type': ['boolean']
                         },
                         'immunizations': {
-                            'type': ['null', 'array'],
+                            'type': ['array', 'null'],
                             'items': {
                                 'type': ['object'],
                                 'properties': {
                                     'type': {
-                                        'type': ['null', 'string']
+                                        'type': ['string', 'null']
                                     },
                                     'date_administered': {
-                                        'type': ['null', 'string'],
+                                        'type': ['string', 'null'],
                                         'format': 'date-time'}}}}}}}}
 
 
@@ -536,9 +540,6 @@ def test_validation_errors():
     assert json_schema.validation_errors({}) \
            == []
 
-    assert json_schema.validation_errors({'type': 'null'}) \
-           == []
-
     assert json_schema.validation_errors({'type': ['object'],
                                           'properties': {
                                               'a': {'type': 'string'}}}) \
@@ -633,6 +634,9 @@ def test_validation_errors__invalid_schemas():
     assert non_standard_schema_version
     assert not _non_string_elements(non_standard_schema_version)
 
+    only_null_schema = json_schema.validation_errors({'type': 'null'})
+    assert only_null_schema
+
 
 def test_validation_errors__invalid_draft_version():
     draft_3 = json_schema.validation_errors({'$schema': 'http://json-schema.org/draft-03/schema#'})
@@ -651,10 +655,10 @@ def test_validation_errors__invalid_draft_version():
 def test_make_nullable():
     assert {'type': ['boolean', 'null']} \
            == json_schema.make_nullable({'type': 'boolean'})
-    assert {'type': ['null', 'boolean']} \
-           == json_schema.make_nullable({'type': ['null', 'boolean']})
-    assert {'type': ['null', 'string']} \
-           == json_schema.make_nullable({'type': ['null', 'string']})
+    assert {'type': ['boolean', 'null']} \
+           == json_schema.make_nullable({'type': ['boolean', 'null']})
+    assert {'type': ['string', 'null']} \
+           == json_schema.make_nullable({'type': ['string', 'null']})
 
     ## Make sure we're not modifying the original
     schema = {'type': ['string']}
@@ -700,9 +704,9 @@ def test_make_nullable():
 
 def test_sql_shorthand():
     assert 'b' == json_schema.shorthand({'type': 'boolean'})
-    assert 'b' == json_schema.shorthand({'type': ['null', 'boolean']})
-    assert 's' == json_schema.shorthand({'type': ['null', 'string']})
-    assert 't' == json_schema.shorthand({'type': ['null', 'string'],
+    assert 'b' == json_schema.shorthand({'type': ['boolean', 'null']})
+    assert 's' == json_schema.shorthand({'type': ['string', 'null']})
+    assert 't' == json_schema.shorthand({'type': ['string', 'null'],
                                          'format': 'date-time'})
     assert 't' == json_schema.shorthand({'type': 'string',
                                          'format': 'date-time'})

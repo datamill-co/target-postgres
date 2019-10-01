@@ -127,6 +127,18 @@ def _is_allof(schema):
     return not _is_ref(schema) and 'allOf' in schema and schema['allOf']
 
 
+def is_anyof(schema):
+    """
+    Given a JSON Schema compatible dict, returns True when the schema implements `anyOf`,
+    AND has `anyOf` elements.
+
+    :param schema:
+    :return: Boolean
+    """
+
+    return not _is_ref(schema) and not _is_allof(schema) and 'anyOf' in schema and schema['anyOf']
+
+
 def is_object(schema):
     """
     Given a JSON Schema compatible dict, returns True when schema's type allows being an Object.
@@ -254,7 +266,7 @@ def _simplify__allof__merge__iterables(root_schema, schemas):
     return ret_schema
 
 
-def _simplify__literals(root_schema, schema):
+def _simplify__implicit_anyof(root_schema, schema):
     '''
     Typically literals are simple and have at most two types, one of which being NULL.
     However, they _can_ have many types wrapped up inside them as an implicit `anyOf`.
@@ -264,6 +276,10 @@ def _simplify__literals(root_schema, schema):
     '''
     schemas = []
     types = set(get_type(schema))
+
+    if types == {NULL}:
+        raise JSONSchemaError('Cannot handle only `null` schema type.')
+
     types.discard(NULL)
 
     if is_datetime(schema):
@@ -271,21 +287,40 @@ def _simplify__literals(root_schema, schema):
             'type': [STRING],
             'format': DATE_TIME_FORMAT
         })
-        types.remove(STRING)
 
-    for t in get_type(schema):
-        s = deepcopy(schema)
-        s['type'] = [t]
-        schemas.append(_helper_simplify(root_schema, s))
+        types.remove(STRING)
     
+    if is_object(schema):
+        properties = {}
+        for field, field_json_schema in schema.get('properties', {}).items():
+            properties[field] = _helper_simplify(root_schema, field_json_schema)
+
+        schemas.append({
+            'type': [OBJECT],
+            'properties': properties
+        })
+
+        types.discard(OBJECT)
+    
+    if is_iterable(schema):
+        schemas.append({
+            'type': [ARRAY],
+            'items': _helper_simplify(root_schema, schema.get('items', {}))
+        })
+
+        types.remove(ARRAY)
+
+    # We sort the types here to make the result more reproducible. This aides testing
+    schemas += [{'type': [t]} for t in sorted(types)]
+
     if is_nullable(schema):
         schemas = [make_nullable(s) for s in schemas]
-    
+
     if len(schemas) == 1:
-        ret_schema = schemas[0]
-    else:
-        # TODO: merge/simplify anyOf schemas
-        ret_schema = {'anyOf': schemas}
+        return schemas[0]
+
+    # TODO: merge/simplify anyOf schemas
+    return {'anyOf': schemas}
 
 
 def _simplify__combinations(root_schema, schemas):
@@ -314,30 +349,12 @@ def _helper_simplify(root_schema, child_schema):
         elif is_iterable(ret_schema):
             ret_schema = _simplify__allof__merge__iterables(root_schema, schemas)
 
-    elif is_literal(child_schema):
-        ret_schema = _simplify__literals(root_schema, child_schema)
-
-    elif is_object(child_schema):
-        properties = {}
-        for field, field_json_schema in child_schema.get('properties', {}).items():
-            properties[field] = _helper_simplify(root_schema, field_json_schema)
-
-        ret_schema = {
-            'type': [OBJECT],
-            'properties': properties
-        }
-
-    elif is_iterable(child_schema):
-        ret_schema = {
-            'type': [ARRAY],
-            'items': _helper_simplify(root_schema, child_schema.get('items', {}))
-        }
+    elif is_anyof(child_schema):
+        # schemas = _simplify__combinations(root_schema, child_schema['anyOf'])
+        ret_schema = child_schema
 
     else:
-        raise JSONSchemaError('Unsupported schema: {}'.format(child_schema))
-
-    if 'format' in child_schema:
-        ret_schema['format'] = child_schema.get('format')
+        ret_schema = _simplify__implicit_anyof(root_schema, child_schema)
 
     if 'default' in child_schema:
         ret_schema['default'] = child_schema.get('default')
