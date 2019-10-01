@@ -222,6 +222,11 @@ class Cachable(dict):
     def __hash__(self):
         return self._comparator().__hash__()
 
+    def deepcopy(self):
+        s = deepcopy(self)
+        s._c = self._c
+        return s
+
     def _comparator(self):
         if not self._c:
             item_c = tuple()
@@ -497,6 +502,8 @@ def simplify(schema):
     :return: dict, JSON Schema
     :raises: Exception
     """
+    if isinstance(schema, Cachable):
+        return schema.deepcopy()
 
     return _helper_simplify(schema, schema)
 
