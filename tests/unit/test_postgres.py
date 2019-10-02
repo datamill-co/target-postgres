@@ -1788,3 +1788,19 @@ def test_loading__very_long_stream_name(db_cleanup):
         assert_column_indexed(conn, stream_name, 'id')
         assert_column_indexed(conn, '{}__adoption__immunizations'.format(stream_name), '_sdc_sequence')
         assert_column_indexed(conn, '{}__adoption__immunizations'.format(stream_name), '_sdc_level_0_id')
+
+
+def test_before_run_sql_is_executed_upon_construction(db_cleanup):
+    config = CONFIG.copy()
+    config['before_run_sql'] = 'CREATE TABLE before_sql_test ( code char(5) CONSTRAINT firstkey PRIMARY KEY );'
+    config['after_run_sql'] = 'CREATE TABLE after_sql_test ( code char(5) CONSTRAINT secondkey PRIMARY KEY );'
+
+    main(config, input_stream=CatStream(100))
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name='before_sql_test';")
+            assert cur.fetchone()[0] == 'before_sql_test'
+
+            cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name='after_sql_test';")
+            assert cur.fetchone()[0] == 'after_sql_test'
