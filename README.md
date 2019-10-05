@@ -173,10 +173,11 @@ $ docker logs -tf target-postgres_target-postgres_1 # You container names might 
 As soon as you see `INFO: Dev environment ready.` you can shell into the container and start running test commands:
 
 ```sh
-$ docker exec -it target-postgres_target-postgres_1 bash # Your container names might differ
-root@... $ source /code/venv/target-postgres/bin/activate
-root@... $ pytest
+$ docker-compose exec target-postgres bash
+(target-postgres) root@...:/code# pytest
 ```
+
+The environment inside the docker container has a virtualenv set up and activated, with an `--editable` install of `target-postgres` inside it and your local code mounted as a Docker volume. If you make changes on your host and re-run `pytest` any changes should be reflected inside the container.
 
 See the [PyTest](#pytest) commands below!
 
