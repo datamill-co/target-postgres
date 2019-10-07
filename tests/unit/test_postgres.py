@@ -20,9 +20,11 @@ from target_postgres.target_tools import TargetError
 ## TODO: test compound pk
 
 def assert_columns_equal(cursor, table_name, expected_column_tuples):
-    cursor.execute("SELECT column_name, data_type, is_nullable FROM information_schema.columns " + \
-                   "WHERE table_schema = 'public' and table_name = '{}';".format(
-                       table_name))
+    cursor.execute('''
+        SELECT column_name, data_type, is_nullable FROM information_schema.columns
+        WHERE table_schema = 'public' and table_name = '{}';
+    '''.format(
+        table_name))
     columns = cursor.fetchall()
 
     assert (not columns and not expected_column_tuples) \
@@ -145,15 +147,15 @@ def assert_records(conn, records, table_name, pks, match_pks=False):
 
 def assert_column_indexed(conn, table_name, column_name):
     with conn.cursor() as cur:
-        cur.execute((
-            "select t.relname as table_name, i.relname as index_name, a.attname as column_name " \
-            "from pg_class t, pg_class i, pg_index ix, pg_attribute a " \
-            "where t.oid = ix.indrelid and i.oid = ix.indexrelid and a.attrelid = t.oid " \
-            "and a.attnum = ANY(ix.indkey) and t.relkind = 'r' " \
-            "and t.relname = '{table_name}' and a.attname = '{column_name}'").format(
-                table_name=table_name,
-                column_name=column_name
-            ))
+        cur.execute('''
+            SELECT t.relname AS table_name, i.relname AS index_name, a.attname AS column_name
+            FROM pg_class t, pg_class i, pg_index ix, pg_attribute a
+            WHERE t.oid = ix.indrelid AND i.oid = ix.indexrelid AND a.attrelid = t.oid
+            AND a.attnum = ANY(ix.indkey) AND t.relkind = 'r'
+            AND t.relname = '{table_name}' AND a.attname = '{column_name}'
+        '''.format(
+            table_name=table_name,
+            column_name=column_name))
 
         assert len(cur.fetchall()) > 0
 

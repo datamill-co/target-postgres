@@ -103,8 +103,13 @@ class PostgresTarget(SQLInterface):
     # TODO: Figure out way to `SELECT` value from commands
     IDENTIFIER_FIELD_LENGTH = 63
 
-    def __init__(self, connection, *args, postgres_schema='public', logging_level=None, persist_empty_tables=False,
-                 add_upsert_indexes=True, **kwargs):
+    def __init__(self, connection, *args,
+        postgres_schema='public',
+        logging_level=None,
+        persist_empty_tables=False,
+        add_upsert_indexes=True,
+        **kwargs):
+
         self.LOGGER.info(
             'PostgresTarget created with established connection: `{}`, PostgreSQL schema: `{}`'.format(connection.dsn,
                                                                                                        postgres_schema))
@@ -139,13 +144,12 @@ class PostgresTarget(SQLInterface):
         :return: None
         """
 
-        cur.execute(
-            sql.SQL('''
-                    SELECT c.relname, obj_description(c.oid, 'pg_class')
-                    FROM pg_namespace AS n
-                      INNER JOIN pg_class AS c ON n.oid = c.relnamespace
-                    WHERE n.nspname = {};
-                    ''').format(sql.Literal(self.postgres_schema)))
+        cur.execute(sql.SQL('''
+            SELECT c.relname, obj_description(c.oid, 'pg_class')
+            FROM pg_namespace AS n
+                INNER JOIN pg_class AS c ON n.oid = c.relnamespace
+            WHERE n.nspname = {};
+        ''').format(sql.Literal(self.postgres_schema)))
 
         for mapped_name, raw_json in cur.fetchall():
             metadata = None
@@ -169,13 +173,12 @@ class PostgresTarget(SQLInterface):
         :param cur: Cursor
         :return: None
         """
-        cur.execute(
-            sql.SQL('''
-                    SELECT c.relname, obj_description(c.oid, 'pg_class')
-                    FROM pg_namespace AS n
-                      INNER JOIN pg_class AS c ON n.oid = c.relnamespace
-                    WHERE n.nspname = {};
-                    ''').format(sql.Literal(self.postgres_schema)))
+        cur.execute(sql.SQL('''
+            SELECT c.relname, obj_description(c.oid, 'pg_class')
+            FROM pg_namespace AS n
+                INNER JOIN pg_class AS c ON n.oid = c.relnamespace
+            WHERE n.nspname = {};
+        ''').format(sql.Literal(self.postgres_schema)))
 
         for mapped_name, raw_json in cur.fetchall():
             metadata = None
@@ -210,13 +213,12 @@ class PostgresTarget(SQLInterface):
     def setup_table_mapping_cache(self, cur):
         self.table_mapping_cache = {}
 
-        cur.execute(
-            sql.SQL('''
-                SELECT c.relname, obj_description(c.oid, 'pg_class')
-                FROM pg_namespace AS n
-                  INNER JOIN pg_class AS c ON n.oid = c.relnamespace
-                WHERE n.nspname = {};
-                ''').format(sql.Literal(self.postgres_schema)))
+        cur.execute(sql.SQL('''
+            SELECT c.relname, obj_description(c.oid, 'pg_class')
+            FROM pg_namespace AS n
+                INNER JOIN pg_class AS c ON n.oid = c.relnamespace
+            WHERE n.nspname = {};
+        ''').format(sql.Literal(self.postgres_schema)))
 
         for mapped_name, raw_json in cur.fetchall():
             table_path = None
@@ -330,29 +332,28 @@ class PostgresTarget(SQLInterface):
 
                     names_to_paths = dict([(v, k) for k, v in self.table_mapping_cache.items()])
 
-                    cur.execute(
-                        sql.SQL('''
+                    cur.execute(sql.SQL('''
                         SELECT tablename FROM pg_tables
                         WHERE schemaname = {} AND tablename like {};
-                        ''').format(
-                            sql.Literal(self.postgres_schema),
-                            sql.Literal(versioned_root_table + '%')))
+                    ''').format(
+                        sql.Literal(self.postgres_schema),
+                        sql.Literal(versioned_root_table + '%')))
 
                     for versioned_table_name in map(lambda x: x[0], cur.fetchall()):
                         table_name = root_table_name + versioned_table_name[len(versioned_root_table):]
                         table_path = names_to_paths[table_name]
-                        cur.execute(
-                            sql.SQL('''
+                        cur.execute(sql.SQL('''
                             ALTER TABLE {table_schema}.{stream_table} RENAME TO {stream_table_old};
                             ALTER TABLE {table_schema}.{version_table} RENAME TO {stream_table};
                             DROP TABLE {table_schema}.{stream_table_old};
-                            COMMIT;''').format(
-                                table_schema=sql.Identifier(self.postgres_schema),
-                                stream_table_old=sql.Identifier(table_name +
-                                                                SEPARATOR +
-                                                                'old'),
-                                stream_table=sql.Identifier(table_name),
-                                version_table=sql.Identifier(versioned_table_name)))
+                            COMMIT;
+                        ''').format(
+                            table_schema=sql.Identifier(self.postgres_schema),
+                            stream_table_old=sql.Identifier(table_name +
+                                                            SEPARATOR +
+                                                            'old'),
+                            stream_table=sql.Identifier(table_name),
+                            version_table=sql.Identifier(versioned_table_name)))
                         metadata = self._get_table_metadata(cur, table_name)
 
                         self.LOGGER.info('Activated {}, setting path to {}'.format(
@@ -582,10 +583,9 @@ class PostgresTarget(SQLInterface):
 
         ## Create temp table to upload new data to
         target_table_name = self.canonicalize_identifier('tmp_' + str(uuid.uuid4()))
-        cur.execute(sql.SQL(
-            '''
+        cur.execute(sql.SQL('''
             CREATE TABLE {schema}.{temp_table} (LIKE {schema}.{table})
-            ''').format(
+        ''').format(
             schema=sql.Identifier(self.postgres_schema),
             temp_table=sql.Identifier(target_table_name),
             table=sql.Identifier(remote_schema['name'])
@@ -619,31 +619,39 @@ class PostgresTarget(SQLInterface):
 
     def add_column(self, cur, table_name, column_name, column_schema):
 
-        cur.execute(sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
-                            'ADD COLUMN {column_name} {data_type};').format(
+        cur.execute(sql.SQL('''
+            ALTER TABLE {table_schema}.{table_name}
+            ADD COLUMN {column_name} {data_type};
+        ''').format(
             table_schema=sql.Identifier(self.postgres_schema),
             table_name=sql.Identifier(table_name),
             column_name=sql.Identifier(column_name),
             data_type=sql.SQL(self.json_schema_to_sql_type(column_schema))))
 
     def migrate_column(self, cur, table_name, from_column, to_column):
-        cur.execute(sql.SQL('UPDATE {table_schema}.{table_name} ' +
-                            'SET {to_column} = {from_column};').format(
+        cur.execute(sql.SQL('''
+            UPDATE {table_schema}.{table_name}
+            SET {to_column} = {from_column};
+        ''').format(
             table_schema=sql.Identifier(self.postgres_schema),
             table_name=sql.Identifier(table_name),
             to_column=sql.Identifier(to_column),
             from_column=sql.Identifier(from_column)))
 
     def drop_column(self, cur, table_name, column_name):
-        cur.execute(sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
-                            'DROP COLUMN {column_name};').format(
+        cur.execute(sql.SQL('''
+            ALTER TABLE {table_schema}.{table_name}
+            DROP COLUMN {column_name};
+        ''').format(
             table_schema=sql.Identifier(self.postgres_schema),
             table_name=sql.Identifier(table_name),
             column_name=sql.Identifier(column_name)))
 
     def make_column_nullable(self, cur, table_name, column_name):
-        cur.execute(sql.SQL('ALTER TABLE {table_schema}.{table_name} ' +
-                            'ALTER COLUMN {column_name} DROP NOT NULL;').format(
+        cur.execute(sql.SQL('''
+            ALTER TABLE {table_schema}.{table_name}
+            ALTER COLUMN {column_name} DROP NOT NULL;
+        ''').format(
             table_schema=sql.Identifier(self.postgres_schema),
             table_name=sql.Identifier(table_name),
             column_name=sql.Identifier(column_name)))
@@ -655,8 +663,11 @@ class PostgresTarget(SQLInterface):
             index_name_hash = hashlib.sha1(index_name.encode('utf-8')).hexdigest()[0:60]
             index_name = 'tp_{}'.format(index_name_hash)
 
-        cur.execute(sql.SQL('CREATE INDEX {index_name} ON {table_schema}.{table_name} ' +
-                            '({column_names});').format(
+        cur.execute(sql.SQL('''
+            CREATE INDEX {index_name}
+            ON {table_schema}.{table_name}
+            ({column_names});
+        ''').format(
             index_name=sql.Identifier(index_name),
             table_schema=sql.Identifier(self.postgres_schema),
             table_name=sql.Identifier(table_name),
@@ -681,7 +692,8 @@ class PostgresTarget(SQLInterface):
             SELECT EXISTS (
                 SELECT 1 FROM pg_tables
                 WHERE schemaname = {} AND
-                      tablename = {});''').format(
+                      tablename = {});
+        ''').format(
             sql.Literal(self.postgres_schema),
             sql.Literal(table_name)))
         table_exists = cur.fetchone()[0]
@@ -767,10 +779,11 @@ class PostgresTarget(SQLInterface):
 
     def __get_table_schema(self, cur, name):
         # Purely exists for migration purposes. DO NOT CALL DIRECTLY
-        cur.execute(
-            sql.SQL('SELECT column_name, data_type, is_nullable FROM information_schema.columns ') +
-            sql.SQL('WHERE table_schema = {} and table_name = {};').format(
-                sql.Literal(self.postgres_schema), sql.Literal(name)))
+        cur.execute(sql.SQL('''
+            SELECT column_name, data_type, is_nullable FROM information_schema.columns
+            WHERE table_schema = {} and table_name = {};
+        ''').format(
+            sql.Literal(self.postgres_schema), sql.Literal(name)))
 
         properties = {}
         for column in cur.fetchall():
