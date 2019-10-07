@@ -1,14 +1,14 @@
 version: "2"
 services:
   db:
-    image: postgres:9.6.13
+    image: postgres:9.6.15
     environment:
       POSTGRES_DB: target_postgres_test
     ports:
       - "5432:5432"
 
   target-postgres:
-    image: python:3.7.3-stretch
+    image: python:3.7.4-stretch
     working_dir: /code
     entrypoint: /code/docker-entrypoint.sh
     environment:
