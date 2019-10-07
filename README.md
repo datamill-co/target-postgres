@@ -87,6 +87,7 @@ here.
 | `max_buffer_size`           | `["integer", "null"]` | `104857600` (100MB in bytes)     | The maximum number of bytes to buffer in memory before writing to the destination table in Postgres
 | `batch_detection_threshold` | `["integer", "null"]` | `5000`, or 1/40th `max_batch_rows` | How often, in rows received, to count the buffered rows and bytes to check if a flush is necessary. There's a slight performance penalty to checking the buffered records count or bytesize, so this controls how often this is polled in order to mitigate the penalty. This value is usually not necessary to set as the default is dynamically adjusted to check reasonably often.
 | `state_support`             | `["boolean", "null"]` | `True`                           | Whether the Target should emit `STATE` messages to stdout for further consumption. In this mode, which is on by default, STATE messages are buffered in memory until all the records that occurred before them are flushed according to the batch flushing schedule the target is configured with.    |
+| `add_upsert_indexes`        | `["boolean", "null"]` | `True`                           | Whether the Target should create column indexes on the important columns used during data loading. These indexes will make data loading slightly slower but the deduplication phase much faster. Defaults to on for better baseline performance. |
 | `before_run_sql`            | `["string", "null"]`  | `None`                           | Raw SQL statement(s) to execute as soon as the connection to Postgres is opened by the target. Useful for setup like `SET ROLE` or other connection state that is important. |
 | `after_run_sql`             | `["string", "null"]`  | `None`                           | Raw SQL statement(s) to execute as soon as the connection to Postgres is opened by the target. Useful for setup like `SET ROLE` or other connection state that is important. |
 
@@ -143,6 +144,14 @@ _The above is copied from the [current list of versions](https://www.postgresql.
 - Field/Column names are restricted to:
   - 63 characters in length
   - ASCII characters
+
+## Indexes
+
+If the `add_upsert_indexes` config option is enabled, which it is by default, `target-postgres` adds indexes on the tables it creates for its own queries to be more performant. Specifically, `target-postgres` automatically adds indexes to the `_sdc_sequence` column and the `_sdc_level_<n>_id` columns which are used heavily when inserting and upserting.
+
+`target-postgres` doesn't have any facilities for adding other indexes to the managed tables, so if there are more indexes required, they should be added by another downstream tool, or can just be added by an administrator when necessary. Note that these indexes incur performance overhead to maintain as data is inserted, These indexes can also prevent `target-postgres` from dropping columns in the future if the schema of the table changes, in which case an administrator should drop the index so `target-postgres` is able to drop the columns it needs to.
+
+__Note__: Index adding is new as of version `0.2.1`, and `target-postgres` does not retroactively create indexes for tables it created before that time. If you want to add indexes to older tables `target-postgres` is loading data into, they should be added manually.
 
 ## Usage Logging
 

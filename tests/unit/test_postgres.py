@@ -143,6 +143,20 @@ def assert_records(conn, records, table_name, pks, match_pks=False):
                 assert sorted(list(persisted_records.keys())) == sorted(records_pks)
 
 
+def assert_column_indexed(conn, table_name, column_name):
+    with conn.cursor() as cur:
+        cur.execute((
+            "select t.relname as table_name, i.relname as index_name, a.attname as column_name " \
+            "from pg_class t, pg_class i, pg_index ix, pg_attribute a " \
+            "where t.oid = ix.indrelid and i.oid = ix.indexrelid and a.attrelid = t.oid " \
+            "and a.attnum = ANY(ix.indkey) and t.relkind = 'r' " \
+            "and t.relname = '{table_name}' and a.attname = '{column_name}'").format(
+                table_name=table_name,
+                column_name=column_name
+            ))
+
+        assert len(cur.fetchall()) > 0
+
 def test_loading__invalid__configuration__schema(db_cleanup):
     stream = CatStream(1)
     stream.schema = deepcopy(stream.schema)
@@ -243,6 +257,10 @@ def test_loading__simple(db_cleanup):
             record['flea_check_complete'] = False
 
         assert_records(conn, stream.records, 'cats', 'id')
+        assert_column_indexed(conn, 'cats', '_sdc_sequence')
+        assert_column_indexed(conn, 'cats', 'id')
+        assert_column_indexed(conn, 'cats__adoption__immunizations', '_sdc_sequence')
+        assert_column_indexed(conn, 'cats__adoption__immunizations', '_sdc_level_0_id')
 
 
 def test_loading__empty(db_cleanup):
@@ -1784,6 +1802,61 @@ def test_multiple_batches_by_memory_upsert(db_cleanup):
             cur.execute(get_count_sql('cats__adoption__immunizations'))
             assert cur.fetchone()[0] == 300
         assert_records(conn, stream.records, 'cats', 'id')
+
+
+def test_loading__very_long_stream_name(db_cleanup):
+    stream_name = 'extremely_______________long_cats'
+    class LongCatStream(CatStream):
+        stream = stream_name
+        schema = CatStream.schema.copy()
+    LongCatStream.schema['stream'] = stream_name
+    stream = LongCatStream(100)
+
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_columns_equal(cur,
+                                 stream_name,
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
+
+            assert_columns_equal(cur,
+                                 '{}__adoption__immunizations'.format(stream_name),
+                                 {
+                                     ('_sdc_level_0_id', 'bigint', 'NO'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_source_key_id', 'bigint', 'NO'),
+                                     ('date_administered', 'timestamp with time zone', 'YES'),
+                                     ('type', 'text', 'YES')
+                                 })
+
+            cur.execute(get_count_sql(stream_name))
+            assert cur.fetchone()[0] == 100
+
+        for record in stream.records:
+            record['paw_size'] = 314159
+            record['paw_colour'] = ''
+            record['flea_check_complete'] = False
+
+        assert_records(conn, stream.records, stream_name, 'id')
+        assert_column_indexed(conn, stream_name, '_sdc_sequence')
+        assert_column_indexed(conn, stream_name, 'id')
+        assert_column_indexed(conn, '{}__adoption__immunizations'.format(stream_name), '_sdc_sequence')
+        assert_column_indexed(conn, '{}__adoption__immunizations'.format(stream_name), '_sdc_level_0_id')
 
 
 def test_before_run_sql_is_executed_upon_construction(db_cleanup):

@@ -6,6 +6,7 @@ import logging
 import re
 import time
 import uuid
+import hashlib
 
 import arrow
 from psycopg2 import sql
@@ -103,7 +104,7 @@ class PostgresTarget(SQLInterface):
     IDENTIFIER_FIELD_LENGTH = 63
 
     def __init__(self, connection, *args, postgres_schema='public', logging_level=None, persist_empty_tables=False,
-                 **kwargs):
+                 add_upsert_indexes=True, **kwargs):
         self.LOGGER.info(
             'PostgresTarget created with established connection: `{}`, PostgreSQL schema: `{}`'.format(connection.dsn,
                                                                                                        postgres_schema))
@@ -121,6 +122,8 @@ class PostgresTarget(SQLInterface):
         self.conn = connection
         self.postgres_schema = postgres_schema
         self.persist_empty_tables = persist_empty_tables
+        self.add_upsert_indexes = add_upsert_indexes
+
         if self.persist_empty_tables:
             self.LOGGER.debug('PostgresTarget is persisting empty tables')
 
@@ -645,6 +648,20 @@ class PostgresTarget(SQLInterface):
             table_name=sql.Identifier(table_name),
             column_name=sql.Identifier(column_name)))
 
+    def add_index(self, cur, table_name, column_names):
+        index_name = 'tp_{}_{}_idx'.format(table_name, "_".join(column_names))
+
+        if len(index_name) > self.IDENTIFIER_FIELD_LENGTH:
+            index_name_hash = hashlib.sha1(index_name.encode('utf-8')).hexdigest()[0:60]
+            index_name = 'tp_{}'.format(index_name_hash)
+
+        cur.execute(sql.SQL('CREATE INDEX {index_name} ON {table_schema}.{table_name} ' +
+                            '({column_names});').format(
+            index_name=sql.Identifier(index_name),
+            table_schema=sql.Identifier(self.postgres_schema),
+            table_name=sql.Identifier(table_name),
+            column_names=sql.SQL(', ').join(sql.Identifier(column_name) for column_name in column_names)))
+
     def _set_table_metadata(self, cur, table_name, metadata):
         """
         Given a Metadata dict, set it as the comment on the given table.
@@ -720,6 +737,23 @@ class PostgresTarget(SQLInterface):
         metadata['mappings'].pop(mapped_name, None)
 
         self._set_table_metadata(cur, table_name, metadata)
+
+    def new_table_indexes(self, schema):
+        if self.add_upsert_indexes:
+            upsert_index_column_names = deepcopy(schema.get('key_properties', []))
+
+            for column_name__or__path in schema['schema']['properties'].keys():
+                column_path = column_name__or__path
+                if isinstance(column_name__or__path, str):
+                    column_path = (column_name__or__path,)
+
+                if len(column_path) == 1:
+                    if column_path[0] == '_sdc_sequence' or column_path[0].startswith('_sdc_level_'):
+                        upsert_index_column_names.append(column_path[0])
+
+            return [list(map(self.canonicalize_identifier, upsert_index_column_names))]
+        else:
+            return []
 
     def is_table_empty(self, cur, table_name):
         cur.execute(sql.SQL('SELECT COUNT(1) FROM {}.{};').format(
