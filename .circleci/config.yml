@@ -22,6 +22,10 @@ workflows:
           <<: *filters
           requires:
             - cache
+      - test--12.0:
+          <<: *filters
+          requires:
+            - cache
       - test--11.5:
           <<: *filters
           requires:
@@ -53,6 +57,7 @@ workflows:
       - test--tap-github:
           <<: *filters
           requires:
+            - test--12.0
             - test--11.5
             - test--10.10
             - test--9.6.15
@@ -151,6 +156,14 @@ jobs:
           root: "./"
           paths:
             - "./venv"
+
+  test--12.0:
+    <<: *test__base
+    docker:
+      - image: python:3.7.4-stretch
+      - image: postgres:12.0
+        environment:
+          POSTGRES_DB: target_postgres_test
 
   test--11.5:
     <<: *test__base
