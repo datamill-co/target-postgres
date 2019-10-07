@@ -505,3 +505,11 @@ class ListStream:
             return json.dumps(self.stream[self.idx])
 
         raise StopIteration
+
+
+class DogStream(CatStream):
+    stream = 'dogs'
+    schema = CatStream.schema.copy()
+
+
+DogStream.schema['stream'] = 'dogs'

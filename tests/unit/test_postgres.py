@@ -1,12 +1,13 @@
 from copy import deepcopy
 from datetime import datetime
+import json
 
 import psycopg2
 from psycopg2 import sql
 import psycopg2.extras
 import pytest
 
-from utils.fixtures import CatStream, CONFIG, db_cleanup, MultiTypeStream, NestedStream, TEST_DB, TypeChangeStream
+from utils.fixtures import CatStream, CONFIG, db_cleanup, MultiTypeStream, NestedStream, TEST_DB, TypeChangeStream, DogStream
 from target_postgres import json_schema
 from target_postgres import postgres
 from target_postgres import singer_stream
@@ -303,6 +304,74 @@ def test_loading__empty__enabled_config(db_cleanup):
                                  })
 
             cur.execute(get_count_sql('cats'))
+            assert cur.fetchone()[0] == 0
+
+
+def test_loading__empty__enabled_config_with_messages_for_only_one_stream(db_cleanup):
+    config = CONFIG.copy()
+    config['max_batch_rows'] = 20
+    config['batch_detection_threshold'] = 1
+    config['persist_empty_tables'] = True
+    cat_rows = list(CatStream(100))
+    dog_rows = list(DogStream(0))
+
+    # Simulate one stream that yields a lot of records with another that yields no records, and ensure that only the first
+    # needs to be flushed before any state messages are emitted
+    def test_stream():
+        yield cat_rows[0]
+        yield dog_rows[0]
+        for row in cat_rows[slice(1, 5)]:
+            yield row
+        yield json.dumps({'type': 'STATE', 'value': {'test': 'state-1'}})
+
+        for row in cat_rows[slice(6, 25)]:
+            yield row
+        yield json.dumps({'type': 'STATE', 'value': {'test': 'state-2'}})
+
+    main(config, input_stream=test_stream())
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'dogs',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on', 'timestamp with time zone', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
+
+            cur.execute(get_count_sql('cats'))
+            assert cur.fetchone()[0] == 23
+
+            cur.execute(get_count_sql('dogs'))
             assert cur.fetchone()[0] == 0
 
 

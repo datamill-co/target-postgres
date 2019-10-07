@@ -8,7 +8,7 @@ from target_postgres import singer_stream
 from target_postgres import target_tools
 from target_postgres.sql_base import SQLInterface
 
-from utils.fixtures import CONFIG, CatStream, ListStream, InvalidCatStream
+from utils.fixtures import CONFIG, CatStream, ListStream, InvalidCatStream, DogStream
 
 
 class Target(SQLInterface):
@@ -200,14 +200,6 @@ def test_state__emits_most_recent_state_when_final_flush_occurs(capsys):
     assert json.loads(output[0])['test'] == 'state-1'
 
 
-class DogStream(CatStream):
-    stream = 'dogs'
-    schema = CatStream.schema.copy()
-
-
-DogStream.schema['stream'] = 'dogs'
-
-
 def test_state__doesnt_emit_when_only_one_of_several_streams_is_flushing(capsys):
     config = CONFIG.copy()
     config['max_batch_rows'] = 20
@@ -256,6 +248,42 @@ def test_state__doesnt_emit_when_only_one_of_several_streams_is_flushing(capsys)
     output = filtered_output(capsys)
     assert len(output) == 1
     assert json.loads(output[0])['test'] == 'state-4'
+
+
+def test_state__emits_when_multiple_streams_are_registered_but_records_arrive_from_only_one(capsys):
+    config = CONFIG.copy()
+    config['max_batch_rows'] = 20
+    config['batch_detection_threshold'] = 1
+    cat_rows = list(CatStream(100))
+    dog_rows = list(DogStream(50))
+    target = Target()
+
+    # Simulate one stream that yields a lot of records with another that yields no records, and ensure that only the first
+    # needs to be flushed before any state messages are emitted
+    def test_stream():
+        yield cat_rows[0]
+        yield dog_rows[0]
+        for row in cat_rows[slice(1, 5)]:
+            yield row
+        yield json.dumps({'type': 'STATE', 'value': {'test': 'state-1'}})
+
+        for row in cat_rows[slice(6, 25)]:
+            yield row
+        yield json.dumps({'type': 'STATE', 'value': {'test': 'state-2'}})
+
+        # After some state messages and only one of the registered streams has hit the batch size, the state message should be emitted, as there are no unflushed records from the other stream yet
+        assert len(target.calls['write_batch']) == 1
+        output = filtered_output(capsys)
+        assert len(output) == 1
+        assert json.loads(output[0])['test'] == 'state-1'
+
+
+    target_tools.stream_to_target(test_stream(), target, config=config)
+
+    # The final state message should have been outputted after the last dog records were loaded despite not reaching one full flushable batch
+    output = filtered_output(capsys)
+    assert len(output) == 1
+    assert json.loads(output[0])['test'] == 'state-2'
 
 
 def test_state__doesnt_emit_when_it_isnt_different_than_the_previous_emission(capsys):

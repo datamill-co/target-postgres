@@ -147,7 +147,6 @@ def _line_handler(state_tracker, target, invalid_records_detect, invalid_records
                               .format(line_data['stream']))
 
         stream_buffer = state_tracker.streams[line_data['stream']]
-        target.write_batch(stream_buffer)
         state_tracker.flush_stream(line_data['stream'])
         target.activate_version(stream_buffer, line_data['version'])
     elif line_data['type'] == 'STATE':
