@@ -371,11 +371,12 @@ def test_simplify__anyOf__datetimes_dont_merge_with_strings():
                     {"type": ["string", "null"]}]}) \
         == {
                 "anyOf": [
-                    {"type": ["string", "null"]},
                     {
                         "type": ["string", 'null'],
                         "format": "date-time"
-                    }]}
+                    },
+                    {"type": ["string", "null"]}]}
+
 
 def test_simplify__anyOf__single_nullable_makes_all_nullable():
     assert \
@@ -391,15 +392,14 @@ def test_simplify__anyOf__single_nullable_makes_all_nullable():
             ]}
         ) \
         == {'anyOf': [
-                {'type': ['boolean', 'null']},
-                {'type': ['integer', 'null']},
-                {'type': ['number', 'null']},
-                {'type': ['string', 'null']},
                 {
                     'type': ['string', 'null'],
                     'format': 'date-time'
-                }
-            ]}
+                },
+                {'type': ['boolean', 'null']},
+                {'type': ['integer', 'null']},
+                {'type': ['number', 'null']},
+                {'type': ['string', 'null']}]}
 
 
 def test_simplify__anyOf__objects__no_overlapping_keys():
@@ -424,6 +424,7 @@ def test_simplify__anyOf__objects__no_overlapping_keys():
                 'c': {'type': ['string']}
             }
         }
+
 
 def test_simplify__anyOf__objects__overlapping_keys():
     assert \
@@ -492,20 +493,20 @@ def test_simplify__complex():
             'properties': {
                 'every_type': {'anyOf': [
                     {
+                        'type': ['string', 'null'],
+                        'format': 'date-time'},
+                    {
                         'type': ['array', 'null'],
                         'items': {'type': ['integer']}},
-                    {'type': ['boolean', 'null']},
-                    {'type': ['integer', 'null']},
-                    {'type': ['number', 'null']},
                     {
                         'type': ['object', 'null'],
                         'properties': {
                             'i': {'type': ['integer']},
                             'n': {'type': ['number']},
                             'b': {'type': ['boolean']}}},
-                    {
-                        'type': ['string', 'null'],
-                        'format': 'date-time'}]}}}
+                    {'type': ['boolean', 'null']},
+                    {'type': ['integer', 'null']},
+                    {'type': ['number', 'null']}]}}}
 
     assert \
         json_schema.simplify({

@@ -229,19 +229,7 @@ class Cachable(dict):
 
     def _comparator(self):
         if not self._c:
-            item_c = tuple()
-            if is_iterable(self):
-                item_c = self['items']._comparator()
-
-            props_c = tuple()
-            if is_object(self):
-                props_c = tuple(sorted(self.get('properties', {}).items()))
-
-            self._c = (
-                tuple(sorted(get_type(self))),
-                self.get('format', ''),
-                item_c,
-                props_c)
+            self._c = json.dumps(self, sort_keys=True)
 
         return self._c
 
