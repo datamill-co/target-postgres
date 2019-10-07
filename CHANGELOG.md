@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.1
+
+- **FEATURES:**
+  - [Performance improvement for upserting data ](https://github.com/datamill-co/target-postgres/pull/152)
+    - For large or even reasonably sized tables, trying to upsert the data was prohibitively slow
+    - To mitigate this, we now add indexes to allow
+    - This change can be opted out of via the `add_upsert_indexes` config option
+    - **NOTE**: This only effects intallations post `0.2.1`, and will not upgrade/migrate existing installations
+  - Support for latest PostgreSQL 12.0
+    - PostgreSQL recently released 12.0, and we now have testing around it and can confirm that `target-postgres`
+      _should_ function correctly for it!
+- **BUG FIX:** `STATE` messages being sent at the wrong time
+  - [FIX LINK](https://github.com/datamill-co/target-postgres/pull/149)
+  - `STATE` messages were being output incorrectly for feeds which had many streams outputting at varying rates
+
 ## 0.2.0
 
 - **NOTE:** The `minor` version bump is not expected to have much effect on folks. This was done to signal the
