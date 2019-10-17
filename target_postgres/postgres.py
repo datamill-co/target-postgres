@@ -768,11 +768,11 @@ class PostgresTarget(SQLInterface):
             return []
 
     def is_table_empty(self, cur, table_name):
-        cur.execute(sql.SQL('SELECT COUNT(1) FROM {}.{};').format(
+        cur.execute(sql.SQL('SELECT EXISTS (SELECT * FROM {}.{});').format(
             sql.Identifier(self.postgres_schema),
             sql.Identifier(table_name)))
 
-        return cur.fetchall()[0][0] == 0
+        return not cur.fetchall()[0][0]
 
     def get_table_schema(self, cur, name):
         return self.__get_table_schema(cur, name)
