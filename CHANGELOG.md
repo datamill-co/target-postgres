@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.2
+
+- **FEATURES:**
+  - [Performance improvement for upserting data](https://github.com/datamill-co/target-postgres/pull/161)
+    - Saw long running queries for some `SELECT COUNT(1)...` queries
+      - Resulting in full table scans
+    - These queries are _only_ being used for `is_table_empty`, therefore we can use a more efficient
+      `SELECT EXISTS(...)` query which only needs a single row to be fetched
+
 ## 0.2.1
 
 - **FEATURES:**
