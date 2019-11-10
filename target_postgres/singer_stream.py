@@ -232,6 +232,10 @@ class BufferedSingerStream():
         return records
 
     def flush_buffer(self):
+        LOGGER.debug('Stream `{}` flushing buffer...'.format(
+            self.stream
+        ))
+
         self.__buffer = []
         self.__size = 0
         self.__count = 0
