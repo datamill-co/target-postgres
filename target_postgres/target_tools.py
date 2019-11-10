@@ -66,7 +66,8 @@ def stream_to_target(stream, target, config={}):
 
         line_count = 0
         for line in stream:
-            _line_handler(state_tracker,
+            _line_handler(line_stats,
+                          state_tracker,
                           target,
                           invalid_records_detect,
                           invalid_records_threshold,
