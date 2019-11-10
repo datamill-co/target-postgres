@@ -10,7 +10,7 @@ from target_postgres import json_schema
 from target_postgres.exceptions import SingerStreamError
 from target_postgres.pysize import get_size
 
-LOGGER = singer.get_LOGGER()
+LOGGER = singer.get_logger()
 
 
 SINGER_RECEIVED_AT = '_sdc_received_at'
