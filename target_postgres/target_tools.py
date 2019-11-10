@@ -150,11 +150,9 @@ def _line_handler(line_stats, state_tracker, target, invalid_records_detect, inv
                                                    schema,
                                                    key_properties,
                                                    invalid_records_detect=invalid_records_detect,
-                                                   invalid_records_threshold=invalid_records_threshold)
-            if max_batch_rows:
-                buffered_stream.max_rows = max_batch_rows
-            if max_batch_size:
-                buffered_stream.max_buffer_size = max_batch_size
+                                                   invalid_records_threshold=invalid_records_threshold,
+                                                   max_rows=max_batch_rows,
+                                                   max_buffer_size=max_batch_size)
 
             state_tracker.register_stream(stream, buffered_stream)
         else:

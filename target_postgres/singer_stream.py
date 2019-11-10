@@ -22,6 +22,9 @@ SINGER_SOURCE_PK_PREFIX = '_sdc_source_key_'
 SINGER_LEVEL = '_sdc_level_{}_id'
 SINGER_VALUE = '_sdc_value'
 
+DEFAULT__MAX_ROWS = 200000
+DEFAULT__MAX_BUFFER_SIZE = 104857600 # 100MB
+
 
 class BufferedSingerStream():
     def __init__(self,
@@ -31,13 +34,16 @@ class BufferedSingerStream():
                  *args,
                  invalid_records_detect=None,
                  invalid_records_threshold=None,
-                 max_rows=200000,
-                 max_buffer_size=104857600,  # 100MB
+                 max_rows=DEFAULT__MAX_ROWS,
+                 max_buffer_size=DEFAULT__MAX_BUFFER_SIZE,
                  **kwargs):
         """
         :param invalid_records_detect: Defaults to True when value is None
         :param invalid_records_threshold: Defaults to 0 when value is None
+        :param max_rows: Defaults to 200000 when value is Falsey
+        :param max_buffer_size: Defaults to 100MB when value if Falsey
         """
+
         self.schema = None
         self.key_properties = None
         self.validator = None
@@ -45,8 +51,8 @@ class BufferedSingerStream():
 
         self.stream = stream
         self.invalid_records = []
-        self.max_rows = max_rows
-        self.max_buffer_size = max_buffer_size
+        self.max_rows = max_rows or DEFAULT__MAX_ROWS
+        self.max_buffer_size = max_buffer_size or DEFAULT__MAX_BUFFER_SIZE
 
         self.invalid_records_detect = invalid_records_detect
         self.invalid_records_threshold = invalid_records_threshold
