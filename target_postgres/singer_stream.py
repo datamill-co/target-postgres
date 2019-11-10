@@ -143,7 +143,13 @@ class BufferedSingerStream():
         if version is None or (self.__lifetime_max_version is not None and self.__lifetime_max_version >= version):
             return None
 
-        ## TODO: log warning about earlier records detected
+        if self.__count:
+            LOGGER.debug('WARNING: Stream `{}` dropping {} records due to version being updated from: `{}` to: `{}`'.format(
+                self.stream,
+                self.__count,
+                self.__lifetime_max_version,
+                version
+            ))
 
         self.flush_buffer()
         self.__lifetime_max_version = version
@@ -169,6 +175,11 @@ class BufferedSingerStream():
         self.__update_version(record_message.get('version'))
 
         if self.__lifetime_max_version != record_message.get('version'):
+            LOGGER.debug('WARNING: Stream `{}` dropping record due to version mismatch. Expected: `{}`, Got: `{}`'.format(
+                self.stream,
+                self.__lifetime_max_version,
+                record_message.get('version')
+            ))
             return None
 
         try:
