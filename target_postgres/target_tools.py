@@ -101,7 +101,7 @@ def _records_distribution(count, stats):
     return { (k, '{:.2%} ({})'.format(
         v / count,
         v
-    )) for k, v in stats }
+    )) for k, v in stats.items() }
 
 
 def _report_invalid_records(streams):
