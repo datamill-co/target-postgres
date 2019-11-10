@@ -42,6 +42,8 @@ def stream_to_target(stream, target, config={}):
     state_tracker = StreamTracker(target, state_support)
     _run_sql_hook('before_run_sql', config, target)
 
+    line_stats = {} # dict of <line_type: count>
+
     try:
         if not config.get('disable_collection', False):
             _async_send_usage_stats()
@@ -51,6 +53,16 @@ def stream_to_target(stream, target, config={}):
         max_batch_rows = config.get('max_batch_rows', 200000)
         max_batch_size = config.get('max_batch_size', 104857600)  # 100MB
         batch_detection_threshold = config.get('batch_detection_threshold', max(max_batch_rows / 40, 50))
+
+        LOGGER.info('Streaming to target with the following configuration: {}'.format(
+            {
+                'state_support': state_support,
+                'invalid_records_detect': invalid_records_detect,
+                'invalid_records_threshold': invalid_records_threshold,
+                'max_batch_rows': max_batch_rows,
+                'max_batch_size': max_batch_size,
+                'batch_detection_threshold': batch_detection_threshold
+            }))
 
         line_count = 0
         for line in stream:
@@ -62,9 +74,15 @@ def stream_to_target(stream, target, config={}):
                           max_batch_size,
                           line
                           )
-            if line_count > 0 and line_count % batch_detection_threshold == 0:
-                state_tracker.flush_streams()
+
             line_count += 1
+
+            if line_count % batch_detection_threshold == 0:
+                LOGGER.debug('Attempting to flush streams at `line_count` {}, with records distribution of: {}'.format(
+                    line_count,
+                    _records_distribution(line_count, line_stats)
+                ))
+                state_tracker.flush_streams()
 
         state_tracker.flush_streams(force=True)
         _run_sql_hook('after_run_sql', config, target)
@@ -78,6 +96,13 @@ def stream_to_target(stream, target, config={}):
         _report_invalid_records(state_tracker.streams)
 
 
+def _records_distribution(count, stats):
+    return { (k, '{:.2%} ({})'.format(
+        v / count,
+        v
+    )) for k, v in stats }
+
+
 def _report_invalid_records(streams):
     for stream_buffer in streams.values():
         if stream_buffer.peek_invalid_records():
@@ -87,7 +112,7 @@ def _report_invalid_records(streams):
             ))
 
 
-def _line_handler(state_tracker, target, invalid_records_detect, invalid_records_threshold, max_batch_rows,
+def _line_handler(line_stats, state_tracker, target, invalid_records_detect, invalid_records_threshold, max_batch_rows,
                   max_batch_size, line):
     try:
         line_data = json.loads(line)
@@ -98,7 +123,9 @@ def _line_handler(state_tracker, target, invalid_records_detect, invalid_records
     if 'type' not in line_data:
         raise TargetError('`type` is a required key: {}'.format(line))
 
-    if line_data['type'] == 'SCHEMA':
+    line_type = line_data['type']
+
+    if line_type == 'SCHEMA':
         if 'stream' not in line_data:
             raise TargetError('`stream` is a required key: {}'.format(line))
 
@@ -132,12 +159,12 @@ def _line_handler(state_tracker, target, invalid_records_detect, invalid_records
             state_tracker.register_stream(stream, buffered_stream)
         else:
             state_tracker.streams[stream].update_schema(schema, key_properties)
-    elif line_data['type'] == 'RECORD':
+    elif line_type == 'RECORD':
         if 'stream' not in line_data:
             raise TargetError('`stream` is a required key: {}'.format(line))
 
         state_tracker.handle_record_message(line_data['stream'], line_data)
-    elif line_data['type'] == 'ACTIVATE_VERSION':
+    elif line_type == 'ACTIVATE_VERSION':
         if 'stream' not in line_data:
             raise TargetError('`stream` is a required key: {}'.format(line))
         if 'version' not in line_data:
@@ -149,12 +176,14 @@ def _line_handler(state_tracker, target, invalid_records_detect, invalid_records
         stream_buffer = state_tracker.streams[line_data['stream']]
         state_tracker.flush_stream(line_data['stream'])
         target.activate_version(stream_buffer, line_data['version'])
-    elif line_data['type'] == 'STATE':
+    elif line_type == 'STATE':
         state_tracker.handle_state_message(line_data)
     else:
         raise TargetError('Unknown message type {} in message {}'.format(
-            line_data['type'],
+            line_type,
             line))
+
+    line_stats[line_type] = line_stats.get(line_type, 0) + 1
 
 
 def _send_usage_stats():

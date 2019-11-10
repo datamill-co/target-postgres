@@ -4,10 +4,13 @@ import uuid
 import arrow
 from jsonschema import Draft4Validator, FormatChecker
 from jsonschema.exceptions import ValidationError
+import singer
 
 from target_postgres import json_schema
 from target_postgres.exceptions import SingerStreamError
 from target_postgres.pysize import get_size
+
+LOGGER = singer.get_LOGGER()
 
 
 SINGER_RECEIVED_AT = '_sdc_received_at'
@@ -58,6 +61,14 @@ class BufferedSingerStream():
         self.__size = 0
         self.__lifetime_max_version = None
 
+        self.__debug_reporting_interval = int(self.max_rows / 10)
+
+        LOGGER.debug('Stream `{}` created. `max_rows`: {} `max_buffer_size`: {}'.format(
+            self.stream,
+            self.max_rows,
+            self.max_buffer_size
+        ))
+
     def update_schema(self, schema, key_properties):
         # In order to determine whether a value _is in_ properties _or not_ we need to flatten `$ref`s etc.
         self.schema = json_schema.simplify(schema)
@@ -104,10 +115,22 @@ class BufferedSingerStream():
     @property
     def buffer_full(self):
         if self.__count >= self.max_rows:
+            LOGGER.debug('Stream `{}` cutting batch due to row count being {:.2%} {}/{}'.format(
+                self.stream,
+                self.__count / self.max_rows,
+                self.__count,
+                self.max_rows
+            ))
             return True
 
         if self.__count > 0:
             if self.__size >= self.max_buffer_size:
+                LOGGER.debug('Stream `{}` cutting batch due to bytes being {:.2%} {}/{}'.format(
+                    self.stream,
+                    self.__size / self.max_buffer_size,
+                    self.__size,
+                    self.max_buffer_size
+                ))
                 return True
 
         return False
@@ -124,6 +147,21 @@ class BufferedSingerStream():
 
         self.flush_buffer()
         self.__lifetime_max_version = version
+
+    def _debug_report_on_buffer_sizes(self):
+        if self.__count % self.__debug_reporting_interval == 0:
+            LOGGER.debug('Stream `{}` has {:.2%} {}/{} rows filled'.format(
+                self.stream,
+                self.__count / self.max_rows,
+                self.__count,
+                self.max_rows
+            ))
+            LOGGER.debug('Stream `{}` has {:.2%} {}/{} bytes filled'.format(
+                self.stream,
+                self.__size / self.max_buffer_size,
+                self.__size,
+                self.max_buffer_size
+            ))
 
     def add_record_message(self, record_message):
         add_record = True
@@ -149,6 +187,8 @@ class BufferedSingerStream():
                 'Invalid records detected above threshold: {}. See `.args` for details.'.format(
                     self.invalid_records_threshold),
                 self.invalid_records)
+
+        self._debug_report_on_buffer_sizes()
 
     def peek_buffer(self):
         return self.__buffer
