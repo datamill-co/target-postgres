@@ -232,11 +232,9 @@ class BufferedSingerStream():
         return records
 
     def flush_buffer(self):
-        _buffer = self.__buffer
         self.__buffer = []
         self.__size = 0
         self.__count = 0
-        return _buffer
 
     def peek_invalid_records(self):
         return self.invalid_records
