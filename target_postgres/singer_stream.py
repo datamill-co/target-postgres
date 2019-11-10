@@ -1,4 +1,5 @@
 from copy import deepcopy
+import math
 import uuid
 
 import arrow
@@ -67,7 +68,7 @@ class BufferedSingerStream():
         self.__size = 0
         self.__lifetime_max_version = None
 
-        self.__debug_reporting_interval = int(self.max_rows / 10)
+        self.__debug_reporting_interval = math.ceil(self.max_rows / 10.0)
 
         LOGGER.debug('Stream `{}` created. `max_rows`: {} `max_buffer_size`: {}'.format(
             self.stream,
