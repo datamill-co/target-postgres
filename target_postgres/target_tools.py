@@ -85,6 +85,8 @@ def stream_to_target(stream, target, config={}):
                 ))
                 state_tracker.flush_streams()
 
+        LOGGER.debug('Forcing flush of streams. Input depleted.')
+
         state_tracker.flush_streams(force=True)
         _run_sql_hook('after_run_sql', config, target)
 
