@@ -10,7 +10,7 @@ from singer import utils, metadata, metrics
 
 from target_postgres import json_schema
 from target_postgres.exceptions import TargetError
-from target_postgres.singer_stream import BufferedSingerStream
+from target_postgres.singer_stream import BufferedSingerStream, DATAMILL_RAW_LINE_SIZE
 from target_postgres.stream_tracker import StreamTracker
 
 LOGGER = singer.get_logger()
@@ -91,6 +91,7 @@ def _line_handler(state_tracker, target, invalid_records_detect, invalid_records
                   max_batch_size, line):
     try:
         line_data = json.loads(line)
+        line_data[DATAMILL_RAW_LINE_SIZE] = len(line)
     except json.decoder.JSONDecodeError:
         LOGGER.error("Unable to parse JSON: {}".format(line))
         raise

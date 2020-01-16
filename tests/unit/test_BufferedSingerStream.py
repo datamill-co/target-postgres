@@ -236,7 +236,7 @@ def test_multiple_batches__by_memory():
     singer_stream = BufferedSingerStream(CATS_SCHEMA['stream'],
                                          CATS_SCHEMA['schema'],
                                          CATS_SCHEMA['key_properties'],
-                                         max_buffer_size=1024)
+                                         max_buffer_size=10)
 
     assert len(singer_stream.peek_buffer()) == 0
 

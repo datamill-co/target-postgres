@@ -1,4 +1,5 @@
 from copy import deepcopy
+import json
 import uuid
 
 import arrow
@@ -7,7 +8,22 @@ from jsonschema.exceptions import ValidationError
 
 from target_postgres import json_schema, singer
 from target_postgres.exceptions import SingerStreamError
-from target_postgres.pysize import get_size
+
+
+SINGER_RECEIVED_AT = '_sdc_received_at'
+SINGER_BATCHED_AT = '_sdc_batched_at'
+SINGER_SEQUENCE = '_sdc_sequence'
+SINGER_TABLE_VERSION = '_sdc_table_version'
+SINGER_PK = '_sdc_primary_key'
+SINGER_SOURCE_PK_PREFIX = '_sdc_source_key_'
+SINGER_LEVEL = '_sdc_level_{}_id'
+SINGER_VALUE = '_sdc_value'
+
+DATAMILL_RAW_LINE_SIZE = '_dm_raw_line_size'
+
+
+def get_line_size(line_data):
+    return line_data.get(DATAMILL_RAW_LINE_SIZE) or len(json.dumps(line_data))
 
 
 class BufferedSingerStream():
@@ -133,7 +149,7 @@ class BufferedSingerStream():
 
         if add_record:
             self.__buffer.append(record_message)
-            self.__size += get_size(record_message)
+            self.__size += get_line_size(record_message)
             self.__count += 1
         elif self.invalid_records_detect \
                 and len(self.invalid_records) >= self.invalid_records_threshold:
