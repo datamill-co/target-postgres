@@ -221,6 +221,9 @@ def test_simplify__complex():
                 'name': {
                     'type': ['string']
                 },
+                'bio': {
+                    'type': ['string']
+                },
                 'paw_size': {
                     'type': ['integer'],
                     'default': 314159
