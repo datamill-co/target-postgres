@@ -36,6 +36,9 @@ CATS_SCHEMA = {
             'name': {
                 'type': ['string']
             },
+            'bio': {
+                'type': ['string']
+            },
             'paw_size': {
                 'type': ['integer'],
                 'default': 314159
@@ -178,6 +181,16 @@ class FakeStream(object):
         raise StopIteration
 
 
+def fake_conjunctive_text(n):
+    t = fake.text()
+    for i in range(0, n):
+        t = '{}, {} {}'.format(
+            t[:-1],
+            chance.pickone(['and', 'or', 'for', 'nor', 'but', 'yet', 'so']),
+            fake.text())
+    return t
+
+
 class CatStream(FakeStream):
     stream = 'cats'
     schema = CATS_SCHEMA
@@ -200,6 +213,7 @@ class CatStream(FakeStream):
         return {
             'id': self.id,
             'name': fake.first_name(),
+            'bio': fake_conjunctive_text(random.randint(0, 10)),
             'pattern': chance.pickone(['Tabby', 'Tuxedo', 'Calico', 'Tortoiseshell']),
             'age': random.randint(1, 15),
             'adoption': adoption
