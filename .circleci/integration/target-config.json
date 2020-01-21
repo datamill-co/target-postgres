@@ -1,4 +1,5 @@
 {
   "postgres_database": "target_postgres_test",
-  "postgres_username": "postgres"
+  "postgres_username": "postgres",
+  "logging_level": "DEBUG"
 }
