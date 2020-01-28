@@ -1,4 +1,5 @@
 from copy import deepcopy
+import json
 import re
 
 from jsonschema import Draft4Validator
@@ -42,14 +43,14 @@ def get_type(schema):
     :param schema: dict, JSON Schema
     :return: [string ...]
     """
-    _type = schema.get('type', None)
-    if not _type:
+    t = schema.get('type', None)
+    if not t:
         return [OBJECT]
 
-    if isinstance(_type, str):
-        return [_type]
+    if isinstance(t, str):
+        return [t]
 
-    return _type
+    return deepcopy(t)
 
 
 def simple_type(schema):
@@ -67,13 +68,13 @@ def simple_type(schema):
     :param schema: dict, JSON Schema
     :return: dict, JSON Schema
     """
-    _type = get_type(schema)
+    t = get_type(schema)
 
     if is_datetime(schema):
-        return {'type': _type,
+        return {'type': t,
                 'format': DATE_TIME_FORMAT}
 
-    return {'type': _type}
+    return {'type': t}
 
 
 def _get_ref(schema, paths):
@@ -117,14 +118,24 @@ def _is_ref(schema):
 
 def _is_allof(schema):
     """
-    Given a JSON Schema compatible dict, returns True when the schema implements `$allOf`,
-    AND has allOf elements.
+    Given a JSON Schema compatible dict, returns True when the schema implements `allOf`.
 
     :param schema:
     :return: Boolean
     """
 
-    return not _is_ref(schema) and 'allOf' in schema and schema['allOf']
+    return not _is_ref(schema) and 'allOf' in schema
+
+
+def is_anyof(schema):
+    """
+    Given a JSON Schema compatible dict, returns True when the schema implements `anyOf`.
+
+    :param schema:
+    :return: Boolean
+    """
+
+    return not _is_ref(schema) and not _is_allof(schema) and 'anyOf' in schema
 
 
 def is_object(schema):
@@ -134,7 +145,7 @@ def is_object(schema):
     :return: Boolean
     """
 
-    return not _is_ref(schema) \
+    return not _is_ref(schema) and not is_anyof(schema) and not _is_allof(schema) \
            and (OBJECT in get_type(schema)
                 or 'properties' in schema
                 or not schema)
@@ -189,13 +200,41 @@ def make_nullable(schema):
     `is_nullable` will return true on the output.
     :return: dict, JSON Schema
     """
-    type = get_type(schema)
-    if NULL in type:
+    t = get_type(schema)
+    if NULL in t:
         return schema
 
     ret_schema = deepcopy(schema)
-    ret_schema['type'] = type + [NULL]
+    ret_schema['type'] = t + [NULL]
     return ret_schema
+
+
+class Cachable(dict):
+    '''
+    The simplified json_schemas we produce are idempotent. ie, if you simplify a simplified
+    json_schema, it will return the same thing. We wrap the `dict` object with a few
+    helpers which extend it so that we avoid recursion in some instances.
+    '''
+    def __init__(self, raw_dict, simplified=True):
+        self._c = None
+        super(Cachable, self).__init__(self, **raw_dict)
+
+    def __hash__(self):
+        return self._comparator().__hash__()
+
+    def deepcopy(self):
+        s = deepcopy(self)
+        s._c = self._c
+        return s
+
+    def _comparator(self):
+        if not self._c:
+            self._c = json.dumps(self, sort_keys=True)
+
+        return self._c
+
+    def __lt__(self, other):
+        return self._comparator() < other._comparator()
 
 
 def _allof_sort_key(schema):
@@ -225,56 +264,218 @@ def _allof_sort_key(schema):
     return sort_value
 
 
+def _simplify__allof__merge__objects(schemas):
+    ret_schema = schemas[0]
+    # Merge objects together preferring later allOfs over earlier
+    next_schemas = schemas[1:]
+    while next_schemas and is_object(next_schemas[0]):
+        ret_schema['properties'] = {
+            **ret_schema.get('properties', {}),
+            **next_schemas[0].get('properties', {})}
+
+        next_schemas = next_schemas[1:]
+
+    return ret_schema
+
+
+def _simplify__allof__merge__iterables(root_schema, schemas):
+    ret_schema = schemas[0]
+    # Recurse on all of the item schemas to create a single item schema
+    item_schemas = []
+
+    next_schemas = schemas
+    while next_schemas and is_iterable(next_schemas[0]):
+        item_schemas.append(next_schemas[0]['items'])
+
+        next_schemas = next_schemas[1:]
+
+    ret_schema['items'] = _helper_simplify(root_schema, {'allOf': item_schemas})
+    return ret_schema
+
+
+def _simplify__allof(root_schema, child_schema):
+    simplified_schemas = [
+        _helper_simplify(root_schema, schema)
+        for schema in child_schema['allOf']]
+    schemas = sorted(simplified_schemas, key=_allof_sort_key)
+
+    ret_schema = schemas[0]
+
+    if is_object(ret_schema):
+        return _simplify__allof__merge__objects(schemas)
+
+    if is_iterable(ret_schema):
+        return _simplify__allof__merge__iterables(root_schema, schemas)
+
+    return ret_schema
+
+
+def _simplify__implicit_anyof(root_schema, schema):
+    '''
+    Typically literals are simple and have at most two types, one of which being NULL.
+    However, they _can_ have many types wrapped up inside them as an implicit `anyOf`.
+
+    Since we support `anyOf`, it is simpler to unwrap and "flatten" this implicit
+    combination type.
+    '''
+    schemas = []
+    types = set(get_type(schema))
+
+    if types == {NULL}:
+        return Cachable({'type': [NULL]})
+
+    types.discard(NULL)
+
+    if is_datetime(schema):
+        schemas.append(Cachable({
+            'type': [STRING],
+            'format': DATE_TIME_FORMAT
+        }))
+
+        types.remove(STRING)
+
+    if is_object(schema):
+        properties = {}
+        for field, field_json_schema in schema.get('properties', {}).items():
+            properties[field] = _helper_simplify(root_schema, field_json_schema)
+
+        schemas.append({
+            'type': [OBJECT],
+            'properties': properties
+        })
+
+        types.discard(OBJECT)
+
+    if is_iterable(schema):
+        schemas.append({
+            'type': [ARRAY],
+            'items': _helper_simplify(root_schema, schema.get('items', {}))
+        })
+
+        types.remove(ARRAY)
+
+    schemas += [{'type': [t]} for t in types]
+
+    if is_nullable(schema):
+        schemas = [make_nullable(s) for s in schemas]
+
+
+    return _helper_simplify(root_schema, {'anyOf': [Cachable(s) for s in schemas]})
+
+
+def _simplify__anyof(root_schema, schema):
+    '''
+    `anyOf` clauses are merged/simplified according to the following rules (these _are_ recursive):
+
+    - all literals are dedupped
+    - all objects are merged into the same object schema, with sub-schemas being grouped as simplified `anyOf` schemas
+    - all iterables' `items` schemas are merged as simplified `anyOf` schemas
+    - all `anyOf`s are flattened to the topmost
+    - if there is only a single element in an `anyOf`, that is denested
+    - if any `anyOf`s are nullable, all are nullable
+    '''
+
+    schemas = [
+            _helper_simplify(root_schema, schema)
+            for schema in schema['anyOf']]
+
+    literals = set()
+    any_nullable = False
+    any_merged_objects = False
+    merged_object_properties = {}
+    any_merged_iters = False
+    merged_item_schemas = []
+
+    while schemas:
+        sub_schema = schemas.pop()
+        any_nullable = any_nullable or is_nullable(sub_schema)
+
+        if is_literal(sub_schema):
+            literals.add(sub_schema)
+
+        elif is_anyof(sub_schema):
+            # Flatten potentially deeply nested `anyOf`s
+            schemas += sub_schema['anyOf']
+
+        elif is_object(sub_schema):
+            any_merged_objects = True
+            for k, s in sub_schema.get('properties', {}).items():
+                if k in merged_object_properties:
+                    merged_object_properties[k].append(s)
+                else:
+                    merged_object_properties[k] = [s]
+
+        elif is_iterable(sub_schema):
+            any_merged_iters = True
+            merged_item_schemas.append(sub_schema['items'])
+
+    merged_schemas = set()
+    for l in literals:
+        s = l
+        if any_nullable:
+            s = make_nullable(l)
+
+        merged_schemas.add(Cachable(s))
+
+    if any_merged_objects:
+        for k, v in merged_object_properties.items():
+            merged_object_properties[k] = _helper_simplify(root_schema, {'anyOf': v})
+
+        s = {
+            'type': [OBJECT],
+            'properties': merged_object_properties
+        }
+
+        if any_nullable:
+            s = make_nullable(s)
+
+        merged_schemas.add(Cachable(s))
+
+    if any_merged_iters:
+        merged_item_schemas = _helper_simplify(root_schema, {'anyOf': merged_item_schemas})
+
+        s = {
+            'type': [ARRAY],
+            'items': merged_item_schemas
+        }
+
+        if any_nullable:
+            s = make_nullable(s)
+
+        merged_schemas.add(Cachable(s))
+
+    if len(merged_schemas) == 1:
+        return merged_schemas.pop()
+
+    return Cachable({'anyOf': sorted(merged_schemas)})
+
+
 def _helper_simplify(root_schema, child_schema):
-    ret_schema = {}
+    # We check this value to make simplify a noop for schemas which have _already_ been simplified
+    if isinstance(child_schema, Cachable):
+        return child_schema
 
     ## Refs override all other type definitions
     if _is_ref(child_schema):
         try:
             ret_schema = _helper_simplify(root_schema, get_ref(root_schema, child_schema['$ref']))
+
         except RecursionError:
             raise JSONSchemaError('`$ref` path "{}" is recursive'.format(get_ref(root_schema, child_schema['$ref'])))
 
     elif _is_allof(child_schema):
-        simplified_schemas = []
-        for schema in child_schema['allOf']:
-            simplified_schemas.append(_helper_simplify(root_schema, schema))
+        ret_schema = _simplify__allof(root_schema, child_schema)
 
-        schemas = sorted(simplified_schemas, key=_allof_sort_key)
-
-        ret_schema = schemas[0]
-
-        if is_object(ret_schema):
-            # Merge objects together preferring later allOfs over earlier
-            next_schemas = schemas[1:]
-            while next_schemas and is_object(next_schemas[0]):
-                ret_schema['properties'] = {
-                    **ret_schema['properties'],
-                    **next_schemas[0]['properties']}
-
-                next_schemas = next_schemas[1:]
+    elif is_anyof(child_schema):
+        ret_schema = _simplify__anyof(root_schema, child_schema)
 
     else:
-
-        ret_schema = {'type': get_type(child_schema)}
-
-        if is_object(child_schema):
-            properties = {}
-            for field, field_json_schema in child_schema.get('properties', {}).items():
-                properties[field] = _helper_simplify(root_schema, field_json_schema)
-
-            ret_schema['properties'] = properties
-
-        if is_iterable(child_schema):
-            ret_schema['items'] = _helper_simplify(root_schema, child_schema.get('items', {}))
-
-        if 'format' in child_schema:
-            ret_schema['format'] = child_schema.get('format')
+        ret_schema = _simplify__implicit_anyof(root_schema, child_schema)
 
     if 'default' in child_schema:
         ret_schema['default'] = child_schema.get('default')
 
-    return ret_schema
+    return Cachable(ret_schema)
 
 
 def simplify(schema):
@@ -289,6 +490,8 @@ def simplify(schema):
     :return: dict, JSON Schema
     :raises: Exception
     """
+    if isinstance(schema, Cachable):
+        return schema.deepcopy()
 
     return _helper_simplify(schema, schema)
 
@@ -361,8 +564,8 @@ _shorthand_mapping = {
 def _type_shorthand(type_s):
     if isinstance(type_s, list):
         shorthand = ''
-        for type in sorted(type_s):
-            shorthand += _type_shorthand(type)
+        for t in sorted(type_s):
+            shorthand += _type_shorthand(t)
         return shorthand
 
     if not type_s in _shorthand_mapping:
@@ -375,10 +578,10 @@ def _type_shorthand(type_s):
 
 
 def shorthand(schema):
-    _type = deepcopy(get_type(schema))
+    t = deepcopy(get_type(schema))
 
-    if 'format' in schema and 'date-time' == schema['format'] and STRING in _type:
-        _type.remove(STRING)
-        _type.append('date-time')
+    if 'format' in schema and 'date-time' == schema['format'] and STRING in t:
+        t.remove(STRING)
+        t.append('date-time')
 
-    return _type_shorthand(_type)
+    return _type_shorthand(t)

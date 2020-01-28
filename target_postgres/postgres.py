@@ -12,13 +12,10 @@ import arrow
 from psycopg2 import sql
 from psycopg2.extras import LoggingConnection, LoggingCursor
 
-from target_postgres import json_schema
+from target_postgres import json_schema, singer
 from target_postgres.exceptions import PostgresError
 from target_postgres.sql_base import SEPARATOR, SQLInterface
-from target_postgres.singer_stream import (
-    SINGER_SEQUENCE,
-    SINGER_LEVEL
-)
+
 
 RESERVED_NULL_DEFAULT = 'NULL'
 
@@ -473,14 +470,14 @@ class PostgresTarget(SQLInterface):
         cxt_where = sql.SQL(' AND ').join(cxt_where_list)
 
         sequence_join = sql.SQL(' AND "dedupped".{} >= {}.{}').format(
-            sql.Identifier(SINGER_SEQUENCE),
+            sql.Identifier(singer.SEQUENCE),
             full_table_name,
-            sql.Identifier(SINGER_SEQUENCE))
+            sql.Identifier(singer.SEQUENCE))
 
         distinct_order_by = sql.SQL(' ORDER BY {}, {}.{} DESC').format(
             pk_temp_select,
             full_temp_table_name,
-            sql.Identifier(SINGER_SEQUENCE))
+            sql.Identifier(singer.SEQUENCE))
 
         if len(subkeys) > 0:
             pk_temp_subkey_select_list = []
@@ -492,7 +489,7 @@ class PostgresTarget(SQLInterface):
             insert_distinct_order_by = sql.SQL(' ORDER BY {}, {}.{} DESC').format(
                 insert_distinct_on,
                 full_temp_table_name,
-                sql.Identifier(SINGER_SEQUENCE))
+                sql.Identifier(singer.SEQUENCE))
         else:
             insert_distinct_on = pk_temp_select
             insert_distinct_order_by = distinct_order_by
@@ -565,7 +562,7 @@ class PostgresTarget(SQLInterface):
             sql.Literal(RESERVED_NULL_DEFAULT))
         cur.copy_expert(copy, csv_rows)
 
-        pattern = re.compile(SINGER_LEVEL.format('[0-9]+'))
+        pattern = re.compile(singer.LEVEL_FMT.format('[0-9]+'))
         subkeys = list(filter(lambda header: re.match(pattern, header) is not None, columns))
 
         canonicalized_key_properties = [self.fetch_column_from_path((key_property,), remote_schema)[0]

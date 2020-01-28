@@ -8,10 +8,7 @@ import psycopg2.extras
 import pytest
 
 from utils.fixtures import CatStream, CONFIG, db_cleanup, MultiTypeStream, NestedStream, TEST_DB, TypeChangeStream, DogStream
-from target_postgres import json_schema
-from target_postgres import postgres
-from target_postgres import singer_stream
-from target_postgres import main
+from target_postgres import json_schema, main, postgres, singer, singer_stream
 from target_postgres.target_tools import TargetError
 
 
@@ -67,8 +64,8 @@ def flatten_record(old_obj, subtables, subpks, new_obj=None, current_path=None, 
                 for key, value in subpks.items():
                     new_subobj[key] = value
                 new_subpks = subpks.copy()
-                new_subobj[singer_stream.SINGER_LEVEL.format(level)] = row_index
-                new_subpks[singer_stream.SINGER_LEVEL.format(level)] = row_index
+                new_subobj[singer_stream.singer.LEVEL_FMT.format(level)] = row_index
+                new_subpks[singer_stream.singer.LEVEL_FMT.format(level)] = row_index
                 subtables[next_path].append(flatten_record(item,
                                                            subtables,
                                                            new_subpks,
@@ -115,13 +112,13 @@ def assert_records(conn, records, table_name, pks, match_pks=False):
             persisted_record = persisted_records[pk]
             subpks = {}
             for pk in pks:
-                subpks[singer_stream.SINGER_SOURCE_PK_PREFIX + pk] = persisted_record[pk]
+                subpks[singer_stream.singer.SOURCE_PK_PREFIX + pk] = persisted_record[pk]
             assert_record(record, persisted_record, subtables, subpks)
 
         if match_pks:
             assert sorted(list(persisted_records.keys())) == sorted(records_pks)
 
-        sub_pks = list(map(lambda pk: singer_stream.SINGER_SOURCE_PK_PREFIX + pk, pks))
+        sub_pks = list(map(lambda pk: singer_stream.singer.SOURCE_PK_PREFIX + pk, pks))
         for subtable_name, items in subtables.items():
             cur.execute('SELECT * FROM {}'.format(
                 table_name + '__' + subtable_name))
@@ -336,6 +333,68 @@ def test_loading__simple__allOf(db_cleanup):
             record['flea_check_complete'] = False
 
         assert_records(conn, stream.records, 'cats', 'id')
+
+
+def test_loading__simple__anyOf(db_cleanup):
+    stream = CatStream(100)
+    stream.schema = deepcopy(stream.schema)
+
+    adoption_props = stream.schema['schema']['properties']['adoption']['properties']
+    adoption_props['adopted_on'] = {
+        "anyOf": [
+            {
+                "type": "string",
+                "format": "date-time"
+            },
+            {"type": ["string", "null"]}]}
+
+    main(CONFIG, input_stream=stream)
+
+    with psycopg2.connect(**TEST_DB) as conn:
+        with conn.cursor() as cur:
+            assert_columns_equal(cur,
+                                 'cats',
+                                 {
+                                     ('_sdc_batched_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_received_at', 'timestamp with time zone', 'YES'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_table_version', 'bigint', 'YES'),
+                                     ('adoption__adopted_on__t', 'timestamp with time zone', 'YES'),
+                                     ('adoption__adopted_on__s', 'text', 'YES'),
+                                     ('adoption__was_foster', 'boolean', 'YES'),
+                                     ('age', 'bigint', 'YES'),
+                                     ('id', 'bigint', 'NO'),
+                                     ('name', 'text', 'NO'),
+                                     ('paw_size', 'bigint', 'NO'),
+                                     ('paw_colour', 'text', 'NO'),
+                                     ('flea_check_complete', 'boolean', 'NO'),
+                                     ('pattern', 'text', 'YES')
+                                 })
+
+            assert_columns_equal(cur,
+                                 'cats__adoption__immunizations',
+                                 {
+                                     ('_sdc_level_0_id', 'bigint', 'NO'),
+                                     ('_sdc_sequence', 'bigint', 'YES'),
+                                     ('_sdc_source_key_id', 'bigint', 'NO'),
+                                     ('date_administered', 'timestamp with time zone', 'YES'),
+                                     ('type', 'text', 'YES')
+                                 })
+
+            cur.execute(sql.SQL('SELECT {}, {}, {} FROM {}').format(
+                sql.Identifier('adoption__adopted_on__t'),
+                sql.Identifier('adoption__adopted_on__s'),
+                sql.Identifier('adoption__was_foster'),
+                sql.Identifier('cats')
+            ))
+
+            persisted_records = cur.fetchall()
+
+            ## Assert that the split columns correctly persisted all datetime data
+            assert 100 == len(persisted_records)
+            assert 100 == len([x for x in persisted_records if x[1] is None])
+            assert len([x for x in persisted_records if x[2] is not None]) \
+                == len([x for x in persisted_records if x[0] is not None])
 
 
 def test_loading__empty(db_cleanup):
