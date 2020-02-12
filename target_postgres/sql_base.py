@@ -403,23 +403,30 @@ class SQLInterface:
 
             self.add_key_properties(connection, table_name, schema.get('key_properties', None))
 
-            ## Only process columns which have single, nullable, types
-            single_type_columns = []
-            for column_path, column_schema in schema['schema']['properties'].items():
-                for sub_schema in column_schema['anyOf']:
-                    single_type_columns.append((column_path, deepcopy(sub_schema)))
-
-            ## Process new columns against existing
-            raw_mappings = existing_schema.get('mappings', {})
-
+            ## Build up mappings to compare new columns against existing
             mappings = []
 
-            for to, m in raw_mappings.items():
+            for to, m in existing_schema.get('mappings', {}).items():
                 mapping = json_schema.simple_type(m)
                 mapping['from'] = tuple(m['from'])
                 mapping['to'] = to
                 mappings.append(mapping)
 
+            ## Only process columns which have single, nullable, types
+            column_paths_seen = set()
+            single_type_columns = []
+
+            for column_path, column_schema in schema['schema']['properties'].items():
+                column_paths_seen.add(column_path)
+                for sub_schema in column_schema['anyOf']:
+                    single_type_columns.append((column_path, deepcopy(sub_schema)))
+
+            ### Add any columns missing from new schema
+            for m in mappings:
+                if not m['from'] in column_paths_seen:
+                    single_type_columns.append((m['from'], json_schema.make_nullable(m)))
+
+            ## Process new columns against existing
             table_empty = self.is_table_empty(connection, table_name)
 
             for column_path, column_schema in single_type_columns:
