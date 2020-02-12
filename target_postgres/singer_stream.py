@@ -19,11 +19,11 @@ SINGER_SOURCE_PK_PREFIX = '_sdc_source_key_'
 SINGER_LEVEL = '_sdc_level_{}_id'
 SINGER_VALUE = '_sdc_value'
 
-DATAMILL_RAW_LINE_SIZE = '_dm_raw_line_size'
+RAW_LINE_SIZE = '__raw_line_size'
 
 
 def get_line_size(line_data):
-    return line_data.get(DATAMILL_RAW_LINE_SIZE) or len(json.dumps(line_data))
+    return line_data.get(RAW_LINE_SIZE) or len(json.dumps(line_data))
 
 
 class BufferedSingerStream():
