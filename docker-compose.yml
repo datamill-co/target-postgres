@@ -8,7 +8,7 @@ services:
       - "5432:5432"
 
   target-postgres:
-    image: python:3.8.1-buster
+    image: python:3.7.6-stretch
     working_dir: /code
     entrypoint: /code/docker-entrypoint.sh
     environment:

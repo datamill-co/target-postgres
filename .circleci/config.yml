@@ -112,7 +112,7 @@ jobs:
   cache:
     working_directory: /code/
     docker:
-      - image: python:3.8.1-buster
+      - image: python:3.7.6-stretch
     steps:
       - checkout
       - *restore__cache
@@ -160,7 +160,7 @@ jobs:
   test--12.1:
     <<: *test__base
     docker:
-      - image: python:3.8.1-buster
+      - image: python:3.7.6-stretch
       - image: postgres:12.1
         environment:
           POSTGRES_DB: target_postgres_test
@@ -168,7 +168,7 @@ jobs:
   test--11.6:
     <<: *test__base
     docker:
-      - image: python:3.8.1-buster
+      - image: python:3.7.6-stretch
       - image: postgres:11.6
         environment:
           POSTGRES_DB: target_postgres_test
@@ -176,7 +176,7 @@ jobs:
   test--10.11:
     <<: *test__base
     docker:
-      - image: python:3.8.1-buster
+      - image: python:3.7.6-stretch
       - image: postgres:10.11
         environment:
           POSTGRES_DB: target_postgres_test
@@ -184,7 +184,7 @@ jobs:
   test--9.6.16:
     <<: *test__base
     docker:
-      - image: python:3.8.1-buster
+      - image: python:3.7.6-stretch
       - image: postgres:9.6.16
         environment:
           POSTGRES_DB: target_postgres_test
@@ -192,7 +192,7 @@ jobs:
   test--9.5.20:
     <<: *test__base
     docker:
-      - image: python:3.8.1-buster
+      - image: python:3.7.6-stretch
       - image: postgres:9.5.20
         environment:
           POSTGRES_DB: target_postgres_test
@@ -200,7 +200,7 @@ jobs:
   test--9.4.25:
     <<: *test__base
     docker:
-      - image: python:3.8.1-buster
+      - image: python:3.7.6-stretch
       - image: postgres:9.4.25
         environment:
           POSTGRES_DB: target_postgres_test
@@ -208,7 +208,7 @@ jobs:
   test--8.4.22:
     <<: *test__base
     docker:
-      - image: python:3.8.1-buster
+      - image: python:3.7.6-stretch
       - image: postgres:8.4.22
         environment:
           POSTGRES_DB: target_postgres_test
@@ -216,7 +216,7 @@ jobs:
   test--tap-github:
     working_directory: /code/
     docker:
-      - image: python:3.8.1-buster
+      - image: python:3.7.6-stretch
       - image: postgres:9.4.24
         environment:
           POSTGRES_DB: target_postgres_test
@@ -307,7 +307,7 @@ jobs:
   test--migrations:
     working_directory: /code/
     docker:
-      - image: python:3.8.1-buster
+      - image: python:3.7.6-stretch
       - image: postgres:9.4.24
         environment:
           POSTGRES_DB: target_postgres_test
@@ -334,7 +334,7 @@ jobs:
   build:
     working_directory: /code/
     docker:
-      - image: python:3.8.1-buster
+      - image: python:3.7.6-stretch
     steps:
       - checkout
       - *restore__cache
@@ -359,7 +359,7 @@ jobs:
   test-release:
     working_directory: /code/
     docker:
-      - image: python:3.8.1-buster
+      - image: python:3.7.6-stretch
     steps:
       - checkout
       - *restore__cache
@@ -389,7 +389,7 @@ jobs:
   release:
     working_directory: /code/
     docker:
-      - image: python:3.8.1-buster
+      - image: python:3.7.6-stretch
     steps:
       - checkout
       - *restore__cache
