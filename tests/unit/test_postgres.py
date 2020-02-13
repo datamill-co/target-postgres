@@ -365,6 +365,7 @@ def test_loading__simple__anyOf(db_cleanup):
                                      ('age', 'bigint', 'YES'),
                                      ('id', 'bigint', 'NO'),
                                      ('name', 'text', 'NO'),
+                                     ('bio', 'text', 'NO'),
                                      ('paw_size', 'bigint', 'NO'),
                                      ('paw_colour', 'text', 'NO'),
                                      ('flea_check_complete', 'boolean', 'NO'),
