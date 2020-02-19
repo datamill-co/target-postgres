@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.3
+
+- **FEATURES:**
+  - [`JSONSchema: anyOf` Support](https://github.com/datamill-co/target-postgres/pull/155)
+    - Streamed `JSONSchema`s which include `anyOf` combinations should now be fully supported
+    - This allows for full support of Stitch/Singer's `DateTime` string fallbacks.
+  - [`JSONSchema`: allOf` Support](https://github.com/datamill-co/target-postgres/pull/154)
+    - Streamed `JSONSchema`s which include `allOf` combinations should now be fully supported
+    - Columns are persisted as normal.
+    - This is _perceived_ to be most useful for merging objects, and putting in place things like `maxLength` etc.
+- **BUG FIX:** Buffer Flushing at frequent intervals/with small batches
+  - [FIX LINK](https://github.com/datamill-co/target-postgres/pull/169)
+  - Buffer _size_ calculations relied upon some "sophisticated" logic for determining the "size" in
+    memory of a Python object
+  - The method used by Singer libraries is to simply use the size of the streamed `JSON` blob
+  - Performance Improvement seen due to batches now being far larger and interactions with the remote
+    being far fewer.
+- **BUG FIX:** `NULLABLE` not being _implied_ when field is missing from streamed `JSONSchema`
+  - [FIX LINK](https://github.com/datamill-co/target-postgres/pull/174)
+  - If a field was persisted in remote, but then left _out_ of a subsequent streamed `JSONSchema`, we would fail
+  - In this instance, the field is _implied_ to be `NULL`, but additionally, if values _are_ present for it
+    in the streamed data, we _should_ persist it.
+
 ## 0.2.2
 
 - **FEATURES:**
