@@ -1,6 +1,7 @@
 from copy import deepcopy
 import json
 import re
+import decimal
 
 from jsonschema import Draft4Validator
 from jsonschema.exceptions import SchemaError
@@ -20,7 +21,8 @@ _PYTHON_TYPE_TO_JSON_SCHEMA = {
     float: NUMBER,
     bool: BOOLEAN,
     str: STRING,
-    type(None): NULL
+    type(None): NULL,
+    decimal.Decimal: NUMBER
 }
 
 

@@ -1,4 +1,5 @@
 import re
+import decimal
 
 import pytest
 
@@ -31,6 +32,8 @@ def test_python_type():
            == json_schema.STRING
     assert json_schema.python_type('world') \
            == json_schema.STRING
+    assert json_schema.python_type(decimal.Decimal(1)) \
+           == json_schema.NUMBER
 
 
 def test_is_object():
