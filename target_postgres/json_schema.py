@@ -1,7 +1,7 @@
 from copy import deepcopy
+import decimal
 import json
 import re
-import decimal
 
 from jsonschema import Draft4Validator
 from jsonschema.exceptions import SchemaError

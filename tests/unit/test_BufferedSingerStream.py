@@ -140,7 +140,6 @@ def test_add_record_message__multipleOf_invalid_record():
 
     assert singer_stream.peek_invalid_records()
     assert singer_stream.count == 0
-    assert [] == missing_sdc_properties(singer_stream)
 
 
 SIMPLE_ALLOF_SCHEMA = {
