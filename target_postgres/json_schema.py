@@ -1,4 +1,5 @@
 from copy import deepcopy
+import decimal
 import json
 import re
 
@@ -20,7 +21,8 @@ _PYTHON_TYPE_TO_JSON_SCHEMA = {
     float: NUMBER,
     bool: BOOLEAN,
     str: STRING,
-    type(None): NULL
+    type(None): NULL,
+    decimal.Decimal: NUMBER
 }
 
 

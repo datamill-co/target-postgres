@@ -1,9 +1,10 @@
+from decimal import Decimal
 from copy import deepcopy
 
 import pytest
 
 from target_postgres import singer
-from target_postgres.singer_stream import BufferedSingerStream, SingerStreamError
+from target_postgres.singer_stream import BufferedSingerStream, SingerStreamError, RAW_LINE_SIZE
 
 from utils.fixtures import CatStream, InvalidCatStream, CATS_SCHEMA
 
@@ -73,6 +74,71 @@ def test_add_record_message__invalid_record():
     assert singer_stream.peek_invalid_records()
     assert singer_stream.count == 0
     assert [] == missing_sdc_properties(singer_stream)
+
+
+SIMPLE_MULTIPLE_OF_VALID_SCHEMA = {
+    'properties': {
+        'multipleOfKey': {
+            'type': 'number',
+            'multipleOf': Decimal('1e-15')
+        }
+    }
+}
+
+SIMPLE_MULTIPLE_OF_INVALID_SCHEMA = {
+    'properties': {
+        'multipleOfKey': {
+            'type': 'number',
+            'multipleOf': 1e-15
+        }
+    }
+}
+
+def test_add_record_message__multipleOf():
+    stream_name = 'test'
+    singer_stream = BufferedSingerStream(stream_name,
+                                         deepcopy(SIMPLE_MULTIPLE_OF_VALID_SCHEMA),
+                                         [])
+
+    multiple_of_values = ['1', '2', '3', '4', '5', '1.1', '2.3', '1.23456789', '20', '100.1']
+
+    for value in multiple_of_values:
+        singer_stream.add_record_message(
+            {
+                'type': 'RECORD',
+                'stream': stream_name,
+                'record': {'multipleOfKey': Decimal(value)},
+                'sequence': 0,
+                RAW_LINE_SIZE: 100
+            }
+        )
+
+    assert not singer_stream.peek_invalid_records()
+    assert singer_stream.count == len(multiple_of_values)
+
+
+def test_add_record_message__multipleOf_invalid_record():
+    stream_name = 'test'
+    singer_stream = BufferedSingerStream(stream_name,
+                                         deepcopy(SIMPLE_MULTIPLE_OF_INVALID_SCHEMA),
+                                         [])
+
+    multiple_of_values = [1, 2]
+
+    for value in multiple_of_values:
+        with pytest.raises(SingerStreamError):
+            singer_stream.add_record_message(
+                {
+                    'type': 'RECORD',
+                    'stream': stream_name,
+                    'record': {'multipleOfKey': value},
+                    'sequence': 0,
+                    RAW_LINE_SIZE: 100
+                }
+            )
+
+    assert singer_stream.peek_invalid_records()
+    assert singer_stream.count == 0
 
 
 SIMPLE_ALLOF_SCHEMA = {
