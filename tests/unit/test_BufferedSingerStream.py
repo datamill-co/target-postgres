@@ -115,7 +115,6 @@ def test_add_record_message__multipleOf():
 
     assert not singer_stream.peek_invalid_records()
     assert singer_stream.count == len(multiple_of_values)
-    assert [] == missing_sdc_properties(singer_stream)
 
 
 def test_add_record_message__multipleOf_invalid_record():
