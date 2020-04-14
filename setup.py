@@ -20,8 +20,8 @@ setup(
     py_modules=['target_postgres'],
     install_requires=[
         'arrow==0.15.5',
-        'psycopg2==2.8.4',
-        'psycopg2-binary==2.8.4',
+        'psycopg2==2.8.5',
+        'psycopg2-binary==2.8.5',
         'singer-python==5.9.0'
     ],
     setup_requires=[
@@ -30,8 +30,8 @@ setup(
     extras_require={
         'tests': [
             "chance==0.110",
-            "Faker==4.0.0",
-            "pytest==5.3.5"
+            "Faker==4.0.3",
+            "pytest==5.4.1"
         ]},
     entry_points='''
       [console_scripts]
