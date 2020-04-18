@@ -22,31 +22,31 @@ workflows:
           <<: *filters
           requires:
             - cache
-      - test--12.1:
+      - test--12:
           <<: *filters
           requires:
             - cache
-      - test--11.6:
+      - test--11:
           <<: *filters
           requires:
             - cache
-      - test--10.11:
+      - test--10:
           <<: *filters
           requires:
             - cache
-      - test--9.6.16:
+      - test--9.6:
           <<: *filters
           requires:
             - cache
-      - test--9.5.20:
+      - test--9.5:
           <<: *filters
           requires:
             - cache
-      - test--9.4.25:
+      - test--9.4:
           <<: *filters
           requires:
             - cache
-      - test--8.4.22:
+      - test--8.4:
           <<: *filters
           requires:
             - cache
@@ -57,12 +57,12 @@ workflows:
       - test--tap-github:
           <<: *filters
           requires:
-            - test--12.1
-            - test--11.6
-            - test--10.11
-            - test--9.6.16
-            - test--9.5.20
-            - test--9.4.25
+            - test--12
+            - test--11
+            - test--10
+            - test--9.6
+            - test--9.5
+            - test--9.4
       - test-release:
           <<: *filters__tags
           requires:
@@ -80,6 +80,8 @@ workflows:
             - approve-release
 
 cache: &cache deps-v6-{{ checksum "setup.py" }}
+
+py: &py python:3.7.7-stretch
 
 restore__cache: &restore__cache
   restore_cache:
@@ -100,9 +102,10 @@ test__base: &test__base
           source venv/target-postgres/bin/activate
           pytest --verbose tests/unit
         environment:
-          POSTGRES_HOST: "localhost"
-          POSTGRES_DATABASE: "target_postgres_test"
-          POSTGRES_USERNAME: "postgres"
+          POSTGRES_HOST: localhost
+          POSTGRES_DATABASE: target_postgres_test
+          POSTGRES_USERNAME: postgres
+          POSTGRES_PASSWORD: postgres
 
     - store_artifacts:
         path: target/test-results
@@ -112,7 +115,7 @@ jobs:
   cache:
     working_directory: /code/
     docker:
-      - image: python:3.7.6-stretch
+      - image: *py
     steps:
       - checkout
       - *restore__cache
@@ -157,69 +160,77 @@ jobs:
           paths:
             - "./venv"
 
-  test--12.1:
+  test--12:
     <<: *test__base
     docker:
-      - image: python:3.7.6-stretch
-      - image: postgres:12.1
+      - image: *py
+      - image: postgres:12.2
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
 
-  test--11.6:
+  test--11:
     <<: *test__base
     docker:
-      - image: python:3.7.6-stretch
-      - image: postgres:11.6
+      - image: *py
+      - image: postgres:11.7
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
 
-  test--10.11:
+  test--10:
     <<: *test__base
     docker:
-      - image: python:3.7.6-stretch
-      - image: postgres:10.11
+      - image: *py
+      - image: postgres:10.12
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
 
-  test--9.6.16:
+  test--9.6:
     <<: *test__base
     docker:
-      - image: python:3.7.6-stretch
-      - image: postgres:9.6.16
+      - image: *py
+      - image: postgres:9.6.17
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
 
-  test--9.5.20:
+  test--9.5:
     <<: *test__base
     docker:
-      - image: python:3.7.6-stretch
-      - image: postgres:9.5.20
+      - image: *py
+      - image: postgres:9.5.21
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
 
-  test--9.4.25:
+  test--9.4:
     <<: *test__base
     docker:
-      - image: python:3.7.6-stretch
-      - image: postgres:9.4.25
+      - image: *py
+      - image: postgres:9.4.26
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
 
-  test--8.4.22:
+  test--8.4:
     <<: *test__base
     docker:
-      - image: python:3.7.6-stretch
+      - image: *py
       - image: postgres:8.4.22
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
 
   test--tap-github:
     working_directory: /code/
     docker:
-      - image: python:3.7.6-stretch
-      - image: postgres:9.4.24
+      - image: *py
+      - image: postgres:9.4.26
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
     steps:
       - checkout
       - *restore__cache
@@ -307,10 +318,11 @@ jobs:
   test--migrations:
     working_directory: /code/
     docker:
-      - image: python:3.7.6-stretch
-      - image: postgres:9.4.24
+      - image: *py
+      - image: postgres:9.4.26
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
     steps:
       - checkout
       - *restore__cache
@@ -323,9 +335,10 @@ jobs:
             source venv/target-postgres/bin/activate
             pytest --verbose tests/migrations
           environment:
-            POSTGRES_HOST: "localhost"
-            POSTGRES_DATABASE: "target_postgres_test"
-            POSTGRES_USERNAME: "postgres"
+            POSTGRES_HOST: localhost
+            POSTGRES_DATABASE: target_postgres_test
+            POSTGRES_USERNAME: postgres
+            POSTGRES_PASSWORD: postgres
 
       - store_artifacts:
           path: /code/tests/migrations/artifacts
@@ -334,7 +347,7 @@ jobs:
   build:
     working_directory: /code/
     docker:
-      - image: python:3.7.6-stretch
+      - image: *py
     steps:
       - checkout
       - *restore__cache
@@ -359,7 +372,7 @@ jobs:
   test-release:
     working_directory: /code/
     docker:
-      - image: python:3.7.6-stretch
+      - image: *py
     steps:
       - checkout
       - *restore__cache
@@ -389,7 +402,7 @@ jobs:
   release:
     working_directory: /code/
     docker:
-      - image: python:3.7.6-stretch
+      - image: *py
     steps:
       - checkout
       - *restore__cache

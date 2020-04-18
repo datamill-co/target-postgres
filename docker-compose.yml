@@ -1,19 +1,21 @@
 version: "2"
 services:
   db:
-    image: postgres:9.6.16
+    image: postgres:9.6.17
     environment:
       POSTGRES_DB: target_postgres_test
+      POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"
 
   target-postgres:
-    image: python:3.7.6-stretch
+    image: python:3.7.7-stretch
     working_dir: /code
     entrypoint: /code/docker-entrypoint.sh
     environment:
-      POSTGRES_HOST: "db"
-      POSTGRES_DATABASE: "target_postgres_test"
-      POSTGRES_USERNAME: "postgres"
+      POSTGRES_HOST: db
+      POSTGRES_DATABASE: target_postgres_test
+      POSTGRES_USERNAME: postgres
+      POSTGRES_PASSWORD: postgres
     volumes:
       - .:/code
