@@ -102,9 +102,10 @@ test__base: &test__base
           source venv/target-postgres/bin/activate
           pytest --verbose tests/unit
         environment:
-          POSTGRES_HOST: "localhost"
-          POSTGRES_DATABASE: "target_postgres_test"
-          POSTGRES_USERNAME: "postgres"
+          POSTGRES_HOST: localhost
+          POSTGRES_DATABASE: target_postgres_test
+          POSTGRES_USERNAME: postgres
+          POSTGRES_PASSWORD: postgres
 
     - store_artifacts:
         path: target/test-results
@@ -166,6 +167,7 @@ jobs:
       - image: postgres:12.2
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
 
   test--11:
     <<: *test__base
@@ -174,6 +176,7 @@ jobs:
       - image: postgres:11.7
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
 
   test--10:
     <<: *test__base
@@ -182,6 +185,7 @@ jobs:
       - image: postgres:10.12
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
 
   test--9.6:
     <<: *test__base
@@ -190,6 +194,7 @@ jobs:
       - image: postgres:9.6.17
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
 
   test--9.5:
     <<: *test__base
@@ -198,6 +203,7 @@ jobs:
       - image: postgres:9.5.21
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
 
   test--9.4:
     <<: *test__base
@@ -206,6 +212,7 @@ jobs:
       - image: postgres:9.4.26
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
 
   test--8.4:
     <<: *test__base
@@ -214,6 +221,7 @@ jobs:
       - image: postgres:8.4.22
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
 
   test--tap-github:
     working_directory: /code/
@@ -222,6 +230,7 @@ jobs:
       - image: postgres:9.4.26
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
     steps:
       - checkout
       - *restore__cache
@@ -313,6 +322,7 @@ jobs:
       - image: postgres:9.4.26
         environment:
           POSTGRES_DB: target_postgres_test
+          POSTGRES_PASSWORD: postgres
     steps:
       - checkout
       - *restore__cache
@@ -325,9 +335,10 @@ jobs:
             source venv/target-postgres/bin/activate
             pytest --verbose tests/migrations
           environment:
-            POSTGRES_HOST: "localhost"
-            POSTGRES_DATABASE: "target_postgres_test"
-            POSTGRES_USERNAME: "postgres"
+            POSTGRES_HOST: localhost
+            POSTGRES_DATABASE: target_postgres_test
+            POSTGRES_USERNAME: postgres
+            POSTGRES_PASSWORD: postgres
 
       - store_artifacts:
           path: /code/tests/migrations/artifacts
