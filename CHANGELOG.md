@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.4
+
+- **BUG FIX:** `multipleOf` validation
+  - [FIX LINK](https://github.com/datamill-co/target-postgres/pull/179)
+  - Due to floating point errors in Python and JSONSchema, `multipleOf`
+    validation has been failing.
+
 ## 0.2.3
 
 - **FEATURES:**
