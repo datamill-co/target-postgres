@@ -18,6 +18,19 @@ A [Singer](https://singer.io/) postgres target, for use with Singer streams gene
 
 ## Install
 
+1. Add `libpq` dependency
+
+```sh
+# macos
+brew install postgresql
+```
+```sh
+# ubuntu
+sudo apt install libpq-dev
+```
+
+1. install `singer-target-postgres`
+
 ```sh
 pip install singer-target-postgres
 ```
