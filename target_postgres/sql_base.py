@@ -14,6 +14,7 @@
 
 from copy import deepcopy
 from functools import lru_cache, partial
+import pickle
 import time
 
 import singer
@@ -740,7 +741,8 @@ class SQLInterface:
 
         for record in records:
 
-            row = deepcopy(default_row)
+            ## pickling/unpickling is much faster than deepcopy
+            row = pickle.loads(pickle.dumps(default_row))
 
             for path in paths:
                 json_schema_string_type, value = record.get(path, (None, None))
