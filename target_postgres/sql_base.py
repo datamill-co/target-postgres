@@ -13,6 +13,7 @@
 #
 
 from copy import deepcopy
+from functools import lru_cache, partial
 import time
 
 import singer
@@ -628,15 +629,22 @@ class SQLInterface:
 
             return self._get_table_schema(connection, table_name)
 
-    def _serialize_table_record_field_name(self, remote_schema, path, value_json_schema):
+    def _serialize_table_record_field_name(self, remote_schema, path, value_json_schema_tuple):
         """
         Returns the appropriate remote field (column) name for `path`.
 
         :param remote_schema: TABLE_SCHEMA(remote)
         :param path: (string, ...)
-        :value_json_schema: dict, JSON Schema
+        :value_json_schema: tuple, JSON Schema
         :return: string
         """
+
+        # rebuild the dict that needs to be passed further down the call stack
+        if len(value_json_schema_tuple) == 1:
+            value_json_schema = { 'type': value_json_schema_tuple[0] }
+        else:
+            value_json_schema = {'type': value_json_schema_tuple[0],
+                     'format': value_json_schema_tuple[1]}
 
         simple_json_schema = json_schema.simple_type(value_json_schema)
 
@@ -725,6 +733,11 @@ class SQLInterface:
         default_row = dict([(field, NULL_DEFAULT) for field in remote_fields])
 
         paths = streamed_schema['schema']['properties'].keys()
+
+        ## create a partial function with only hashable args so we can use lru_cache on it
+        _cached_field_name = partial(self._serialize_table_record_field_name, remote_schema)
+        cached_field_name = lru_cache(maxsize=None)(_cached_field_name)
+
         for record in records:
 
             row = deepcopy(default_row)
@@ -747,17 +760,13 @@ class SQLInterface:
                         and value is not None:
                     value = self.serialize_table_record_datetime_value(remote_schema, streamed_schema, path,
                                                                        value)
-                    value_json_schema = {'type': json_schema.STRING,
-                                         'format': json_schema.DATE_TIME_FORMAT}
+                    value_json_schema_tuple = (json_schema.STRING, json_schema.DATE_TIME_FORMAT)
+                    field_name = cached_field_name(path, value_json_schema_tuple)
                 else:
-                    value_json_schema = {'type': json_schema_string_type}
+                    field_name = cached_field_name(path, (json_schema_string_type,))
 
                 ## Serialize NULL default value
                 value = self.serialize_table_record_null_value(remote_schema, streamed_schema, path, value)
-
-                field_name = self._serialize_table_record_field_name(remote_schema,
-                                                                     path,
-                                                                     value_json_schema)
 
                 ## `field_name` is unset
                 if row[field_name] == NULL_DEFAULT:
