@@ -814,6 +814,8 @@ class PostgresTarget(SQLInterface):
             _format = 'date-time'
         elif sql_type == 'bigint':
             json_type = 'integer'
+        elif sql_type == 'integer':
+            json_type = 'integer'
         elif sql_type == 'double precision':
             json_type = 'number'
         elif sql_type == 'boolean':
