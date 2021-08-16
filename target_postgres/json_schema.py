@@ -1,6 +1,7 @@
 from copy import deepcopy
 import decimal
 import json
+import math
 import re
 
 from jsonschema import Draft4Validator
@@ -587,3 +588,36 @@ def shorthand(schema):
         t.append('date-time')
 
     return _type_shorthand(t)
+
+def numeric_schema_with_precision(schema):
+    if 'type' not in schema:
+        return False
+    if isinstance(schema['type'], list):
+        if 'number' not in schema['type']:
+            return False
+    elif schema['type'] != 'number':
+        return False
+    if 'multipleOf' in schema:
+        return True
+    return 'minimum' in schema or 'maximum' in schema
+
+
+def walk_schema_for_numeric_precision(schema):
+    if isinstance(schema, list):
+        for v in schema:
+            walk_schema_for_numeric_precision(v)
+    elif isinstance(schema, dict):
+        if numeric_schema_with_precision(schema):
+            def get_precision(key):
+                v = abs(decimal.Decimal(schema.get(key, 1))).log10()
+                if v < 0:
+                    return round(math.floor(v))
+                return round(math.ceil(v))
+            scale = -1 * get_precision('multipleOf')
+            digits = max(get_precision('minimum'), get_precision('maximum'))
+            precision = digits + scale
+            if decimal.getcontext().prec < precision:
+                decimal.getcontext().prec = precision
+        else:
+            for v in schema.values():
+                walk_schema_for_numeric_precision(v)

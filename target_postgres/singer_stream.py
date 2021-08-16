@@ -67,6 +67,7 @@ class BufferedSingerStream():
     def update_schema(self, schema, key_properties):
         # In order to determine whether a value _is in_ properties _or not_ we need to flatten `$ref`s etc.
         self.schema = json_schema.simplify(schema)
+        json_schema.walk_schema_for_numeric_precision(schema)
         self.key_properties = deepcopy(key_properties)
 
         # The validator can handle _many_ more things than our simplified schema, and is, in general handled by third party code
