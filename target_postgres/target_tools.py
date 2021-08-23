@@ -1,3 +1,4 @@
+import decimal
 import http.client
 import io
 import json
@@ -52,6 +53,10 @@ def stream_to_target(stream, target, config={}):
         max_batch_rows = config.get('max_batch_rows', 200000)
         max_batch_size = config.get('max_batch_size', 104857600)  # 100MB
         batch_detection_threshold = config.get('batch_detection_threshold', max(max_batch_rows / 40, 50))
+
+        prec = config.get('decimal_precision')
+        if prec:
+            decimal.getcontext().prec = prec
 
         line_count = 0
         for line in stream:

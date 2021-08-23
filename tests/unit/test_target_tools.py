@@ -190,7 +190,9 @@ def test_record_with_target_postgres_precision():
 
     target = Target()
 
-    target_tools.stream_to_target(TestStream(), target, config=CONFIG.copy())
+    config = CONFIG.copy()
+    config['decimal_precision'] = 100
+    target_tools.stream_to_target(TestStream(), target, config=config)
 
     expected_rows = len(records)
     rows_persisted = 0
