@@ -258,14 +258,16 @@ class PostgresTarget(SQLInterface):
                                 != self.json_schema_to_sql_type(stream_buffer.schema['properties'][key_property]):
                             raise PostgresError(
                                 ('`key_properties` type change detected for "{}". ' +
-                                 'Existing values are: {}. ' +
-                                 'Streamed values are: {}, {}, {}').format(
+                                 'Current, streamed, remote json schema: {}, {}, {}. ' +
+                                 'Current, streamed, remote sql types: `{}`, `{}`, `{}`').format(
                                     key_property,
                                     json_schema.get_type(current_table_schema['schema']['properties'][key_property]),
                                     json_schema.get_type(stream_buffer.schema['properties'][key_property]),
+                                    json_schema.get_type(remote_column_schema),
                                     self.json_schema_to_sql_type(
                                         current_table_schema['schema']['properties'][key_property]),
-                                    self.json_schema_to_sql_type(stream_buffer.schema['properties'][key_property])
+                                    self.json_schema_to_sql_type(stream_buffer.schema['properties'][key_property]),
+                                    self.json_schema_to_sql_type(remote_column_schema)
                                 ))
 
                 target_table_version = current_table_version or stream_buffer.max_version
