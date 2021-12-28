@@ -788,6 +788,8 @@ class PostgresTarget(SQLInterface):
 
         properties = {}
         for column in cur.fetchall():
+            self.LOGGER.info('schema, table, col, type, nullable: {}, {}, {}, {}, {}'.format(
+                self.postgres_schema, name, column[0], column[1], column[2]))
             properties[column[0]] = self.sql_type_to_json_schema(column[1], column[2] == 'YES')
 
         metadata = self._get_table_metadata(cur, name)
