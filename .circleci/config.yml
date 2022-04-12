@@ -13,7 +13,6 @@ filters__tags: &filters__tags
       only: /^v[0-9]+(\.[0-9]+)*$/
 
 workflows:
-  version: 2
   test:
     jobs:
       - cache:
@@ -79,7 +78,7 @@ workflows:
           requires:
             - approve-release
 
-cache: &cache deps-v6-{{ checksum "setup.py" }}
+cache: &cache deps-v7-{{ checksum "setup.py" }}
 
 py: &py python:3.7.7-stretch
 
@@ -187,7 +186,7 @@ jobs:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
 
-  test--9.6:
+  test--9-6:
     <<: *test__base
     docker:
       - image: *py
@@ -196,7 +195,7 @@ jobs:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
 
-  test--9.5:
+  test--9-5:
     <<: *test__base
     docker:
       - image: *py
@@ -205,7 +204,7 @@ jobs:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
 
-  test--9.4:
+  test--9-4:
     <<: *test__base
     docker:
       - image: *py
@@ -214,7 +213,7 @@ jobs:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
 
-  test--8.4:
+  test--8-4:
     <<: *test__base
     docker:
       - image: *py
