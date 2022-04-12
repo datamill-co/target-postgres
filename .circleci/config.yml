@@ -116,7 +116,7 @@ jobs:
     docker:
       - image: *py
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres  /code/
+      - run: git clone https://github.com/datamill-co/target-postgres /code/ && git checkout ${CIRCLE_BRANCH}
       - *restore__cache
 
       - run:
@@ -231,7 +231,7 @@ jobs:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres  /code/
+      - run: git clone https://github.com/datamill-co/target-postgres /code/ && git checkout ${CIRCLE_BRANCH}
       - *restore__cache
       - attach_workspace:
           at: "./"
@@ -323,7 +323,7 @@ jobs:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres  /code/
+      - run: git clone https://github.com/datamill-co/target-postgres /code/ && git checkout ${CIRCLE_BRANCH}
       - *restore__cache
       - attach_workspace:
           at: "./"
@@ -348,7 +348,7 @@ jobs:
     docker:
       - image: *py
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres  /code/
+      - run: git clone https://github.com/datamill-co/target-postgres /code/ && git checkout ${CIRCLE_BRANCH}
       - *restore__cache
       - attach_workspace:
           at: "./"
@@ -373,7 +373,7 @@ jobs:
     docker:
       - image: *py
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres  /code/
+      - run: git clone https://github.com/datamill-co/target-postgres /code/ && git checkout ${CIRCLE_BRANCH}
       - *restore__cache
       - attach_workspace:
           at: "./"
@@ -403,7 +403,7 @@ jobs:
     docker:
       - image: *py
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres  /code/
+      - run: git clone https://github.com/datamill-co/target-postgres /code/ && git checkout ${CIRCLE_BRANCH}
       - *restore__cache
       - attach_workspace:
           at: "./"
