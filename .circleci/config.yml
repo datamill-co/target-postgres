@@ -117,7 +117,7 @@ jobs:
     docker:
       - image: *py
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres  ~/clone/
+      - run: git clone https://github.com/datamill-co/target-postgres  /code/
       - *restore__cache
 
       - run:
@@ -232,7 +232,7 @@ jobs:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres  ~/clone/
+      - run: git clone https://github.com/datamill-co/target-postgres  /code/
       - *restore__cache
       - attach_workspace:
           at: "./"
@@ -324,7 +324,7 @@ jobs:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres  ~/clone/
+      - run: git clone https://github.com/datamill-co/target-postgres  /code/
       - *restore__cache
       - attach_workspace:
           at: "./"
@@ -349,7 +349,7 @@ jobs:
     docker:
       - image: *py
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres  ~/clone/
+      - run: git clone https://github.com/datamill-co/target-postgres  /code/
       - *restore__cache
       - attach_workspace:
           at: "./"
@@ -374,7 +374,7 @@ jobs:
     docker:
       - image: *py
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres  ~/clone/
+      - run: git clone https://github.com/datamill-co/target-postgres  /code/
       - *restore__cache
       - attach_workspace:
           at: "./"
@@ -404,7 +404,7 @@ jobs:
     docker:
       - image: *py
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres  ~/clone/
+      - run: git clone https://github.com/datamill-co/target-postgres  /code/
       - *restore__cache
       - attach_workspace:
           at: "./"
