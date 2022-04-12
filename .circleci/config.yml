@@ -57,11 +57,6 @@ workflows:
           <<: *filters
           requires:
             - test--12
-            - test--11
-            - test--10
-            - test--9-6
-            - test--9-5
-            - test--9-4
       - test-release:
           <<: *filters__tags
           requires:
@@ -136,7 +131,7 @@ jobs:
           command: |
             python -m venv venv/tap-github
             source venv/tap-github/bin/activate
-            pip install tap-github
+            pip install git+https://github.com/MeltanoLabs/tap-github.git@v1.1.0
             deactivate
 
       - run:
@@ -226,7 +221,7 @@ jobs:
     working_directory: /code/
     docker:
       - image: *py
-      - image: postgres:9.4.26
+      - image: postgres:12.2
         environment:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
