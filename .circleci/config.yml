@@ -80,7 +80,7 @@ workflows:
 
 cache: &cache deps-v7-{{ checksum "setup.py" }}
 
-py: &py circleci/python:3.7-browsers-legacy
+py: &py python:3.7.7-stretch
 
 restore__cache: &restore__cache
   restore_cache:
