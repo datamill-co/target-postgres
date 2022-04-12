@@ -1,0 +1,16 @@
+{
+  "streams": [
+    {
+      "stream": "collaborators",
+      "metadata": [
+        {
+          "metadata": {
+            "inclusion": "available",
+            "selected": false
+          },
+          "breadcrumb": []
+        }
+    ]
+    }
+  ]
+}

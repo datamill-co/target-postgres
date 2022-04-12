@@ -246,7 +246,7 @@ jobs:
             source venv/tap-github/bin/activate
             cd /code/.circleci/integration/tap-github
 
-            tap-github --config config.json > /code/artifacts/data/tap
+            tap-github --config config.json --catalog catalog.json > /code/artifacts/data/tap
 
             deactivate
 
