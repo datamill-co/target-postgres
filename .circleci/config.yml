@@ -88,7 +88,7 @@ restore__cache: &restore__cache
       - *cache
 
 test__base: &test__base
-  working_directory: /code/
+  working_directory: ./code/
   steps:
     - checkout
     - *restore__cache
@@ -112,7 +112,7 @@ test__base: &test__base
 
 jobs:
   cache:
-    working_directory: /code/
+    working_directory: ./code/
     docker:
       - image: *py
     steps:
@@ -223,7 +223,7 @@ jobs:
           POSTGRES_PASSWORD: postgres
 
   test--tap-github:
-    working_directory: /code/
+    working_directory: ./code/
     docker:
       - image: *py
       - image: postgres:9.4.26
@@ -238,20 +238,20 @@ jobs:
 
       - run:
           name: Setup artifacts folder
-          command: mkdir -p /code/artifacts/data
+          command: mkdir -p ./code/artifacts/data
 
       - run:
           name: Setup tap-github
-          working_directory: /code/.circleci/integration/tap-github
+          working_directory: ./code/.circleci/integration/tap-github
           command: sed "s/REPLACE_ME/$TAP_GITHUB_TOKEN/" config-template.json > config.json
 
       - run:
           name: Tap -> Data
           command: |
             source venv/tap-github/bin/activate
-            cd /code/.circleci/integration/tap-github
+            cd ./code/.circleci/integration/tap-github
 
-            tap-github --config config.json --properties properties.json > /code/artifacts/data/tap
+            tap-github --config config.json --properties properties.json > ./code/artifacts/data/tap
 
             deactivate
 
@@ -260,9 +260,9 @@ jobs:
           command: |
             source venv/target-postgres/bin/activate
             pip install .
-            cd /code/.circleci/integration
+            cd ./code/.circleci/integration
 
-            cat /code/artifacts/data/tap | target-postgres --config target-config.json
+            cat ./code/artifacts/data/tap | target-postgres --config target-config.json
 
             deactivate
 
@@ -270,15 +270,15 @@ jobs:
           name: Target -> Data
           command: |
             source venv/tap-postgres/bin/activate
-            cd /code/.circleci/integration/tap-postgres
+            cd ./code/.circleci/integration/tap-postgres
 
             tap-postgres --config config.json --discover > tmp-properties.json
 
             ## Select _every_ table found in properties.
             ##  row-count seems to only show up inside of the necessary metadata object...easier than multi-line-sed
-            sed 's/"row-count": 0,/"row-count": 0,"selected":true,/g' tmp-properties.json > /code/artifacts/data/properties.json
+            sed 's/"row-count": 0,/"row-count": 0,"selected":true,/g' tmp-properties.json > ./code/artifacts/data/properties.json
 
-            tap-postgres --config config.json --properties /code/artifacts/data/properties.json > /code/artifacts/data/target
+            tap-postgres --config config.json --properties ./code/artifacts/data/properties.json > ./code/artifacts/data/target
 
             deactivate
 
@@ -287,35 +287,35 @@ jobs:
           command: |
             source venv/target-postgres/bin/activate
             pip install .
-            cd /code/.circleci/integration
+            cd ./code/.circleci/integration
 
-            cat /code/artifacts/data/tap | target-postgres --config target-config.json
+            cat ./code/artifacts/data/tap | target-postgres --config target-config.json
 
             deactivate
 
             cd /code
 
             source venv/tap-postgres/bin/activate
-            cd /code/.circleci/integration/tap-postgres
+            cd ./code/.circleci/integration/tap-postgres
 
             tap-postgres --config config.json --discover > tmp-properties.json
 
             ## Select _every_ table found in properties.
             ##  row-count seems to only show up inside of the necessary metadata object...easier than multi-line-sed
-            sed 's/"row-count": 0,/"row-count": 0,"selected":true,/g' tmp-properties.json > /code/artifacts/data/properties.json
+            sed 's/"row-count": 0,/"row-count": 0,"selected":true,/g' tmp-properties.json > ./code/artifacts/data/properties.json
 
-            tap-postgres --config config.json --properties /code/artifacts/data/properties.json > /code/artifacts/data/target.repeated
+            tap-postgres --config config.json --properties ./code/artifacts/data/properties.json > ./code/artifacts/data/target.repeated
 
             deactivate
 
             ## TODO: compare repeated data to insure that we only changed _sdc values
-            # diff /code/artifacts/data/target /code/artifacts/data/target.repeated
+            # diff ./code/artifacts/data/target ./code/artifacts/data/target.repeated
 
       - store_artifacts:
-          path: /code/artifacts
+          path: ./code/artifacts
 
   test--migrations:
-    working_directory: /code/
+    working_directory: ./code/
     docker:
       - image: *py
       - image: postgres:9.4.26
@@ -340,11 +340,11 @@ jobs:
             POSTGRES_PASSWORD: postgres
 
       - store_artifacts:
-          path: /code/tests/migrations/artifacts
+          path: ./code/tests/migrations/artifacts
           destination: raw-test-output
 
   build:
-    working_directory: /code/
+    working_directory: ./code/
     docker:
       - image: *py
     steps:
@@ -369,7 +369,7 @@ jobs:
             - "./dist"
 
   test-release:
-    working_directory: /code/
+    working_directory: ./code/
     docker:
       - image: *py
     steps:
@@ -399,7 +399,7 @@ jobs:
             twine upload ./dist/*
 
   release:
-    working_directory: /code/
+    working_directory: ./code/
     docker:
       - image: *py
     steps:
