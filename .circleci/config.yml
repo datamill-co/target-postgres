@@ -78,7 +78,7 @@ workflows:
           requires:
             - approve-release
 
-cache: &cache deps-v7-{{ checksum "setup.py" }}
+cache: &cache deps-v7-{{ checksum "~/code/setup.py" }}
 
 py: &py python:3.7.7-stretch
 
@@ -90,7 +90,7 @@ restore__cache: &restore__cache
 test__base: &test__base
   working_directory: ~/code/
   steps:
-    - run: git clone https://github.com/datamill-co/target-postgres  ~/clone/
+    - run: git clone https://github.com/datamill-co/target-postgres .
     - *restore__cache
     - attach_workspace:
         at: "./"
