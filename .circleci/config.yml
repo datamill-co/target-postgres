@@ -33,19 +33,19 @@ workflows:
           <<: *filters
           requires:
             - cache
-      - test--9.6:
+      - test--9-6:
           <<: *filters
           requires:
             - cache
-      - test--9.5:
+      - test--9-5:
           <<: *filters
           requires:
             - cache
-      - test--9.4:
+      - test--9-4:
           <<: *filters
           requires:
             - cache
-      - test--8.4:
+      - test--8-4:
           <<: *filters
           requires:
             - cache
@@ -59,9 +59,9 @@ workflows:
             - test--12
             - test--11
             - test--10
-            - test--9.6
-            - test--9.5
-            - test--9.4
+            - test--9-6
+            - test--9-5
+            - test--9-4
       - test-release:
           <<: *filters__tags
           requires:
