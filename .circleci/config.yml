@@ -82,11 +82,20 @@ restore__cache: &restore__cache
     keys:
       - *cache
 
-repo_url: &repo_url 
+checkout_command: &checkout_command
+  run:
+    name: checkout
+    command: |
+      if [[ "$CIRCLE_BRANCH" =~ ^pull\/* ]]; then
+        git clone https://github.com/datamill-co/target-postgres .
+      else
+        git clone https://github.com/datamill-co/target-postgres .
+      fi
 
 test__base: &test__base
   working_directory: /code/
   steps:
+    - run: printenv
     - run: git clone https://github.com/datamill-co/target-postgres .
     - *restore__cache
     - attach_workspace:
