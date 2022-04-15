@@ -1,5 +1,8 @@
 version: 2.1
 
+on:
+  pull_request:
+
 filters: &filters
   filters:
     tags:
