@@ -82,6 +82,8 @@ restore__cache: &restore__cache
     keys:
       - *cache
 
+repo_url: &repo_url 
+
 test__base: &test__base
   working_directory: /code/
   steps:
@@ -111,9 +113,8 @@ jobs:
     docker:
       - image: *py
     steps:
-      - run: echo ${CIRCLE_REPOSITORY_URL}
-      - run: echo ${CIRCLE_PR_REPONAME}
-      - run: git clone https://github.com/datamill-co/target-postgres /code/ && git checkout ${CIRCLE_BRANCH}
+      - run: echo <<pipeline.project.git_url>>
+      - run: git clone <<pipeline.project.git_url>> /code/ && git checkout <<pipeline.git.branch>>
       - *restore__cache
 
       - run:
