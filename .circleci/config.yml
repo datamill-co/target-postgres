@@ -82,10 +82,25 @@ restore__cache: &restore__cache
     keys:
       - *cache
 
+# Simple checkout command to pull external forks.
+# The CircleCI util does not work without setting up SSH keys
+# which we technically do not need for open-source repos.
+checkout_command: &checkout_command
+  run:
+    name: checkout
+    command: |
+      git clone https://github.com/datamill-co/target-postgres .
+      if [[ "$CIRCLE_BRANCH" =~ ^pull\/* ]]; then
+        git fetch origin refs/pull/${CIRCLE_PR_NUMBER}/head
+        git checkout ${CIRCLE_SHA1}
+      else
+        git checkout ${CIRCLE_BRANCH}
+      fi
+
 test__base: &test__base
   working_directory: /code/
   steps:
-    - run: git clone https://github.com/datamill-co/target-postgres .
+    - *checkout_command
     - *restore__cache
     - attach_workspace:
         at: "./"
@@ -111,7 +126,7 @@ jobs:
     docker:
       - image: *py
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres /code/ && git checkout ${CIRCLE_BRANCH}
+      - *checkout_command
       - *restore__cache
 
       - run:
@@ -226,7 +241,7 @@ jobs:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres /code/ && git checkout ${CIRCLE_BRANCH}
+      - *checkout_command
       - *restore__cache
       - attach_workspace:
           at: "./"
@@ -318,7 +333,7 @@ jobs:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres /code/ && git checkout ${CIRCLE_BRANCH}
+      - *checkout_command
       - *restore__cache
       - attach_workspace:
           at: "./"
@@ -343,7 +358,7 @@ jobs:
     docker:
       - image: *py
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres /code/ && git checkout ${CIRCLE_BRANCH}
+      - *checkout_command
       - *restore__cache
       - attach_workspace:
           at: "./"
@@ -368,7 +383,7 @@ jobs:
     docker:
       - image: *py
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres /code/ && git checkout ${CIRCLE_BRANCH}
+      - *checkout_command
       - *restore__cache
       - attach_workspace:
           at: "./"
@@ -398,7 +413,7 @@ jobs:
     docker:
       - image: *py
     steps:
-      - run: git clone https://github.com/datamill-co/target-postgres /code/ && git checkout ${CIRCLE_BRANCH}
+      - *checkout_command
       - *restore__cache
       - attach_workspace:
           at: "./"
