@@ -1,4 +1,4 @@
 {
-  "access_token": "REPLACE_ME",
-  "repository": "datamill-co/target-postgres"
+  "start_date": "2022-04-12",
+  "repositories": ["datamill-co/target-postgres"]
 }
