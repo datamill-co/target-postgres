@@ -48,9 +48,9 @@ class StreamTracker:
 
         self._emit_safe_queued_states(force=force)
 
-    def handle_state_message(self, line_data):
+    def handle_state_message(self, line):
         if self.emit_states:
-            self.state_queue.append({'state': line_data['value'], 'watermark': self.message_counter})
+            self.state_queue.append({'state': line, 'watermark': self.message_counter})
             self._emit_safe_queued_states()
 
     def handle_record_message(self, stream, line_data):
@@ -80,9 +80,14 @@ class StreamTracker:
                 valid_flush_watermarks.append(watermark)
         safe_flush_threshold = min(valid_flush_watermarks, default=0)
 
+        # the STATE message that the target forwards
         emittable_state = None
+        emittable_state_str = None
         while len(self.state_queue) > 0 and (force or self.state_queue[0]['watermark'] <= safe_flush_threshold):
-            emittable_state = self.state_queue.popleft()['state']
+            emittable_state_str = self.state_queue.popleft()['state']
+
+        if emittable_state_str is not None:
+            emittable_state = json.loads(emittable_state_str)['value']
 
         if emittable_state:
             if len(statediff.diff(emittable_state, self.last_emitted_state or {})) > 0:
