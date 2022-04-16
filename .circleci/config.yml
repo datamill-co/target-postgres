@@ -1,4 +1,4 @@
-version: 2.0
+version: 2.1
 
 filters: &filters
   filters:
@@ -13,7 +13,6 @@ filters__tags: &filters__tags
       only: /^v[0-9]+(\.[0-9]+)*$/
 
 workflows:
-  version: 2
   test:
     jobs:
       - cache:
@@ -34,19 +33,19 @@ workflows:
           <<: *filters
           requires:
             - cache
-      - test--9.6:
+      - test--9-6:
           <<: *filters
           requires:
             - cache
-      - test--9.5:
+      - test--9-5:
           <<: *filters
           requires:
             - cache
-      - test--9.4:
+      - test--9-4:
           <<: *filters
           requires:
             - cache
-      - test--8.4:
+      - test--8-4:
           <<: *filters
           requires:
             - cache
@@ -58,11 +57,6 @@ workflows:
           <<: *filters
           requires:
             - test--12
-            - test--11
-            - test--10
-            - test--9.6
-            - test--9.5
-            - test--9.4
       - test-release:
           <<: *filters__tags
           requires:
@@ -79,7 +73,7 @@ workflows:
           requires:
             - approve-release
 
-cache: &cache deps-v6-{{ checksum "setup.py" }}
+cache: &cache deps-v7-{{ checksum "setup.py" }}
 
 py: &py python:3.7.7-stretch
 
@@ -88,10 +82,25 @@ restore__cache: &restore__cache
     keys:
       - *cache
 
+# Simple checkout command to pull external forks.
+# The CircleCI util does not work without setting up SSH keys
+# which we technically do not need for open-source repos.
+checkout_command: &checkout_command
+  run:
+    name: checkout
+    command: |
+      git clone https://github.com/datamill-co/target-postgres .
+      if [[ "$CIRCLE_BRANCH" =~ ^pull\/* ]]; then
+        git fetch origin refs/pull/${CIRCLE_PR_NUMBER}/head
+        git checkout ${CIRCLE_SHA1}
+      else
+        git checkout ${CIRCLE_BRANCH}
+      fi
+
 test__base: &test__base
   working_directory: /code/
   steps:
-    - checkout
+    - *checkout_command
     - *restore__cache
     - attach_workspace:
         at: "./"
@@ -117,7 +126,7 @@ jobs:
     docker:
       - image: *py
     steps:
-      - checkout
+      - *checkout_command
       - *restore__cache
 
       - run:
@@ -137,7 +146,7 @@ jobs:
           command: |
             python -m venv venv/tap-github
             source venv/tap-github/bin/activate
-            pip install tap-github
+            pip install git+https://github.com/MeltanoLabs/tap-github.git@v1.1.0
             deactivate
 
       - run:
@@ -187,7 +196,7 @@ jobs:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
 
-  test--9.6:
+  test--9-6:
     <<: *test__base
     docker:
       - image: *py
@@ -196,7 +205,7 @@ jobs:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
 
-  test--9.5:
+  test--9-5:
     <<: *test__base
     docker:
       - image: *py
@@ -205,7 +214,7 @@ jobs:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
 
-  test--9.4:
+  test--9-4:
     <<: *test__base
     docker:
       - image: *py
@@ -214,7 +223,7 @@ jobs:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
 
-  test--8.4:
+  test--8-4:
     <<: *test__base
     docker:
       - image: *py
@@ -227,12 +236,12 @@ jobs:
     working_directory: /code/
     docker:
       - image: *py
-      - image: postgres:9.4.26
+      - image: postgres:12.2
         environment:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
     steps:
-      - checkout
+      - *checkout_command
       - *restore__cache
       - attach_workspace:
           at: "./"
@@ -252,7 +261,7 @@ jobs:
             source venv/tap-github/bin/activate
             cd /code/.circleci/integration/tap-github
 
-            tap-github --config config.json --properties properties.json > /code/artifacts/data/tap
+            tap-github --config config.json --catalog catalog.json > /code/artifacts/data/tap
 
             deactivate
 
@@ -294,7 +303,7 @@ jobs:
 
             deactivate
 
-            cd /code
+            cd /code/
 
             source venv/tap-postgres/bin/activate
             cd /code/.circleci/integration/tap-postgres
@@ -324,7 +333,7 @@ jobs:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
     steps:
-      - checkout
+      - *checkout_command
       - *restore__cache
       - attach_workspace:
           at: "./"
@@ -349,7 +358,7 @@ jobs:
     docker:
       - image: *py
     steps:
-      - checkout
+      - *checkout_command
       - *restore__cache
       - attach_workspace:
           at: "./"
@@ -374,7 +383,7 @@ jobs:
     docker:
       - image: *py
     steps:
-      - checkout
+      - *checkout_command
       - *restore__cache
       - attach_workspace:
           at: "./"
@@ -404,7 +413,7 @@ jobs:
     docker:
       - image: *py
     steps:
-      - checkout
+      - *checkout_command
       - *restore__cache
       - attach_workspace:
           at: "./"
