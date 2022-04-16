@@ -82,6 +82,9 @@ restore__cache: &restore__cache
     keys:
       - *cache
 
+# Simple checkout command to pull external forks.
+# The CircleCI util does not work without setting up SSH keys
+# which we technically do not need for open-source repos.
 checkout_command: &checkout_command
   run:
     name: checkout
@@ -97,7 +100,6 @@ checkout_command: &checkout_command
 test__base: &test__base
   working_directory: /code/
   steps:
-    - run: printenv
     - *checkout_command
     - *restore__cache
     - attach_workspace:
