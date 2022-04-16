@@ -86,9 +86,12 @@ checkout_command: &checkout_command
   run:
     name: checkout
     command: |
-      git clone https://github.com/datamill-co/target-postgres . && git checkout ${CIRCLE_BRANCH}
+      git clone https://github.com/datamill-co/target-postgres .
       if [[ "$CIRCLE_BRANCH" =~ ^pull\/* ]]; then
-        git fetch origin ${CIRCLE_BRANCH}/head:${CIRCLE_BRANCH} && git checkout ${CIRCLE_BRANCH}
+        git fetch origin refs/pull/${CIRCLE_PR_NUMBER}/head
+        git checkout ${CIRCLE_SHA1}
+      else
+        git checkout ${CIRCLE_BRANCH}
       fi
 
 test__base: &test__base
