@@ -603,7 +603,7 @@ class PostgresTarget(SQLInterface):
         csv_headers = list(remote_schema['schema']['properties'].keys())
         rows_iter = iter(table_batch['records'])
         service_account = storage.Client.from_service_account_json("client_secrets.json")
-        date = datetime.datetime.today().strftime("date_format", "%Y-%m-%d")
+        date = datetime.datetime.today().strftime("%Y-%m-%d")
 
         def transform():
             try:
