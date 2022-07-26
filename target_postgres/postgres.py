@@ -603,12 +603,12 @@ class PostgresTarget(SQLInterface):
         csv_headers = list(remote_schema['schema']['properties'].keys())
         rows_iter = iter(table_batch['records'])
         service_account = storage.Client.from_service_account_json("client_secrets.json")
-        date = datetime.today().strftime("date_format", "%Y-%m-%d")
+        date = datetime.datetime.today().strftime("date_format", "%Y-%m-%d")
 
         def transform():
             try:
                 row = next(rows_iter)
-                with smart_open.open('gs://target_postgres/{}/{}/{}/{}.csv'.format(
+                with smart_open.open('gs://datalake_ge93s3dt/target_postgres/{}/{}/{}/{}.csv'.format(
                     self.postgres_schema,
                     remote_schema['name'],
                     date,
