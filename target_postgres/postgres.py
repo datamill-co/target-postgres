@@ -604,6 +604,7 @@ class PostgresTarget(SQLInterface):
         rows_iter = iter(table_batch['records'])
         service_account = storage.Client.from_service_account_json("client_secrets.json")
         date = datetime.datetime.today().strftime("%Y-%m-%d")
+        _256kb = int(256 * 1024)
 
         def transform():
             try:
@@ -614,7 +615,12 @@ class PostgresTarget(SQLInterface):
                     date,
                     target_table_name),
                     'w',
-                    transport_params={"client": service_account}) as fh, io.StringIO() as out:
+                    transport_params=dict(
+                        client= service_account,
+                        buffer_size=_256kb * 2.5 * 10e6 // _256kb,
+                        min_part_size = _256kb * 2.5 * 10e6 // _256kb,
+                        )
+                    ) as fh, io.StringIO() as out:
                     writer = csv.DictWriter(out, csv_headers)
                     writer.writerow(row)
                     value = out.getvalue()
