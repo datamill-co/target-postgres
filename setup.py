@@ -21,7 +21,8 @@ setup(
     install_requires=[
         'arrow==0.15.5',
         'psycopg2==2.8.5',
-        'singer-python==5.9.0'
+        'singer-python==5.9.0',
+        'smart_open[gcs]>=6.0.0'
     ],
     setup_requires=[
         "pytest-runner"

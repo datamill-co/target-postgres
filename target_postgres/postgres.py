@@ -16,7 +16,9 @@ from psycopg2.extras import LoggingConnection, LoggingCursor
 from target_postgres import json_schema, singer
 from target_postgres.exceptions import PostgresError
 from target_postgres.sql_base import SEPARATOR, SQLInterface
-
+import smart_open
+from google.cloud import storage
+import datetime
 
 RESERVED_NULL_DEFAULT = 'NULL'
 
@@ -600,15 +602,25 @@ class PostgresTarget(SQLInterface):
         ## Make streamable CSV records
         csv_headers = list(remote_schema['schema']['properties'].keys())
         rows_iter = iter(table_batch['records'])
+        service_account = storage.Client.from_service_account_json("client_secrets.json")
+        date = datetime.today().strftime("date_format", "%Y-%m-%d")
 
         def transform():
             try:
                 row = next(rows_iter)
-
-                with io.StringIO() as out:
-                    writer = csv.DictWriter(out, csv_headers)
-                    writer.writerow(row)
-                    return out.getvalue()
+                with smart_open.open('gs://target_postgres/{}/{}/{}/{}.csv'.format(
+                    self.postgres_schema,
+                    remote_schema['name'],
+                    date,
+                    target_table_name),
+                    'w',
+                    transport_params={"client": service_account}) as f:
+                    with io.StringIO() as out:
+                        writer = csv.DictWriter(out, csv_headers)
+                        writer.writerow(row)
+                        value = out.getvalue()
+                        f.write(value)
+                        return value
             except StopIteration:
                 return ''
 
