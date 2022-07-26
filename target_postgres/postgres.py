@@ -614,13 +614,12 @@ class PostgresTarget(SQLInterface):
                     date,
                     target_table_name),
                     'w',
-                    transport_params={"client": service_account}) as f:
-                    with io.StringIO() as out:
-                        writer = csv.DictWriter(out, csv_headers)
-                        writer.writerow(row)
-                        value = out.getvalue()
-                        f.write(value)
-                        return value
+                    transport_params={"client": service_account}) as fh, io.StringIO() as out:
+                    writer = csv.DictWriter(out, csv_headers)
+                    writer.writerow(row)
+                    value = out.getvalue()
+                    fh.write(value)
+                    return value
             except StopIteration:
                 return ''
 
