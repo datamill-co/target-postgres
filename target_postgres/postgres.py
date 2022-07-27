@@ -574,8 +574,8 @@ class PostgresTarget(SQLInterface):
         cur.copy_expert(copy, csv_rows)
         #save temp rows
         with open("/tmp/{}".format(temp_table_name), 'w') as f:
-            for row in csv_rows:
-                f.write(','.join(row) + '\n')   
+            csv_rows.seek(0)
+            f.write(csv_rows.read())
 
         pattern = re.compile(singer.LEVEL_FMT.format('[0-9]+'))
         subkeys = list(filter(lambda header: re.match(pattern, header) is not None, columns))
