@@ -97,7 +97,7 @@ class MillisLoggingConnection(LoggingConnection):
 
 
 
-class TransformStream:
+class TransformStream(io.IOBase):
     def __init__(self, fun):
         self.fun = fun
 
