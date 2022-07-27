@@ -571,13 +571,13 @@ class PostgresTarget(SQLInterface):
             while row:
                 f.write(row)
                 row = csv_rows.read()
-        
         copy = sql.SQL('COPY {}.{} ({}) FROM STDIN WITH CSV NULL AS {}').format(
             sql.Identifier(self.postgres_schema),
             sql.Identifier(temp_table_name),
             sql.SQL(', ').join(map(sql.Identifier, columns)),
             sql.Literal(RESERVED_NULL_DEFAULT))
-        cur.copy_expert(copy, csv_rows)
+        with open('/tmp/{}.csv'.format(temp_table_name), 'r') as f:
+            cur.copy_expert(copy, f)
 
         pattern = re.compile(singer.LEVEL_FMT.format('[0-9]+'))
         subkeys = list(filter(lambda header: re.match(pattern, header) is not None, columns))
