@@ -568,7 +568,7 @@ class PostgresTarget(SQLInterface):
         #save temp rows
         with open(csv_rows, 'r') as stream:
             with open("/tmp/{}".format(temp_table_name), 'w') as f:
-                f.write(stream)
+                f.write(stream.read())
         copy = sql.SQL('COPY {}.{} ({}) FROM STDIN WITH CSV NULL AS {}').format(
             sql.Identifier(self.postgres_schema),
             sql.Identifier(temp_table_name),
