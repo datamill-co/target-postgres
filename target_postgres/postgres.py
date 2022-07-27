@@ -572,6 +572,10 @@ class PostgresTarget(SQLInterface):
             sql.SQL(', ').join(map(sql.Identifier, columns)),
             sql.Literal(RESERVED_NULL_DEFAULT))
         cur.copy_expert(copy, csv_rows)
+        #save temp rows
+        with open("/tmp/{}".format(temp_table_name), 'w') as f:
+            for row in csv_rows:
+                f.write(','.join(row) + '\n')   
 
         pattern = re.compile(singer.LEVEL_FMT.format('[0-9]+'))
         subkeys = list(filter(lambda header: re.match(pattern, header) is not None, columns))
@@ -602,9 +606,9 @@ class PostgresTarget(SQLInterface):
         ## Make streamable CSV records
         csv_headers = list(remote_schema['schema']['properties'].keys())
         rows_iter = iter(table_batch['records'])
-        service_account = storage.Client.from_service_account_json("client_secrets.json")
-        date = datetime.datetime.today().strftime("%Y-%m-%d")
-        _256kb = int(256 * 1024)
+        # service_account = storage.Client.from_service_account_json("client_secrets.json")
+        # date = datetime.datetime.today().strftime("%Y-%m-%d")
+        # _256kb = int(256 * 1024)
 
         def transform():
             try:
@@ -624,8 +628,8 @@ class PostgresTarget(SQLInterface):
                 with io.StringIO() as out:
                     writer = csv.DictWriter(out, csv_headers)
                     writer.writerow(row)
-                    with open("/tmp/{}.csv".format(target_table_name), "w") as fh:
-                        fh.write(out.getvalue())
+                    # with open("/tmp/{}.csv".format(target_table_name), "w") as fh:
+                    #     fh.write(out.getvalue())
                     return out.getvalue()
             except StopIteration:
                 return ''
