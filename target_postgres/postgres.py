@@ -617,8 +617,8 @@ class PostgresTarget(SQLInterface):
                     'w',
                     transport_params=dict(
                         client= service_account,
-                        buffer_size=_256kb * (2.5 * 10e6) // _256kb,
-                        min_part_size = _256kb * (2.5 * 10e6) // _256kb,
+                        buffer_size=_256kb * ((2.5 * 10e6) // _256kb),
+                        min_part_size = _256kb * ((2.5 * 10e6) // _256kb),
                         )
                     ) as fh, io.StringIO() as out:
                     writer = csv.DictWriter(out, csv_headers)
