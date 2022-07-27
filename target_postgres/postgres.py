@@ -567,17 +567,16 @@ class PostgresTarget(SQLInterface):
                          csv_rows):
         #save temp rows
         row = csv_rows.read()
-        with open('/tmp/{}.csv'.format(temp_table_name), 'w') as f:
+        with open('/tmp/{}.csv'.format(temp_table_name), 'w') as temp_csv_file:
             while row:
-                f.write(row)
+                temp_csv_file.write(row)
                 row = csv_rows.read()
         copy = sql.SQL('COPY {}.{} ({}) FROM STDIN WITH CSV NULL AS {}').format(
             sql.Identifier(self.postgres_schema),
             sql.Identifier(temp_table_name),
             sql.SQL(', ').join(map(sql.Identifier, columns)),
             sql.Literal(RESERVED_NULL_DEFAULT))
-        with open('/tmp/{}.csv'.format(temp_table_name), 'r') as f:
-            cur.copy_expert(copy, f)
+        cur.copy_expert(copy, open('/tmp/{}.csv'.format(temp_table_name), 'r'))
         service_account = storage.Client.from_service_account_json("client_secrets.json")
         _256kb = int(256 * 1024)
         date = datetime.datetime.today().strftime("%Y-%m-%d")
