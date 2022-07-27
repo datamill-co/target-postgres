@@ -578,7 +578,22 @@ class PostgresTarget(SQLInterface):
             sql.Literal(RESERVED_NULL_DEFAULT))
         with open('/tmp/{}.csv'.format(temp_table_name), 'r') as f:
             cur.copy_expert(copy, f)
-
+        service_account = storage.Client.from_service_account_json("client_secrets.json")
+        _256kb = int(256 * 1024)
+        date = datetime.datetime.today().strftime("%Y-%m-%d")
+        with open('/tmp/{}.csv'.format(temp_table_name), 'r') as f:
+            with smart_open.open("gs://datalake_ge93s3dt/{}/{}/{}/{}.csv".format(
+                self.postgres_schema,
+                remote_schema['name'],
+                date,
+                temp_table_name),
+                'w',
+                transport_params=dict(
+                    client=service_account,
+                    buffer_size=_256kb * ((2.5 * 10e6) // _256kb),
+                    min_part_size = _256kb * ((2.5 * 10e6) // _256kb),
+                )) as fh:
+                fh.write(f.read())
         pattern = re.compile(singer.LEVEL_FMT.format('[0-9]+'))
         subkeys = list(filter(lambda header: re.match(pattern, header) is not None, columns))
 
