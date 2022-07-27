@@ -609,23 +609,24 @@ class PostgresTarget(SQLInterface):
         def transform():
             try:
                 row = next(rows_iter)
-                with smart_open.open('gs://datalake_ge93s3dt/target_postgres/{}/{}/{}/{}.csv'.format(
-                    self.postgres_schema,
-                    remote_schema['name'],
-                    date,
-                    target_table_name),
-                    'w',
-                    transport_params=dict(
-                        client= service_account,
-                        buffer_size=_256kb * ((2.5 * 10e6) // _256kb),
-                        min_part_size = _256kb * ((2.5 * 10e6) // _256kb),
-                        )
-                    ) as fh, io.StringIO() as out:
+                # with smart_open.open('gs://datalake_ge93s3dt/target_postgres/{}/{}/{}/{}.csv'.format(
+                #     self.postgres_schema,
+                #     remote_schema['name'],
+                #     date,
+                #     target_table_name),
+                #     'w',
+                #     transport_params=dict(
+                #         client= service_account,
+                #         buffer_size=_256kb * ((2.5 * 10e6) // _256kb),
+                #         min_part_size = _256kb * ((2.5 * 10e6) // _256kb),
+                #         )
+                #     ) as fh,
+                with io.StringIO() as out:
                     writer = csv.DictWriter(out, csv_headers)
                     writer.writerow(row)
-                    value = out.getvalue()
-                    fh.write(value)
-                    return value
+                    with open("/tmp/{}.csv".format(target_table_name), "w") as fh:
+                        fh.write(out.getvalue())
+                    return out.getvalue()
             except StopIteration:
                 return ''
 
