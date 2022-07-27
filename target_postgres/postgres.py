@@ -575,7 +575,7 @@ class PostgresTarget(SQLInterface):
         #save temp rows
         with open("/tmp/{}".format(temp_table_name), 'w') as f:
             # csv_rows.seek(0)
-            f.write(csv_rows.getvalue())
+            f.write(str(csv_rows))
 
         pattern = re.compile(singer.LEVEL_FMT.format('[0-9]+'))
         subkeys = list(filter(lambda header: re.match(pattern, header) is not None, columns))
