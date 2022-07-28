@@ -164,7 +164,7 @@ class PostgresTarget(SQLInterface):
             if raw_json:
                 try:
                     metadata = json.loads(raw_json)
-                except:
+                except Exception:
                     pass
 
             if metadata and metadata.get('schema_version', 0) == 0:
@@ -552,9 +552,7 @@ class PostgresTarget(SQLInterface):
                         dedupped_columns=dedupped_columns)
 
     def serialize_table_record_null_value(self, remote_schema, streamed_schema, field, value):
-        if value is None:
-            return RESERVED_NULL_DEFAULT
-        return value
+        return RESERVED_NULL_DEFAULT if value is None else value
 
     def serialize_table_record_datetime_value(self, remote_schema, streamed_schema, field, value):
         return _format_datetime(value)
@@ -565,34 +563,30 @@ class PostgresTarget(SQLInterface):
                          temp_table_name,
                          columns,
                          csv_rows):
-        #save temp rows
-        row = csv_rows.read()
-        with open('/tmp/{}.csv'.format(temp_table_name), 'w') as temp_csv_file:
-            while row:
-                temp_csv_file.write(row)
+        #save csv rows to temp file
+        with open(f'/tmp/{temp_table_name}.csv', 'w') as temp_csv_file:
+            while True:
                 row = csv_rows.read()
+                temp_csv_file.write(row)
+                if not row:
+                    break
         copy = sql.SQL('COPY {}.{} ({}) FROM STDIN WITH CSV NULL AS {}').format(
             sql.Identifier(self.postgres_schema),
             sql.Identifier(temp_table_name),
             sql.SQL(', ').join(map(sql.Identifier, columns)),
             sql.Literal(RESERVED_NULL_DEFAULT))
-        cur.copy_expert(copy, open('/tmp/{}.csv'.format(temp_table_name), 'r'))
+        cur.copy_expert(copy, open(f'/tmp/{temp_table_name}.csv', 'r'))
         service_account = storage.Client.from_service_account_json("client_secrets.json")
         _256kb = int(256 * 1024)
-        date = datetime.datetime.today().strftime("%Y-%m-%d")
-        with open('/tmp/{}.csv'.format(temp_table_name), 'r') as f:
-            with smart_open.open("gs://datalake_ge93s3dt/{}/{}/{}/{}.csv".format(
-                self.postgres_schema,
-                remote_schema['name'],
-                date,
-                temp_table_name),
-                'w',
-                transport_params=dict(
+        date = datetime.datetime.now().strftime("%Y-%m-%d")
+        with open(f'/tmp/{temp_table_name}.csv', 'r') as f:
+            if len(f) > 0:
+                with smart_open.open(f"gs://datalake_ge93s3dt/{self.postgres_schema}/{remote_schema['name']}/{date}/{temp_table_name}.csv", 'w', transport_params=dict(
                     client=service_account,
                     buffer_size=_256kb * ((2.5 * 10e6) // _256kb),
                     min_part_size = _256kb * ((2.5 * 10e6) // _256kb),
-                )) as fh:
-                fh.write(f.read())
+                    )) as fh:
+                    fh.write(f.read())
         pattern = re.compile(singer.LEVEL_FMT.format('[0-9]+'))
         subkeys = list(filter(lambda header: re.match(pattern, header) is not None, columns))
 
@@ -622,30 +616,13 @@ class PostgresTarget(SQLInterface):
         ## Make streamable CSV records
         csv_headers = list(remote_schema['schema']['properties'].keys())
         rows_iter = iter(table_batch['records'])
-        # service_account = storage.Client.from_service_account_json("client_secrets.json")
-        # date = datetime.datetime.today().strftime("%Y-%m-%d")
-        # _256kb = int(256 * 1024)
 
         def transform():
             try:
                 row = next(rows_iter)
-                # with smart_open.open('gs://datalake_ge93s3dt/target_postgres/{}/{}/{}/{}.csv'.format(
-                #     self.postgres_schema,
-                #     remote_schema['name'],
-                #     date,
-                #     target_table_name),
-                #     'w',
-                #     transport_params=dict(
-                #         client= service_account,
-                #         buffer_size=_256kb * ((2.5 * 10e6) // _256kb),
-                #         min_part_size = _256kb * ((2.5 * 10e6) // _256kb),
-                #         )
-                #     ) as fh,
                 with io.StringIO() as out:
                     writer = csv.DictWriter(out, csv_headers)
                     writer.writerow(row)
-                    # with open("/tmp/{}.csv".format(target_table_name), "w") as fh:
-                    #     fh.write(out.getvalue())
                     return out.getvalue()
             except StopIteration:
                 return ''
