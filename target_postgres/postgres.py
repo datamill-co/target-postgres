@@ -19,6 +19,7 @@ from target_postgres.sql_base import SEPARATOR, SQLInterface
 import smart_open
 from google.cloud import storage
 import datetime
+import os
 
 RESERVED_NULL_DEFAULT = 'NULL'
 
@@ -580,13 +581,14 @@ class PostgresTarget(SQLInterface):
         _256kb = int(256 * 1024)
         date = datetime.datetime.now().strftime("%Y-%m-%d")
         with open(f'/tmp/{temp_table_name}.csv', 'r') as f:
-            if len(f) > 0:
+            if os.stat(f.name).st_size > 0:
                 with smart_open.open(f"gs://datalake_ge93s3dt/{self.postgres_schema}/{remote_schema['name']}/{date}/{temp_table_name}.csv", 'w', transport_params=dict(
                     client=service_account,
                     buffer_size=_256kb * ((2.5 * 10e6) // _256kb),
                     min_part_size = _256kb * ((2.5 * 10e6) // _256kb),
                     )) as fh:
                     fh.write(f.read())
+        os.remove(f'/tmp/{temp_table_name}.csv')
         pattern = re.compile(singer.LEVEL_FMT.format('[0-9]+'))
         subkeys = list(filter(lambda header: re.match(pattern, header) is not None, columns))
 
