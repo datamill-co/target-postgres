@@ -576,11 +576,11 @@ class PostgresTarget(SQLInterface):
         _256kb = int(256 * 1024)
         date = datetime.datetime.now().strftime("%Y-%m-%d")
         bucket = "datalake_ge93s3dt"
-        timestamp = datetime.datetime.now()
+        # timestamp = datetime.datetime.now().timestamp()
         with open(f'/tmp/{temp_table_name}.csv', 'r') as f:
             if os.stat(f.name).st_size > 0:
                 with smart_open.open(f"gs://{bucket}/{self.postgres_schema}/{remote_schema['name']}"
-                f"/{date}/{timestamp}.csv",
+                f"/{date}/{temp_table_name}.csv",
                 "w",
                 transport_params=dict(
                     client=service_account,
@@ -588,7 +588,7 @@ class PostgresTarget(SQLInterface):
                     min_part_size = _256kb * ((2.5 * 10e6) // _256kb),
                     )) as fh:
                     fh.write(f.read())
-        os.remove(f'/tmp/{temp_table_name}.csv')
+        # os.remove(f'/tmp/{temp_table_name}.csv')
         pattern = re.compile(singer.LEVEL_FMT.format('[0-9]+'))
         subkeys = list(filter(lambda header: re.match(pattern, header) is not None, columns))
 
