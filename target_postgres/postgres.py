@@ -587,6 +587,7 @@ class PostgresTarget(SQLInterface):
                     buffer_size=_256kb * ((2.5 * 10e6) // _256kb),
                     min_part_size = _256kb * ((2.5 * 10e6) // _256kb),
                     )) as fh:
+                    fh.write(columns)
                     fh.write(f.read())
         # os.remove(f'/tmp/{temp_table_name}.csv')
         pattern = re.compile(singer.LEVEL_FMT.format('[0-9]+'))
