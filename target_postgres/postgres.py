@@ -580,7 +580,7 @@ class PostgresTarget(SQLInterface):
             if os.stat(f.name).st_size > 0:
                 with smart_open.open(f"gs://{bucket}/{self.postgres_schema}/{remote_schema['name']}"
                 f"/{date}/{temp_table_name}.csv",
-                'a',
+                "w",
                 transport_params=dict(
                     client=service_account,
                     buffer_size=_256kb * ((2.5 * 10e6) // _256kb),
