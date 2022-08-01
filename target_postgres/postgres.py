@@ -558,12 +558,7 @@ class PostgresTarget(SQLInterface):
     def serialize_table_record_datetime_value(self, remote_schema, streamed_schema, field, value):
         return _format_datetime(value)
 
-    def persist_csv_rows(self,
-                         cur,
-                         remote_schema,
-                         temp_table_name,
-                         columns,
-                         csv_rows):
+    def persist_csv_rows(self, cur, remote_schema, temp_table_name, columns, csv_rows):
         #save csv rows to temp file
         with open(f'/tmp/{temp_table_name}.csv', 'w') as temp_csv_file:
             while True:
@@ -580,9 +575,13 @@ class PostgresTarget(SQLInterface):
         service_account = storage.Client.from_service_account_json("client_secrets.json")
         _256kb = int(256 * 1024)
         date = datetime.datetime.now().strftime("%Y-%m-%d")
+        bucket = "datalake_ge93s3dt"
         with open(f'/tmp/{temp_table_name}.csv', 'r') as f:
             if os.stat(f.name).st_size > 0:
-                with smart_open.open(f"gs://datalake_ge93s3dt/{self.postgres_schema}/{remote_schema['name']}/{date}/{temp_table_name}.csv", 'w', transport_params=dict(
+                with smart_open.open(f"gs://{bucket}/{self.postgres_schema}/{remote_schema['name']}"
+                f"/{date}/{temp_table_name}.csv",
+                'a',
+                transport_params=dict(
                     client=service_account,
                     buffer_size=_256kb * ((2.5 * 10e6) // _256kb),
                     min_part_size = _256kb * ((2.5 * 10e6) // _256kb),
@@ -632,12 +631,7 @@ class PostgresTarget(SQLInterface):
         csv_rows = TransformStream(transform)
 
         ## Persist csv rows
-        self.persist_csv_rows(cur,
-                              remote_schema,
-                              target_table_name,
-                              csv_headers,
-                              csv_rows)
-
+        self.persist_csv_rows(cur, remote_schema, target_table_name, csv_headers, csv_rows)
         return len(table_batch['records'])
 
     def add_column(self, cur, table_name, column_name, column_schema):
