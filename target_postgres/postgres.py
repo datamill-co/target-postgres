@@ -576,10 +576,11 @@ class PostgresTarget(SQLInterface):
         _256kb = int(256 * 1024)
         date = datetime.datetime.now().strftime("%Y-%m-%d")
         bucket = "datalake_ge93s3dt"
+        timestamp = datetime.datetime.now()
         with open(f'/tmp/{temp_table_name}.csv', 'r') as f:
             if os.stat(f.name).st_size > 0:
                 with smart_open.open(f"gs://{bucket}/{self.postgres_schema}/{remote_schema['name']}"
-                f"/{date}/{temp_table_name}.csv",
+                f"/{date}/{timestamp}.csv",
                 "w",
                 transport_params=dict(
                     client=service_account,
