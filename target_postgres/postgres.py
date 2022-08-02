@@ -16,10 +16,9 @@ from psycopg2.extras import LoggingConnection, LoggingCursor
 from target_postgres import json_schema, singer
 from target_postgres.exceptions import PostgresError
 from target_postgres.sql_base import SEPARATOR, SQLInterface
-import smart_open
-from google.cloud import storage
-import datetime
 import os
+
+from target_postgres.gcs import persist_csv_to_gcs
 
 RESERVED_NULL_DEFAULT = 'NULL'
 
@@ -133,6 +132,7 @@ class PostgresTarget(SQLInterface):
         except AttributeError:
             self.LOGGER.debug('PostgresTarget disabling logging all queries.')
 
+        self.config = kwargs.get("config", {})
         self.conn = connection
         self.postgres_schema = postgres_schema
         self.persist_empty_tables = persist_empty_tables
@@ -560,36 +560,25 @@ class PostgresTarget(SQLInterface):
 
     def persist_csv_rows(self, cur, remote_schema, temp_table_name, columns, csv_rows):
         #save csv rows to temp file
-        with open(f'/tmp/{temp_table_name}.csv', 'w') as temp_csv_file:
-            while True:
-                row = csv_rows.read()
-                temp_csv_file.write(row)
-                if not row:
-                    break
+        if self.config.get('persist_to_gcs'):
+            with open(f'/tmp/{temp_table_name}.csv', 'w') as temp_csv_file:
+                while True:
+                    row = csv_rows.read()
+                    temp_csv_file.write(row)
+                    if not row:
+                        break
+            file_handle = open(f'/tmp/{temp_table_name}.csv', 'r')
+        else:
+            file_handle = csv_rows
         copy = sql.SQL('COPY {}.{} ({}) FROM STDIN WITH CSV NULL AS {}').format(
             sql.Identifier(self.postgres_schema),
             sql.Identifier(temp_table_name),
             sql.SQL(', ').join(map(sql.Identifier, columns)),
             sql.Literal(RESERVED_NULL_DEFAULT))
-        cur.copy_expert(copy, open(f'/tmp/{temp_table_name}.csv', 'r'))
-        service_account = storage.Client.from_service_account_json("client_secrets.json")
-        _256kb = int(256 * 1024)
-        date = datetime.datetime.now().strftime("%Y-%m-%d")
-        bucket = "datalake_ge93s3dt"
-        # timestamp = datetime.datetime.now().timestamp()
-        with open(f'/tmp/{temp_table_name}.csv', 'r') as f:
-            if os.stat(f.name).st_size > 0:
-                with smart_open.open(f"gs://{bucket}/{self.postgres_schema}/{remote_schema['name']}"
-                f"/{date}/{temp_table_name}.csv",
-                "w",
-                transport_params=dict(
-                    client=service_account,
-                    buffer_size=_256kb * ((2.5 * 10e6) // _256kb),
-                    min_part_size = _256kb * ((2.5 * 10e6) // _256kb),
-                    )) as fh:
-                    fh.write(", ".join(columns) + "\n")
-                    fh.write(f.read())
-        # os.remove(f'/tmp/{temp_table_name}.csv')
+        cur.copy_expert(copy, file_handle)
+        if self.config.get('persist_to_gcs'):
+            persist_csv_to_gcs(self.postgres_schema,remote_schema["name"], temp_table_name, columns, self.config)
+            os.remove(f'/tmp/{temp_table_name}.csv')
         pattern = re.compile(singer.LEVEL_FMT.format('[0-9]+'))
         subkeys = list(filter(lambda header: re.match(pattern, header) is not None, columns))
 

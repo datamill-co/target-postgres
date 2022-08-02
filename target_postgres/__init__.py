@@ -32,6 +32,7 @@ def main(config, input_stream=None):
             add_upsert_indexes=config.get('add_upsert_indexes', True),
             before_run_sql=config.get('before_run_sql'),
             after_run_sql=config.get('after_run_sql'),
+            config=config,
         )
 
         if input_stream:
