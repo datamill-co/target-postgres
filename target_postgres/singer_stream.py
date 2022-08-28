@@ -71,7 +71,11 @@ class BufferedSingerStream():
 
         # The validator can handle _many_ more things than our simplified schema, and is, in general handled by third party code
         self.validator = Draft4Validator(schema, format_checker=FormatChecker())
-
+        
+        # Some taps do not provide 'properties' key, which causes the next block to fail
+        if not (self.schema and 'properties' in self.schema):
+            return
+        
         properties = self.schema['properties']
 
         if singer.RECEIVED_AT not in properties:
