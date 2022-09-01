@@ -71,7 +71,7 @@ class BufferedSingerStream():
 
         # The validator can handle _many_ more things than our simplified schema, and is, in general handled by third party code
         self.validator = Draft4Validator(schema, format_checker=FormatChecker())
-        
+
         properties = self.schema.get('properties', {})
 
         if singer.RECEIVED_AT not in properties:
