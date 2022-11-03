@@ -140,7 +140,7 @@ jobs:
             python -m venv venv/target-postgres
             source venv/target-postgres/bin/activate
             pip install -U pip
-            pip install -e .[tests]
+            poetry install --with tests
             deactivate
 
       - run:
