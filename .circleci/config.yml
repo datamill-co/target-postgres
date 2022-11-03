@@ -140,7 +140,7 @@ jobs:
             python -m venv venv/target-postgres
             source venv/target-postgres/bin/activate
             pip install -U pip
-            $POETRY_HOME/bin/poetry install --with tests
+            /opt/poetry/bin/poetry install --with tests
             deactivate
 
       - run:
@@ -371,7 +371,7 @@ jobs:
             pip install -U pip
             pip install --upgrade setuptools wheel twine
 
-            $POETRY_HOME/bin/poetry build
+            /opt/poetry/bin/poetry build
 
             deactivate
 
