@@ -220,7 +220,7 @@ jobs:
     <<: *test__base
     docker:
       - image: *py
-      - image: postgres:11.17
+      - image: postgres:11.17-bullseye
         environment:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
@@ -229,7 +229,7 @@ jobs:
     <<: *test__base
     docker:
       - image: *py
-      - image: postgres:10.22
+      - image: postgres:10.22-bullseye
         environment:
           POSTGRES_DB: target_postgres_test
           POSTGRES_PASSWORD: postgres
