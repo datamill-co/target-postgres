@@ -139,6 +139,7 @@ jobs:
           command: |
             python -m venv venv/target-postgres
             source venv/target-postgres/bin/activate
+            pip install -U pip
             pip install -e .[tests]
             deactivate
 
@@ -151,6 +152,7 @@ jobs:
           command: |
             python -m venv venv/tap-github
             source venv/tap-github/bin/activate
+            pip install -U pip
             pip install git+https://github.com/MeltanoLabs/tap-github.git@v1.1.0
             deactivate
 
@@ -159,6 +161,7 @@ jobs:
           command: |
             python -m venv venv/tap-postgres
             source venv/tap-postgres/bin/activate
+            pip install -U pip
             pip install tap-postgres
             deactivate
 
@@ -265,6 +268,7 @@ jobs:
           name: Data -> Target
           command: |
             source venv/target-postgres/bin/activate
+            pip install -U pip
             pip install .
             cd /code/.circleci/integration
 
@@ -292,6 +296,7 @@ jobs:
           name: Repeatability of Data -> Target
           command: |
             source venv/target-postgres/bin/activate
+            pip install -U pip
             pip install .
             cd /code/.circleci/integration
 
@@ -363,6 +368,7 @@ jobs:
           command: |
             source venv/target-postgres/bin/activate
 
+            pip install -U pip
             pip install --upgrade setuptools wheel twine
 
             poetry build
