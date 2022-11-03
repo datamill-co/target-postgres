@@ -99,6 +99,7 @@ install_poetry: &install_poetry
     command: |
       export POETRY_HOME=/opt/poetry
       python -m venv $POETRY_HOME
+      $POETRY_HOME/bin/pip install -U pip
       $POETRY_HOME/bin/pip install poetry==1.2.2
       $POETRY_HOME/bin/poetry --version
 
