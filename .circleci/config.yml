@@ -107,6 +107,7 @@ test__base: &test__base
   steps:
     - *checkout_command
     - *restore__cache
+    - *install_poetry
     - attach_workspace:
         at: "./"
 
@@ -133,6 +134,7 @@ jobs:
     steps:
       - *checkout_command
       - *restore__cache
+      - *install_poetry
 
       - run:
           name: Install target-postgres
