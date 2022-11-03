@@ -15,7 +15,7 @@ name = "attrs"
 version = "22.1.0"
 description = "Classes Without Boilerplate"
 category = "dev"
-optional = true
+optional = false
 python-versions = ">=3.5"
 
 [package.extras]
@@ -37,7 +37,7 @@ name = "chance"
 version = "0.110"
 description = "Minimalist generator of random strings, numbers, etc."
 category = "dev"
-optional = true
+optional = false
 python-versions = "*"
 
 [[package]]
@@ -53,7 +53,7 @@ name = "colorama"
 version = "0.4.6"
 description = "Cross-platform colored terminal text."
 category = "dev"
-optional = true
+optional = false
 python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,!=3.6.*,>=2.7"
 
 [[package]]
@@ -61,7 +61,7 @@ name = "exceptiongroup"
 version = "1.0.0"
 description = "Backport of PEP 654 (exception groups)"
 category = "dev"
-optional = true
+optional = false
 python-versions = ">=3.7"
 
 [package.extras]
@@ -72,7 +72,7 @@ name = "faker"
 version = "15.1.3"
 description = "Faker is a Python package that generates fake data for you."
 category = "dev"
-optional = true
+optional = false
 python-versions = ">=3.7"
 
 [package.dependencies]
@@ -84,7 +84,7 @@ name = "importlib-metadata"
 version = "5.0.0"
 description = "Read metadata from Python packages"
 category = "dev"
-optional = true
+optional = false
 python-versions = ">=3.7"
 
 [package.dependencies]
@@ -101,7 +101,7 @@ name = "iniconfig"
 version = "1.1.1"
 description = "iniconfig: brain-dead simple config-ini parsing"
 category = "dev"
-optional = true
+optional = false
 python-versions = "*"
 
 [[package]]
@@ -120,7 +120,7 @@ name = "packaging"
 version = "21.3"
 description = "Core utilities for Python packages"
 category = "dev"
-optional = true
+optional = false
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -131,7 +131,7 @@ name = "pluggy"
 version = "1.0.0"
 description = "plugin and hook calling mechanisms for python"
 category = "dev"
-optional = true
+optional = false
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -154,7 +154,7 @@ name = "pyparsing"
 version = "3.0.9"
 description = "pyparsing module - Classes and methods to define and execute parsing grammars"
 category = "dev"
-optional = true
+optional = false
 python-versions = ">=3.6.8"
 
 [package.extras]
@@ -165,7 +165,7 @@ name = "pytest"
 version = "7.2.0"
 description = "pytest: simple powerful testing with Python"
 category = "dev"
-optional = true
+optional = false
 python-versions = ">=3.7"
 
 [package.dependencies]
@@ -240,7 +240,7 @@ name = "tomli"
 version = "2.0.1"
 description = "A lil' TOML parser"
 category = "dev"
-optional = true
+optional = false
 python-versions = ">=3.7"
 
 [[package]]
@@ -256,20 +256,17 @@ name = "zipp"
 version = "3.10.0"
 description = "Backport of pathlib-compatible object wrapper for zip files"
 category = "dev"
-optional = true
+optional = false
 python-versions = ">=3.7"
 
 [package.extras]
 docs = ["furo", "jaraco.packaging (>=9)", "jaraco.tidelift (>=1.4)", "rst.linker (>=1.9)", "sphinx (>=3.5)"]
 testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools", "more-itertools", "pytest (>=6)", "pytest-black (>=0.3.7)", "pytest-checkdocs (>=2.4)", "pytest-cov", "pytest-enabler (>=1.3)", "pytest-flake8", "pytest-mypy (>=0.9.1)"]
 
-[extras]
-tests = []
-
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.7"
-content-hash = "57320b88896f9209c11b3ec52c5e26bdadbd7a4b863fbe7507f76b737f5ab710"
+content-hash = "f0e534715d4f1c9eb27e5e41444e47dbee73d6411ee26b77a606fe2ba01ba043"
 
 [metadata.files]
 arrow = [

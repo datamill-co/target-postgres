@@ -116,8 +116,6 @@ test__base: &test__base
         name: Run Tests
         command: |
           source venv/target-postgres/bin/activate
-          # FIXME: remove this once debugged
-          ls -l venv/target-postgres/bin/
           pytest --verbose tests/unit
         environment:
           POSTGRES_HOST: localhost
@@ -146,8 +144,6 @@ jobs:
             source venv/target-postgres/bin/activate
             pip install -U pip
             /opt/poetry/bin/poetry install --with tests
-            # FIXME: remove this, for debugging CI only
-            /opt/poetry/bin/poetry env info
             deactivate
 
       - run:
