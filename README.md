@@ -177,7 +177,7 @@ To disable anonymous data collection set `disable_collection` to `true` in the c
 
 ## Developing
 
-`target-postgres` utilizes [setup.py](https://python-packaging.readthedocs.io/en/latest/index.html) for package
+`target-postgres` utilizes [poetry](https://python-poetry.org/docs/) for package
 management, and [PyTest](https://docs.pytest.org/en/latest/contents.html) for testing.
 
 ### Documentation
@@ -227,7 +227,7 @@ $ EXPORT POSTGRES_USER='<your-user-name'  # Probably just 'postgres', make sure 
 To run tests, try:
 
 ```sh
-$ python setup.py pytest
+$ poetry run pytest
 ```
 
 If you've `bash` shelled into the Docker Compose container ([see above](#docker)), you should be able to simply use:
