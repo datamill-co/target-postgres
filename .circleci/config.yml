@@ -273,7 +273,7 @@ jobs:
           command: |
             source venv/target-postgres/bin/activate
             pip install -U pip
-            pip install .
+            /opt/poetry/bin/poetry install
             cd /code/.circleci/integration
 
             cat /code/artifacts/data/tap | target-postgres --config target-config.json
