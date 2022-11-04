@@ -71,7 +71,7 @@ workflows:
 
 cache: &cache deps-v7-{{ checksum "poetry.lock" }}-{{ checksum ".circleci/config.yml" }}
 
-py: &py python:3.7.7-stretch
+py: &py python:3.7.15-bullseye
 
 restore__cache: &restore__cache
   restore_cache:
