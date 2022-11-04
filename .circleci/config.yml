@@ -274,9 +274,11 @@ jobs:
             source venv/target-postgres/bin/activate
             pip install -U pip
             /opt/poetry/bin/poetry install
+            # FIXME: debug only
+            ls -l /code/venv/target-postgres/bin/
             cd /code/.circleci/integration
 
-            cat /code/artifacts/data/tap | target-postgres --config target-config.json
+            cat /code/artifacts/data/tap | /code/venv/target-postgres/bin/target-postgres --config target-config.json
 
             deactivate
 
