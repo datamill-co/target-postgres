@@ -114,7 +114,7 @@ class FakeStream(object):
         if sequence:
             self.sequence = sequence
         else:
-            self.sequence = arrow.get().timestamp
+            self.sequence = arrow.get().int_timestamp
         self.duplicate_sequence_delta = duplicate_sequence_delta
 
     def duplicate(self, force=False):
