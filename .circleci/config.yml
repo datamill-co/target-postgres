@@ -340,6 +340,7 @@ jobs:
     steps:
       - *checkout_command
       - *restore__cache
+      - *install_poetry
       - attach_workspace:
           at: "./"
 
