@@ -182,7 +182,7 @@ class BufferedSingerStream():
             if 'sequence' in record_message:
                 record[singer.SEQUENCE] = record_message['sequence']
             else:
-                record[singer.SEQUENCE] = arrow.get().timestamp()
+                record[singer.SEQUENCE] = int(arrow.get().timestamp())
 
             records.append(record)
 
