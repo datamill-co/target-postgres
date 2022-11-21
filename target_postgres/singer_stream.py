@@ -72,7 +72,7 @@ class BufferedSingerStream():
         # The validator can handle _many_ more things than our simplified schema, and is, in general handled by third party code
         self.validator = Draft4Validator(schema, format_checker=FormatChecker())
 
-        properties = self.schema['properties']
+        properties = self.schema.get('properties', {})
 
         if singer.RECEIVED_AT not in properties:
             properties[singer.RECEIVED_AT] = {
@@ -182,7 +182,7 @@ class BufferedSingerStream():
             if 'sequence' in record_message:
                 record[singer.SEQUENCE] = record_message['sequence']
             else:
-                record[singer.SEQUENCE] = arrow.get().timestamp
+                record[singer.SEQUENCE] = int(arrow.get().timestamp())
 
             records.append(record)
 
