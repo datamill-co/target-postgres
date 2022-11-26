@@ -119,13 +119,12 @@ by the PostgreSQL Global Development Group. Our [CI config](https://github.com/d
 
 | Version | Current minor | Supported | First Release      | Final Release     |
 | ------- | ------------- | --------- | ------------------ | ----------------- |
-| 12      | 12.2          | Yes       | October 3, 2019    | November 14, 2024 |
-| 11      | 11.7          | Yes       | October 18, 2018   | November 9, 2023  |
-| 10      | 10.12         | Yes       | October 5, 2017    | November 10, 2022 |
-| 9.6     | 9.6.17       | Yes       | September 29, 2016 | November 11, 2021 |
-| 9.5     | 9.5.21        | Yes       | January 7, 2016    | February 11, 2021 |
-| 9.4     | 9.4.26        | Yes       | December 18, 2014  | February 13, 2020 |
-| 9.3     | 9.3.25        | No        | September 9, 2013  | November 8, 2018  |
+| 15      | 15.0          | Yes       | October 13, 2022   | November 11, 2027 |
+| 14      | 14.5          | Yes       | September 30, 2021 | November 12, 2026 |
+| 13      | 13.8          | Yes       | September 24, 2020 | November 13, 2025 |
+| 12      | 12.12         | Yes       | October 3, 2019    | November 14, 2024 |
+| 11      | 11.17         | Yes       | October 18, 2018   | November 9, 2023  |
+| 10      | 10.22         | Yes       | October 5, 2017    | November 10, 2022 |
 
 _The above is copied from the [current list of versions](https://www.postgresql.org/support/versioning/) on Postgresql.org_
 
@@ -178,7 +177,7 @@ To disable anonymous data collection set `disable_collection` to `true` in the c
 
 ## Developing
 
-`target-postgres` utilizes [setup.py](https://python-packaging.readthedocs.io/en/latest/index.html) for package
+`target-postgres` utilizes [poetry](https://python-poetry.org/docs/) for package
 management, and [PyTest](https://docs.pytest.org/en/latest/contents.html) for testing.
 
 ### Documentation
@@ -228,7 +227,7 @@ $ EXPORT POSTGRES_USER='<your-user-name'  # Probably just 'postgres', make sure 
 To run tests, try:
 
 ```sh
-$ python setup.py pytest
+$ poetry run pytest
 ```
 
 If you've `bash` shelled into the Docker Compose container ([see above](#docker)), you should be able to simply use:

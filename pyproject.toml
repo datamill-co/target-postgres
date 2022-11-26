@@ -1,0 +1,49 @@
+[tool.poetry]
+name = "singer-target-postgres"
+version = "0.2.4"
+authors = ["datamill"]
+description = "Singer.io target for loading data into postgres"
+readme = "README.md"
+homepage = "https://github.com/datamill-co/target-postgres"
+repository = "https://github.com/datamill-co/target-postgres"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+license = "MIT"
+packages = [{include = "target_postgres"}]
+
+[project.urls]
+"Homepage" = "https://github.com/datamill-co/target-postgres"
+"Bug Tracker" = "https://github.com/datamill-co/target-postgres/issues"
+
+
+[tool.poetry.dependencies]
+python = ">=3.7"
+arrow = "^1.2.3"
+psycopg2-binary = "^2.9.5"
+singer-python = "^5.9.0"
+
+[tool.poetry.group.tests]
+optional = true
+
+[tool.poetry.group.tests.dependencies]
+chance = "^0.110"
+Faker = "^15.1.3"
+pytest = "^7.2.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+# CLI declaration
+target-postgres = 'target_postgres:cli'
