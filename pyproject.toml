@@ -30,7 +30,7 @@ packages = [{include = "target_postgres"}]
 python = ">=3.7"
 arrow = "^1.2.3"
 psycopg2-binary = "^2.9.5"
-singer-python = "^5.9.0"
+singer-python = {git = "https://github.com/peliqan-io/singer-python", branch = "master"}
 
 [tool.poetry.group.tests]
 optional = true
