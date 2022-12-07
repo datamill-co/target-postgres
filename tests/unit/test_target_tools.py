@@ -154,6 +154,54 @@ def test_record_with_multiple_of():
     assert rows_persisted == expected_rows
 
 
+def test_record_with_target_postgres_precision():
+    values = [1, 1.0, 2, 2.0, 3, 7, 10.1]
+    records = []
+    for value in values:
+        records.append({
+            "type": "RECORD",
+            "stream": "test",
+            "record": {"multipleOfKey": value},
+        })
+
+    class TestStream(ListStream):
+        stream = [
+            {
+                "type": "SCHEMA",
+                "stream": "test",
+                "schema": {
+                    "properties": {
+                        "multipleOfKey": {
+                            "type": [
+                            "null",
+                            "number"
+                            ],
+                            "exclusiveMaximum": True,
+                            "maximum": 100000000000000000000000000000000000000000000000000000000000000,
+                            "multipleOf": 1e-38,
+                            "exclusiveMinimum": True,
+                            "minimum": -100000000000000000000000000000000000000000000000000000000000000
+                        }
+                    }
+                },
+                "key_properties": []
+            }
+        ] + records
+
+    target = Target()
+
+    config = CONFIG.copy()
+    config['decimal_precision'] = 100
+    target_tools.stream_to_target(TestStream(), target, config=config)
+
+    expected_rows = len(records)
+    rows_persisted = 0
+    for call in target.calls['write_batch']:
+        rows_persisted += call['records_count']
+
+    assert rows_persisted == expected_rows
+
+
 def test_state__capture(capsys):
     stream = [
         json.dumps({'type': 'STATE', 'value': {'test': 'state-1'}}),
