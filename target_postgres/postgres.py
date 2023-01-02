@@ -510,11 +510,12 @@ class PostgresTarget(SQLInterface):
             insert_columns_list.append(sql.SQL('{}').format(sql.Identifier(column)))
             dedupped_columns_list.append(sql.SQL('{}.{}').format(sql.Identifier('dedupped'),
                                                                  sql.Identifier(column)))
-            compare_list.append(sql.SQL('{}.{} = {}.{}').format(
-                full_table_name,
-                sql.Identifier(column),
-                sql.Identifier('dedupped'),
-                sql.Identifier(column)))
+            if column.startswidth("_sdc_"):
+                compare_list.append(sql.SQL('{}.{} = {}.{}').format(
+                    full_table_name,
+                    sql.Identifier(column),
+                    sql.Identifier('dedupped'),
+                    sql.Identifier(column)))
         insert_columns = sql.SQL(', ').join(insert_columns_list)
         dedupped_columns = sql.SQL(', ').join(dedupped_columns_list)
         compare = sql.SQL(' AND ').join(compare_list)
