@@ -594,7 +594,7 @@ class PostgresTarget(SQLInterface):
                                           canonicalized_key_properties,
                                           columns,
                                           subkeys)
-        print(cur.execute(update_sql))
+        cur.execute(update_sql)
 
     def write_table_batch(self, cur, table_batch, metadata):
         remote_schema = table_batch['remote_schema']
