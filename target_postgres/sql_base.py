@@ -463,6 +463,10 @@ class SQLInterface:
                                     table_name,
                                     canonicalized_column_name,
                                     column_schema)
+                    
+                    if schema['key_properties'] and schema['key_properties'] == canonicalized_column_name:
+                        self.add_primary_key(connection, table_name, canonicalized_column_name)
+                    
                     self.add_column_mapping(connection,
                                             table_name,
                                             column_path,

@@ -441,6 +441,17 @@ class PostgresTarget(SQLInterface):
 
         return mapping['to']
 
+    def add_primary_key(self, cur, table_name, column_name):
+        
+        cur.execute(sql.SQL('''
+            ALTER TABLE {table_schema}.{table_name}
+            ADD PRIMARY KEY ({column_name});
+        ''')).format(
+            table_schema=sql.Identifier(self.postgres_schema),
+            table_name=sql.Identifier(table_name),
+            column_name=sql.Identifier(column_name)
+        )
+
     def _get_update_sql(self, target_table_name, temp_table_name, key_properties, columns, subkeys):
         full_table_name = sql.SQL('{}.{}').format(
             sql.Identifier(self.postgres_schema),
