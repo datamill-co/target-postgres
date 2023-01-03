@@ -529,9 +529,7 @@ class PostgresTarget(SQLInterface):
         compare = sql.SQL(' AND ').join(compare_list)
 
         return sql.SQL('''
-            DELETE FROM {temp_table} WHERE {pk_temp_select} IN (
-                SELECT {pk_temp_select} FROM {temp_table} as "dedupped" JOIN {table} ON {pk_where}{sequence_join} WHERE {compare}
-            );
+            DELETE FROM {temp_table} WHERE {pk_temp_select} IN (SELECT {pk_temp_select} FROM {temp_table} as "dedupped" JOIN {table} ON {pk_where}{sequence_join} WHERE {compare});
             DELETE FROM {table} USING (
                     SELECT "dedupped".*
                     FROM (
