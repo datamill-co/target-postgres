@@ -526,7 +526,10 @@ class PostgresTarget(SQLInterface):
                     ))
         insert_columns = sql.SQL(', ').join(insert_columns_list)
         dedupped_columns = sql.SQL(', ').join(dedupped_columns_list)
-        compare = sql.SQL(' AND ').join(compare_list)
+        if not compare_list:
+            compare = sql.SQL('false')
+        else:
+            compare = sql.SQL(' AND ').join(compare_list)
 
         return sql.SQL('''
             DELETE FROM {temp_table} WHERE {pk_temp_select} IN (SELECT {pk_temp_select} FROM {temp_table} as "dedupped" JOIN {table} ON {pk_where}{sequence_join} WHERE {compare});
