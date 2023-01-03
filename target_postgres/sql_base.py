@@ -464,7 +464,7 @@ class SQLInterface:
                                     canonicalized_column_name,
                                     column_schema)
                     
-                    if schema['key_properties'] and schema['key_properties'] == canonicalized_column_name:
+                    if schema['key_properties'] and schema['key_properties'][0] == canonicalized_column_name:
                         self.add_primary_key(connection, table_name, canonicalized_column_name)
                     
                     self.add_column_mapping(connection,
@@ -689,6 +689,9 @@ class SQLInterface:
         :return: literal
         """
         raise NotImplementedError('`parse_table_record_serialize_null_value` not implemented.')
+
+    def add_primary_key(self, cur, table_name, column_name):
+        raise NotImplementedError('`add_primary_key` not implemented.')
 
     def serialize_table_record_datetime_value(
             self, remote_schema, streamed_schema, field, value):
