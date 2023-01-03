@@ -482,6 +482,7 @@ class PostgresTarget(SQLInterface):
                     table=full_table_name,
                     pk=pk_identifier))
         pk_temp_select = sql.SQL(', ').join(pk_temp_select_list)
+        pk_temp_select_concat = sql.SQL(' || ').join(pk_temp_select_list)
         pk_where = sql.SQL(' AND ').join(pk_where_list)
         pk_null = sql.SQL(' AND ').join(pk_null_list)
         cxt_where = sql.SQL(' AND ').join(cxt_where_list)
@@ -532,7 +533,7 @@ class PostgresTarget(SQLInterface):
             compare = sql.SQL(' AND ').join(compare_list)
 
         return sql.SQL('''
-            DELETE FROM {temp_table} WHERE {pk_temp_select} IN (SELECT {pk_temp_select} FROM {temp_table} as "dedupped" JOIN {table} ON {pk_where}{sequence_join} WHERE {compare});
+            DELETE FROM {temp_table} WHERE {pk_temp_select_concat} IN (SELECT {pk_temp_select_concat} FROM {temp_table} as "dedupped" JOIN {table} ON {pk_where}{sequence_join} WHERE {compare});
             DELETE FROM {table} USING (
                     SELECT "dedupped".*
                     FROM (
@@ -559,6 +560,7 @@ class PostgresTarget(SQLInterface):
             ''').format(table=full_table_name,
                         temp_table=full_temp_table_name,
                         pk_temp_select=pk_temp_select,
+                        pk_temp_select_concat=pk_temp_select_concat,
                         pk_where=pk_where,
                         cxt_where=cxt_where,
                         sequence_join=sequence_join,

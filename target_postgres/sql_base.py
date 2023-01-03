@@ -464,7 +464,7 @@ class SQLInterface:
                                     canonicalized_column_name,
                                     column_schema)
                     
-                    if schema['key_properties'] and schema['key_properties'][0] == canonicalized_column_name:
+                    if schema['key_properties'] and len(schema['key_properties']) and schema['key_properties'][0].lower() == canonicalized_column_name.lower() and (not schema['key_properties'][0].startswith("_sdc")):
                         self.add_primary_key(connection, table_name, canonicalized_column_name)
                     
                     self.add_column_mapping(connection,
