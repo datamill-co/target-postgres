@@ -313,7 +313,7 @@ class PostgresTarget(SQLInterface):
                 return written_batches_details
             except Exception as ex:
                 cur.execute('ROLLBACK;')
-                message = 'Exception writing records'
+                message = f'Exception writing records for stream {stream_buffer.stream}'
                 self.LOGGER.exception(message)
                 raise PostgresError(message, ex)
 
