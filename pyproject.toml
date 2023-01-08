@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "singer-target-postgres"
-version = "0.2.4"
+version = "0.2.5"
 authors = ["datamill"]
 description = "Singer.io target for loading data into postgres"
 readme = "README.md"
