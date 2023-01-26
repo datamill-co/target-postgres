@@ -32,7 +32,7 @@ def _format_datetime(value):
 def _update_schema_0_to_1(table_metadata, table_schema):
     """
     Given a `table_schema` of version 0, update it to version 1.
-
+    
     :param table_metadata: Table Metadata
     :param table_schema: TABLE_SCHEMA
     :return: Table Metadata
@@ -50,7 +50,7 @@ def _update_schema_0_to_1(table_metadata, table_schema):
 def _update_schema_1_to_2(table_metadata, table_path):
     """
     Given a `table_metadata` of version 1, update it to version 2.
-
+    
     :param table_metadata: Table Metadata
     :param table_path: [String, ...]
     :return: Table Metadata
@@ -145,7 +145,7 @@ class PostgresTarget(SQLInterface):
     def _update_schemas_0_to_1(self, cur):
         """
         Given a Cursor for a Postgres Connection, upgrade table schemas at version 0 to version 1.
-
+        
         :param cur: Cursor
         :return: None
         """
@@ -175,7 +175,7 @@ class PostgresTarget(SQLInterface):
     def _update_schemas_1_to_2(self, cur):
         """
         Given a Cursor for a Postgres Connection, upgrade table schemas at version 1 to version 2.
-
+        
         :param cur: Cursor
         :return: None
         """
@@ -458,14 +458,15 @@ class PostgresTarget(SQLInterface):
             sql.Identifier(temp_table_name))
 
         pk_temp_select_list = []
+        pk_temp_select_dedupped_list = []
         pk_where_list = []
         pk_null_list = []
         cxt_where_list = []
         for pk in key_properties:
             pk_identifier = sql.Identifier(pk)
-            pk_temp_select_list.append(sql.SQL('{}.{}').format(full_temp_table_name,
-                                                               pk_identifier))
-
+            pk_temp_select_list.append(sql.SQL('{}.{}').format(full_temp_table_name, pk_identifier))
+            pk_temp_select_dedupped_list.append(sql.SQL('"dedupped".{}').format(pk_identifier))
+            
             pk_where_list.append(
                 sql.SQL('{table}.{pk} = "dedupped".{pk}').format(
                     table=full_table_name,
@@ -483,6 +484,7 @@ class PostgresTarget(SQLInterface):
                     pk=pk_identifier))
         pk_temp_select = sql.SQL(', ').join(pk_temp_select_list)
         pk_temp_select_concat = sql.SQL(' || ').join(pk_temp_select_list)
+        pk_temp_select_concat_dedupped = sql.SQL(' || ').join(pk_temp_select_dedupped_list)
         pk_where = sql.SQL(' AND ').join(pk_where_list)
         pk_null = sql.SQL(' AND ').join(pk_null_list)
         cxt_where = sql.SQL(' AND ').join(cxt_where_list)
@@ -533,7 +535,7 @@ class PostgresTarget(SQLInterface):
             compare = sql.SQL(' AND ').join(compare_list)
 
         return sql.SQL('''
-            DELETE FROM {temp_table} WHERE {pk_temp_select_concat} IN (SELECT {pk_temp_select_concat} FROM {temp_table} as "dedupped" JOIN {table} ON {pk_where}{sequence_join} WHERE {compare});
+            DELETE FROM {temp_table} WHERE {pk_temp_select_concat} IN (SELECT {pk_temp_select_concat_dedupped} FROM {temp_table} as "dedupped" JOIN {table} ON {pk_where}{sequence_join} WHERE {compare});
             DELETE FROM {table} USING (
                     SELECT "dedupped".*
                     FROM (
@@ -556,11 +558,11 @@ class PostgresTarget(SQLInterface):
                 LEFT JOIN {table} ON {pk_where}
                 WHERE pk_ranked = 1 AND {pk_null}
             );
-            DROP TABLE {temp_table};
             ''').format(table=full_table_name,
                         temp_table=full_temp_table_name,
                         pk_temp_select=pk_temp_select,
                         pk_temp_select_concat=pk_temp_select_concat,
+                        pk_temp_select_concat_dedupped=pk_temp_select_concat_dedupped,
                         pk_where=pk_where,
                         cxt_where=cxt_where,
                         sequence_join=sequence_join,
@@ -897,3 +899,4 @@ class PostgresTarget(SQLInterface):
             sql_type += ' NOT NULL'
 
         return sql_type
+        
