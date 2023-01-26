@@ -558,6 +558,7 @@ class PostgresTarget(SQLInterface):
                 LEFT JOIN {table} ON {pk_where}
                 WHERE pk_ranked = 1 AND {pk_null}
             );
+            DROP TABLE {temp_table};
             ''').format(table=full_table_name,
                         temp_table=full_temp_table_name,
                         pk_temp_select=pk_temp_select,
