@@ -63,6 +63,9 @@ def _get_streamed_table_schemas(schema, key_properties, bookmark_properties):
 
 
 def _to_table_schema(path, level, keys, bookmarks, properties):
+    bookmarks = bookmarks or []
+    keys = keys or []
+
     for key in keys:
         if not (key,) in properties:
             raise Exception('Unknown key "{}" found for table "{}". Known fields are: {}'.format(
