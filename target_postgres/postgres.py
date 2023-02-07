@@ -596,9 +596,10 @@ class PostgresTarget(SQLInterface):
         canonicalized_key_properties = [self.fetch_column_from_path((key_property,), remote_schema)[0]
                                         for key_property in remote_schema['key_properties']]
 
-        canonicalized_bookmark_properties = [self.fetch_column_from_path((bookmark_property,), remote_schema)[0]
-                                            for bookmark_property in remote_schema['bookmark_properties']
-                                            if 'bookmark_properties' in remote_schema]
+        canonicalized_bookmark_properties = []
+        if 'bookmark_properties' in remote_schema:
+            for bookmark_property in remote_schema['bookmark_properties']:
+                canonicalized_bookmark_properties.append(self.fetch_column_from_path((bookmark_property,), remote_schema)[0])
 
         update_sql = self._get_update_sql(remote_schema['name'],
                                           temp_table_name,
