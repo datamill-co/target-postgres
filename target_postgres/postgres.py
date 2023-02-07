@@ -305,6 +305,7 @@ class PostgresTarget(SQLInterface):
                                                                   root_table_name,
                                                                   stream_buffer.schema,
                                                                   stream_buffer.key_properties,
+                                                                  stream_buffer.bookmark_properties,
                                                                   stream_buffer.get_batch(),
                                                                   {'version': target_table_version})
 
@@ -420,6 +421,16 @@ class PostgresTarget(SQLInterface):
             metadata['key_properties'] = key_properties
             self._set_table_metadata(cur, table_name, metadata)
 
+    def add_bookmark_properties(self, cur, table_name, bookmark_properties):
+        if not bookmark_properties:
+            return None
+
+        metadata = self._get_table_metadata(cur, table_name)
+
+        if 'bookmark_properties' not in metadata:
+            metadata['bookmark_properties'] = bookmark_properties
+            self._set_table_metadata(cur, table_name, metadata)
+
     def add_table(self, cur, path, name, metadata):
         self._validate_identifier(name)
 
@@ -441,13 +452,18 @@ class PostgresTarget(SQLInterface):
 
         return mapping['to']
 
-    def _get_update_sql(self, target_table_name, temp_table_name, key_properties, columns, subkeys):
+    def _get_update_sql(self, target_table_name, temp_table_name, key_properties, bookmark_properties, columns, subkeys):
         full_table_name = sql.SQL('{}.{}').format(
             sql.Identifier(self.postgres_schema),
             sql.Identifier(target_table_name))
         full_temp_table_name = sql.SQL('{}.{}').format(
             sql.Identifier(self.postgres_schema),
             sql.Identifier(temp_table_name))
+
+        bookmark_temp_select_list = []
+        for bookmark in bookmark_properties:
+            bookmark_identifier = sql.Identifier(bookmark)
+            bookmark_temp_select_list.append(sql.SQL('{}.{} DESC').format(full_temp_table_name, bookmark_identifier))
 
         pk_temp_select_list = []
         pk_where_list = []
@@ -474,6 +490,7 @@ class PostgresTarget(SQLInterface):
                     table=full_table_name,
                     pk=pk_identifier))
         pk_temp_select = sql.SQL(', ').join(pk_temp_select_list)
+        bookmark_temp_select = sql.SQL(', ').join(bookmark_temp_select_list)
         pk_where = sql.SQL(' AND ').join(pk_where_list)
         pk_null = sql.SQL(' AND ').join(pk_null_list)
         cxt_where = sql.SQL(' AND ').join(cxt_where_list)
@@ -483,8 +500,9 @@ class PostgresTarget(SQLInterface):
             full_table_name,
             sql.Identifier(singer.SEQUENCE))
 
-        distinct_order_by = sql.SQL(' ORDER BY {}, {}.{} DESC').format(
+        distinct_order_by = sql.SQL(' ORDER BY {}, {}, {}.{} DESC').format(
             pk_temp_select,
+            bookmark_temp_select,
             full_temp_table_name,
             sql.Identifier(singer.SEQUENCE))
 
@@ -495,8 +513,9 @@ class PostgresTarget(SQLInterface):
                                                                           sql.Identifier(pk)))
             insert_distinct_on = sql.SQL(', ').join(pk_temp_subkey_select_list)
 
-            insert_distinct_order_by = sql.SQL(' ORDER BY {}, {}.{} DESC').format(
+            insert_distinct_order_by = sql.SQL(' ORDER BY {}, {}, {}.{} DESC').format(
                 insert_distinct_on,
+                bookmark_temp_select,
                 full_temp_table_name,
                 sql.Identifier(singer.SEQUENCE))
         else:
@@ -577,9 +596,13 @@ class PostgresTarget(SQLInterface):
         canonicalized_key_properties = [self.fetch_column_from_path((key_property,), remote_schema)[0]
                                         for key_property in remote_schema['key_properties']]
 
+        canonicalized_bookmark_properties = [self.fetch_column_from_path((bookmark_property,), remote_schema)[0]
+                                            for bookmark_property in remote_schema['bookmark_properties']]
+
         update_sql = self._get_update_sql(remote_schema['name'],
                                           temp_table_name,
                                           canonicalized_key_properties,
+                                          canonicalized_bookmark_properties,
                                           columns,
                                           subkeys)
         cur.execute(update_sql)

@@ -226,6 +226,16 @@ class SQLInterface:
         """
         raise NotImplementedError('`add_key_properties` not implemented.')
 
+    def add_bookmark_properties(self, connection, table_name, bookmark_properties):
+        """
+
+        :param connection: remote connection, type left to be determined by implementing class
+        :param table_name: string
+        :param bookmark_properties: [string, ...]
+        :return: None
+        """
+        raise NotImplementedError('`add_bookmark_properties` not implemented.')
+
     def add_table_mapping_helper(self, from_path, table_mappings):
         """
 
@@ -404,6 +414,7 @@ class SQLInterface:
                 existing_table = False
 
             self.add_key_properties(connection, table_name, schema.get('key_properties', None))
+            self.add_bookmark_properties(connection, table_name, schema.get('bookmark_properties', None))
 
             ## Build up mappings to compare new columns against existing
             mappings = []
@@ -791,7 +802,7 @@ class SQLInterface:
         """
         raise NotImplementedError('`write_table_batch` not implemented.')
 
-    def write_batch_helper(self, connection, root_table_name, schema, key_properties, records, metadata):
+    def write_batch_helper(self, connection, root_table_name, schema, key_properties, bookmark_properties, records, metadata):
         """
         Write all `table_batch`s associated with the given `schema` and `records` to remote.
 
@@ -816,7 +827,7 @@ class SQLInterface:
                     key_properties
                 ))
 
-                for table_batch in denest.to_table_batches(schema, key_properties, records):
+                for table_batch in denest.to_table_batches(schema, key_properties, bookmark_properties, records):
                     table_batch['streamed_schema']['path'] = (root_table_name,) + \
                                                              table_batch['streamed_schema']['path']
 

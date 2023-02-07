@@ -31,6 +31,7 @@ class BufferedSingerStream():
                  stream,
                  schema,
                  key_properties,
+                 bookmark_properties,
                  *args,
                  invalid_records_detect=None,
                  invalid_records_threshold=None,
@@ -43,8 +44,9 @@ class BufferedSingerStream():
         """
         self.schema = None
         self.key_properties = None
+        self.bookmark_properties = None
         self.validator = None
-        self.update_schema(schema, key_properties)
+        self.update_schema(schema, key_properties, bookmark_properties)
 
         self.stream = stream
         self.invalid_records = []
@@ -64,10 +66,11 @@ class BufferedSingerStream():
         self.__size = 0
         self.__lifetime_max_version = None
 
-    def update_schema(self, schema, key_properties):
+    def update_schema(self, schema, key_properties, bookmark_properties):
         # In order to determine whether a value _is in_ properties _or not_ we need to flatten `$ref`s etc.
         self.schema = json_schema.simplify(schema)
         self.key_properties = deepcopy(key_properties)
+        self.bookmark_properties = deepcopy(bookmark_properties)
 
         # The validator can handle _many_ more things than our simplified schema, and is, in general handled by third party code
         self.validator = Draft4Validator(schema, format_checker=FormatChecker())

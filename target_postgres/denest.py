@@ -3,7 +3,7 @@ from copy import deepcopy
 from target_postgres import json_schema, singer
 
 
-def to_table_batches(schema, key_properties, records):
+def to_table_batches(schema, key_properties, bookmark_properties, records):
     """
     Given a schema, and records, get all table schemas and records and prep them
     in a `table_batch`.
@@ -18,7 +18,8 @@ def to_table_batches(schema, key_properties, records):
               ...]
     """
     table_schemas = _get_streamed_table_schemas(schema,
-                                                key_properties)
+                                                key_properties,
+                                                bookmark_properties)
 
     table_records = _get_streamed_table_records(key_properties,
                                                 records)
@@ -30,13 +31,14 @@ def to_table_batches(schema, key_properties, records):
     return writeable_batches
 
 
-def _get_streamed_table_schemas(schema, key_properties):
+def _get_streamed_table_schemas(schema, key_properties, bookmark_properties):
     """
     Given a `schema` and `key_properties` return the denested/flattened TABLE_SCHEMA of
     the root table and each sub table.
 
     :param schema: SingerStreamSchema
     :param key_properties: [string, ...]
+    :param bookmark_properties: [string, ...]
     :return: [TABLE_SCHEMA(denested_streamed_schema_0), ...]
     """
     root_table_schema = json_schema.simplify(schema)
@@ -47,24 +49,37 @@ def _get_streamed_table_schemas(schema, key_properties):
         key_prop_schemas[key] = schema['properties'][key]
     _denest_schema(tuple(), root_table_schema, key_prop_schemas, subtables)
 
-    ret = [_to_table_schema(tuple(), None, key_properties, root_table_schema['properties'])]
+    ret = [_to_table_schema(tuple(), None, key_properties, bookmark_properties, root_table_schema['properties'])]
     for path, schema in subtables.items():
-        ret.append(_to_table_schema(path, schema['level'], schema['key_properties'], schema['properties']))
+        ret.append(_to_table_schema(
+            path,
+            schema['level'],
+            schema['key_properties'],
+            schema['bookmark_properties'],
+            schema['properties']
+        ))
 
     return ret
 
 
-def _to_table_schema(path, level, keys, properties):
+def _to_table_schema(path, level, keys, bookmarks, properties):
     for key in keys:
         if not (key,) in properties:
             raise Exception('Unknown key "{}" found for table "{}". Known fields are: {}'.format(
                 key, path, properties
             ))
 
+    for bookmark in bookmarks:
+        if not (bookmark,) in properties:
+            raise Exception('Unknown bookmark "{}" found for table "{}". Known fields are: {}'.format(
+                bookmark, path, properties
+            ))
+
     return {'type': 'TABLE_SCHEMA',
             'path': path,
             'level': level,
             'key_properties': keys,
+            'bookmark_properties': bookmarks,
             'mappings': [],
             'schema': {'type': 'object',
                        'additionalProperties': False,

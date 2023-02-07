@@ -119,10 +119,16 @@ def _line_handler(state_tracker, target, invalid_records_detect, invalid_records
         else:
             key_properties = None
 
+        if 'bookmark_properties' in line_data:
+            bookmark_properties = line_data['bookmark_properties']
+        else:
+            bookmark_properties = None
+
         if stream not in state_tracker.streams:
             buffered_stream = BufferedSingerStream(stream,
                                                    schema,
                                                    key_properties,
+                                                   bookmark_properties,
                                                    invalid_records_detect=invalid_records_detect,
                                                    invalid_records_threshold=invalid_records_threshold)
             if max_batch_rows:
@@ -132,7 +138,7 @@ def _line_handler(state_tracker, target, invalid_records_detect, invalid_records
 
             state_tracker.register_stream(stream, buffered_stream)
         else:
-            state_tracker.streams[stream].update_schema(schema, key_properties)
+            state_tracker.streams[stream].update_schema(schema, key_properties, bookmark_properties)
     elif line_data['type'] == 'RECORD':
         if 'stream' not in line_data:
             raise TargetError('`stream` is a required key: {}'.format(line))
