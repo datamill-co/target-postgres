@@ -25,6 +25,14 @@ from target_postgres import json_schema
 
 SEPARATOR = '__'
 CURRENT_SCHEMA_VERSION = 2
+KEYWORDS = ["word", "zone", "yes", "year", "xmltable", "xmlserialize", "xmlroot", "xmlpi", "xmlparse", "xmlnamespaces",
+            "xmlforest", "xmlexists", "xmlelement", "xmlconcat", "xmlattributes", "xml", "write", "wrapper", "work", "without",
+            "within", "with", "window", "whitespace", "where", "when", "volatile", "views", "view", "version", "verbose", "varying",
+            "variadic", "varchar", "values", "value", "validator", "validate", "valid", "vacuum", "using", "user", "update", "until",
+            "unlogged", "unlisten", "unknown", "unique", "union", "unencrypted", "uncommitted", "unbounded", "types", "type", "trusted",
+            "truncate", "true", "trim", "trigger", "treat", "transform", "transaction", "trailing", "to", "timestamp", "time", "ties", "then",
+            "text", "temporary", "template", "temp", "tablespace", "tablesample", "tables", "table", "system", "sysid", "symmetric", "substring",
+            "subscription", "strip", "strict", "storage", "stdout", "stdin", "statistics", "statement", "start", "standalone", "stable", "sql", "some", "snapshot", "smallint", "skip", "simple", "similar", "show", "share", "sets", "setof", "set", "session_user", "session", "server", "serializable", "sequences", "sequence", "select", "security", "second", "search", "scroll", "schemas", "schema", "savepoint", "rule", "rows", "row", "routines", "routine", "rollup", "rollback", "role", "right", "revoke", "returns", "returning", "restrict", "restart", "reset", "replica", "replace", "repeatable", "rename", "release", "relative", "reindex", "refresh", "referencing", "references", "ref", "recursive", "recheck", "reassign", "real", "read", "range", "quote", "publication", "program", "procedures", "procedure", "procedural", "privileges", "prior", "primary", "preserve", "prepared", "prepare", "precision", "preceding", "position", "policy", "plans", "placing", "password", "passing", "partition", "partial", "parser", "parallel", "owner", "owned", "overriding", "overlay", "overlaps", "over", "outer", "out", "others", "ordinality", "order", "or", "options", "option", "operator", "only", "on", "old", "oids", "offset", "off", "of", "object", "numeric", "nulls", "nullif", "null", "nowait", "notnull", "notify", "nothing", "not", "none", "no", "next", "new", "nchar", "natural", "national", "names", "name", "move", "month", "mode", "minvalue", "minute", "method", "maxvalue", "materialized", "match", "mapping", "logged", "locked", "lock", "location", "localtimestamp", "localtime", "local", "load", "listen", "limit", "like", "level", "left", "least", "leakproof", "leading", "lateral", "last", "large", "language", "label", "key", "join", "isolation", "isnull", "is", "invoker", "into", "interval", "intersect", "integer", "int", "instead", "insert", "insensitive", "input", "inout", "inner", "inline", "initially", "inherits", "inherit", "indexes", "index", "increment", "including", "include", "in", "import", "implicit", "immutable", "immediate", "ilike", "if", "identity", "hour", "hold", "header", "having", "handler", "groups", "grouping", "group", "greatest", "granted", "grant", "global", "generated", "functions", "function", "full", "from", "freeze", "forward", "foreign", "force", "for", "following", "float", "first", "filter", "fetch", "family", "false", "extract", "external", "extension", "explain", "exists", "execute", "exclusive", "excluding", "exclude", "except", "event", "escape", "enum", "end", "encrypted", "encoding", "enable", "else", "each", "drop", "double", "domain", "document", "do", "distinct", "discard", "disable", "dictionary", "detach", "desc", "depends", "delimiters", "delimiter", "delete", "definer", "deferred", "deferrable", "defaults", "default", "declare", "decimal", "dec", "deallocate", "day", "database", "data", "cycle", "cursor", "current_user", "current_timestamp", "current_time", "current_schema", "current_role", "current_date", "current_catalog", "current", "cube", "csv", "cross", "create", "cost", "copy", "conversion", "continue", "content", "constraints", "constraint", "connection", "conflict", "configuration", "concurrently", "committed", "commit", "comments", "comment", "columns", "column", "collation", "collate", "coalesce", "cluster", "close", "class", "checkpoint", "check", "characteristics", "character", "char", "chain", "catalog", "cast", "case", "cascaded", "cascade", "called", "call", "cache", "by", "both", "boolean", "bit", "binary", "bigint", "between", "begin", "before", "backward", "authorization", "attribute", "attach", "at", "asymmetric", "assignment", "assertion", "asc", "as", "array", "any", "and", "analyze", "analyse", "always", "alter", "also", "all", "aggregate", "after", "admin", "add", "action", "access", "absolute", "abort"]
 
 
 def _duration_millis(start):
@@ -198,6 +206,20 @@ class SQLInterface:
 
             i += 1
             suffix = raw_suffix + SEPARATOR + str(i)
+            canonicalized_column_name = self.canonicalize_identifier(
+                                          raw_canonicalized_column_name[
+                                            :self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix)
+        
+        j = 0
+        while canonicalized_column_name in KEYWORDS:
+            self.LOGGER.warning(
+                'NAME COLLISION: Field `{}` collided with the Postgres keywords in remote. Adding new integer suffix...'.format(
+                    path,
+                    canonicalized_column_name
+                ))
+
+            j += 1
+            suffix = raw_suffix + SEPARATOR + str(j)
             canonicalized_column_name = self.canonicalize_identifier(
                                           raw_canonicalized_column_name[
                                             :self.IDENTIFIER_FIELD_LENGTH - len(suffix)] + suffix)
