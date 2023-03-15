@@ -61,7 +61,7 @@ class SQLInterface:
     """
 
     IDENTIFIER_FIELD_LENGTH = NotImplementedError('`IDENTIFIER_FIELD_LENGTH` not implemented.')
-    LOGGER = singer.get_logger()
+    LOGGER = singer.get_logger(is_target=True)
 
     def _set_timer_tags(self, metric, job_type, path):
         metric.tags['job_type'] = job_type

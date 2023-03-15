@@ -14,7 +14,7 @@ from target_postgres.exceptions import TargetError
 from target_postgres.singer_stream import BufferedSingerStream, RAW_LINE_SIZE
 from target_postgres.stream_tracker import StreamTracker
 
-LOGGER = singer.get_logger()
+LOGGER = singer.get_logger(is_target=True)
 
 
 def main(target):
