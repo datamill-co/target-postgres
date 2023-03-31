@@ -406,7 +406,7 @@ class SQLInterface:
         """
         table_path = schema['path']
 
-        with self._set_timer_tags(metrics.job_timer(),
+        with self._set_timer_tags(metrics.job_timer(is_target=True),
                                   'upsert_table_schema',
                                   table_path) as timer:
 
@@ -833,10 +833,10 @@ class SQLInterface:
         :return: {'records_persisted': int,
                   'rows_persisted': int}
         """
-        with self._set_timer_tags(metrics.job_timer(),
+        with self._set_timer_tags(metrics.job_timer(is_target=True),
                                   'batch',
                                   (root_table_name,)):
-            with self._set_counter_tags(metrics.record_counter(None),
+            with self._set_counter_tags(metrics.record_counter(None, is_target=True),
                                         'batch_rows_persisted',
                                         (root_table_name,)) as batch_counter:
                 self.LOGGER.info('Writing batch with {} records for `{}` with `key_properties`: `{}`'.format(
@@ -849,10 +849,10 @@ class SQLInterface:
                     table_batch['streamed_schema']['path'] = (root_table_name,) + \
                                                              table_batch['streamed_schema']['path']
 
-                    with self._set_timer_tags(metrics.job_timer(),
+                    with self._set_timer_tags(metrics.job_timer(is_target=True),
                                               'table',
                                               table_batch['streamed_schema']['path']) as table_batch_timer:
-                        with self._set_counter_tags(metrics.record_counter(None),
+                        with self._set_counter_tags(metrics.record_counter(None, is_target=True),
                                                     'table_rows_persisted',
                                                     table_batch['streamed_schema']['path']) as table_batch_counter:
                             self.LOGGER.info('Writing table batch schema for `{}`...'.format(

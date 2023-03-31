@@ -1,0 +1,5 @@
+{"type": "SCHEMA", "stream": "users", "schema": {"properties": {"id": {"type": "integer"},"name": {"type": "string"}, "address": {"type": "integer"}, "updated_at": {"type": "string","format": "date-time"}, "job": {"type": "string"}}},"key_properties": ["id"],"bookmark_properties": ["updated_at"]}
+{"type": "RECORD", "stream": "users", "record": {"id": 1, "name": "jason", "updated_at":"2023-02-16T11:02:02.003000Z", "address": 14, "job": "Admin"}}
+{"type": "RECORD", "stream": "users", "record": {"id": 2, "name": "BILAL", "updated_at":"2024-02-16T11:02:02.003000Z", "address": 15, "job": "Dev"}}
+{"type": "RECORD", "stream": "users", "record": {"id": 3, "name": "Ali", "updated_at":"2025-02-16T11:02:02.003000Z", "address": 2004, "job": "CEO"}}
+{"type": "RECORD", "stream": "users", "record": {"id": 4, "name": "Khadija", "updated_at":"2025-09-16T11:02:02.003000Z", "address": 1999, "job": "CFO"}}
