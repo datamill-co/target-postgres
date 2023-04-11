@@ -441,12 +441,12 @@ class PostgresTarget(SQLInterface):
 
         return mapping['to']
 
-    def add_primary_key(self, cur, table_name, column_name):
+    def add_primary_key(self, cur, table_name, column_names):
         
-        cur.execute(sql.SQL('ALTER TABLE {table_schema}.{table_name} ADD PRIMARY KEY ({column_name});').format(
+        cur.execute(sql.SQL('ALTER TABLE {table_schema}.{table_name} ADD PRIMARY KEY ({column_names});').format(
             table_schema=sql.Identifier(self.postgres_schema),
             table_name=sql.Identifier(table_name),
-            column_name=sql.Identifier(column_name)
+            column_names=sql.SQL(', ').join(sql.Identifier(column_name) for column_name in column_names)
         ))
 
     def _get_update_sql(self, target_table_name, temp_table_name, key_properties, columns, subkeys):

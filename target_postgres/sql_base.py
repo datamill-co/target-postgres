@@ -486,8 +486,6 @@ class SQLInterface:
                                     canonicalized_column_name,
                                     column_schema)
                     
-                    if schema['key_properties'] and len(schema['key_properties']) and schema['key_properties'][0].lower() == canonicalized_column_name.lower() and (not schema['key_properties'][0].startswith("_sdc")):
-                        self.add_primary_key(connection, table_name, canonicalized_column_name)
                     
                     self.add_column_mapping(connection,
                                             table_name,
@@ -653,6 +651,7 @@ class SQLInterface:
             if not existing_table:
                 for column_names in self.new_table_indexes(schema):
                     self.add_index(connection, table_name, column_names)
+                    self.add_primary_key(connection, table_name, column_names)
 
             return self._get_table_schema(connection, table_name)
 
