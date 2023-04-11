@@ -100,3 +100,6 @@ ENV/
 /venv--*
 /venv
 /tests/migrations/artifacts
+
+state.json
+inputs/
