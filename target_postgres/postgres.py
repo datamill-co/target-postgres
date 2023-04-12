@@ -29,6 +29,7 @@ def _format_datetime(value):
     """
     return arrow.get(value).format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
 
+
 def _update_schema_0_to_1(table_metadata, table_schema):
     """
     Given a `table_schema` of version 0, update it to version 1.
@@ -92,7 +93,6 @@ class MillisLoggingConnection(LoggingConnection):
     def cursor(self, *args, **kwargs):
         kwargs.setdefault('cursor_factory', _MillisLoggingCursor)
         return LoggingConnection.cursor(self, *args, **kwargs)
-
 
 
 class TransformStream:
