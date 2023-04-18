@@ -464,8 +464,8 @@ class PostgresTarget(SQLInterface):
         cxt_where_list = []
         for pk in key_properties:
             pk_identifier = sql.Identifier(pk)
-            pk_temp_select_list.append(sql.SQL('{}.{}').format(full_temp_table_name, pk_identifier))
-            pk_temp_select_dedupped_list.append(sql.SQL('"dedupped".{}').format(pk_identifier))
+            pk_temp_select_list.append(sql.SQL('{}.{}::varchar').format(full_temp_table_name, pk_identifier))
+            pk_temp_select_dedupped_list.append(sql.SQL('"dedupped".{}::varchar').format(pk_identifier))
             
             pk_where_list.append(
                 sql.SQL('{table}.{pk} = "dedupped".{pk}').format(
