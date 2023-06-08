@@ -8,6 +8,7 @@ import re
 import time
 import uuid
 import hashlib
+import regex
 
 import arrow
 from psycopg2 import sql
@@ -388,14 +389,14 @@ class PostgresTarget(SQLInterface):
                 identifier
             ))
 
-        if not re.match(r'^[a-z_].*', identifier):
+        if not bool(regex.match(r'^[\p{Alphabetic}_].*$', identifier)):
             raise PostgresError(
                 'Identifier must start with a lower case letter, or underscore. Got `{}` for `{}`'.format(
                     identifier[0],
                     identifier
                 ))
 
-        if not re.match(r'^[a-z0-9_$]+$', identifier):
+        if not bool(regex.match(r'^[\p{posix_alnum}_$].*$', identifier)):
             raise PostgresError(
                 'Identifier must only contain lower case letters, numbers, underscores, or dollar signs. Got `{}` for `{}`'.format(
                     re.findall(r'[^0-9]', '1234a567')[0],
