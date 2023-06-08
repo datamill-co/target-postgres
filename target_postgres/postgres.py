@@ -240,83 +240,83 @@ class PostgresTarget(SQLInterface):
             return None
 
         with self.conn.cursor() as cur:
-            #try:
-            cur.execute('BEGIN;')
+            try:
+                cur.execute('BEGIN;')
 
-            self.setup_table_mapping_cache(cur)
+                self.setup_table_mapping_cache(cur)
 
-            root_table_name = self.add_table_mapping_helper((stream_buffer.stream,), self.table_mapping_cache)['to']
-            current_table_schema = self.get_table_schema(cur, root_table_name)
+                root_table_name = self.add_table_mapping_helper((stream_buffer.stream,), self.table_mapping_cache)['to']
+                current_table_schema = self.get_table_schema(cur, root_table_name)
 
-            current_table_version = None
+                current_table_version = None
 
-            if current_table_schema:
-                current_table_version = current_table_schema.get('version', None)
+                if current_table_schema:
+                    current_table_version = current_table_schema.get('version', None)
 
-                if set(stream_buffer.key_properties) \
-                        != set(current_table_schema.get('key_properties')):
-                    raise PostgresError(
-                        '`key_properties` change detected. Existing values are: {}. Streamed values are: {}'.format(
-                            current_table_schema.get('key_properties'),
-                            stream_buffer.key_properties
-                        ))
-
-                for key_property in stream_buffer.key_properties:
-                    canonicalized_key, remote_column_schema = self.fetch_column_from_path((key_property,),
-                                                                                            current_table_schema)
-                    if self.json_schema_to_sql_type(remote_column_schema) \
-                            != self.json_schema_to_sql_type(stream_buffer.schema['properties'][key_property]):
+                    if set(stream_buffer.key_properties) \
+                            != set(current_table_schema.get('key_properties')):
                         raise PostgresError(
-                            ('`key_properties` type change detected for "{}". ' +
-                                'Existing values are: {}. ' +
-                                'Streamed values are: {}, {}, {}').format(
-                                key_property,
-                                json_schema.get_type(current_table_schema['schema']['properties'][key_property]),
-                                json_schema.get_type(stream_buffer.schema['properties'][key_property]),
-                                self.json_schema_to_sql_type(
-                                    current_table_schema['schema']['properties'][key_property]),
-                                self.json_schema_to_sql_type(stream_buffer.schema['properties'][key_property])
+                            '`key_properties` change detected. Existing values are: {}. Streamed values are: {}'.format(
+                                current_table_schema.get('key_properties'),
+                                stream_buffer.key_properties
                             ))
 
-            target_table_version = current_table_version or stream_buffer.max_version
+                    for key_property in stream_buffer.key_properties:
+                        canonicalized_key, remote_column_schema = self.fetch_column_from_path((key_property,),
+                                                                                                current_table_schema)
+                        if self.json_schema_to_sql_type(remote_column_schema) \
+                                != self.json_schema_to_sql_type(stream_buffer.schema['properties'][key_property]):
+                            raise PostgresError(
+                                ('`key_properties` type change detected for "{}". ' +
+                                    'Existing values are: {}. ' +
+                                    'Streamed values are: {}, {}, {}').format(
+                                    key_property,
+                                    json_schema.get_type(current_table_schema['schema']['properties'][key_property]),
+                                    json_schema.get_type(stream_buffer.schema['properties'][key_property]),
+                                    self.json_schema_to_sql_type(
+                                        current_table_schema['schema']['properties'][key_property]),
+                                    self.json_schema_to_sql_type(stream_buffer.schema['properties'][key_property])
+                                ))
 
-            self.LOGGER.info('Stream {} ({}) with max_version {} targetting {}'.format(
-                stream_buffer.stream,
-                root_table_name,
-                stream_buffer.max_version,
-                target_table_version
-            ))
+                target_table_version = current_table_version or stream_buffer.max_version
 
-            root_table_name = stream_buffer.stream
-            if current_table_version is not None and \
-                    stream_buffer.max_version is not None:
-                if stream_buffer.max_version < current_table_version:
-                    self.LOGGER.warning('{} - Records from an earlier table version detected.'
-                                        .format(stream_buffer.stream))
-                    cur.execute('ROLLBACK;')
-                    return None
+                self.LOGGER.info('Stream {} ({}) with max_version {} targetting {}'.format(
+                    stream_buffer.stream,
+                    root_table_name,
+                    stream_buffer.max_version,
+                    target_table_version
+                ))
 
-                elif stream_buffer.max_version > current_table_version:
-                    root_table_name += SEPARATOR + str(stream_buffer.max_version)
-                    target_table_version = stream_buffer.max_version
+                root_table_name = stream_buffer.stream
+                if current_table_version is not None and \
+                        stream_buffer.max_version is not None:
+                    if stream_buffer.max_version < current_table_version:
+                        self.LOGGER.warning('{} - Records from an earlier table version detected.'
+                                            .format(stream_buffer.stream))
+                        cur.execute('ROLLBACK;')
+                        return None
 
-            self.LOGGER.info('Root table name {}'.format(root_table_name))
+                    elif stream_buffer.max_version > current_table_version:
+                        root_table_name += SEPARATOR + str(stream_buffer.max_version)
+                        target_table_version = stream_buffer.max_version
 
-            written_batches_details = self.write_batch_helper(cur,
-                                                                root_table_name,
-                                                                stream_buffer.schema,
-                                                                stream_buffer.key_properties,
-                                                                stream_buffer.get_batch(),
-                                                                {'version': target_table_version})
+                self.LOGGER.info('Root table name {}'.format(root_table_name))
 
-            cur.execute('COMMIT;')
+                written_batches_details = self.write_batch_helper(cur,
+                                                                    root_table_name,
+                                                                    stream_buffer.schema,
+                                                                    stream_buffer.key_properties,
+                                                                    stream_buffer.get_batch(),
+                                                                    {'version': target_table_version})
 
-            return written_batches_details
-            # except Exception as ex:
-            #     cur.execute('ROLLBACK;')
-            #     message = 'Exception writing records'
-            #     self.LOGGER.exception(message)
-            #     raise PostgresError(message, ex)
+                cur.execute('COMMIT;')
+
+                return written_batches_details
+            except Exception as ex:
+                cur.execute('ROLLBACK;')
+                message = 'Exception writing records'
+                self.LOGGER.exception(message)
+                raise PostgresError(message, ex)
 
     def activate_version(self, stream_buffer, version):
         with self.conn.cursor() as cur:
