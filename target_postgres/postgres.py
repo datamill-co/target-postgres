@@ -262,14 +262,13 @@ class PostgresTarget(SQLInterface):
                             ))
 
                     for key_property in stream_buffer.key_properties:
-                        canonicalized_key, remote_column_schema = self.fetch_column_from_path((key_property,),
-                                                                                                current_table_schema)
+                        canonicalized_key, remote_column_schema = self.fetch_column_from_path((key_property,), current_table_schema)
                         if self.json_schema_to_sql_type(remote_column_schema) \
                                 != self.json_schema_to_sql_type(stream_buffer.schema['properties'][key_property]):
                             raise PostgresError(
                                 ('`key_properties` type change detected for "{}". ' +
-                                    'Existing values are: {}. ' +
-                                    'Streamed values are: {}, {}, {}').format(
+                                 'Existing values are: {}. ' +
+                                 'Streamed values are: {}, {}, {}').format(
                                     key_property,
                                     json_schema.get_type(current_table_schema['schema']['properties'][key_property]),
                                     json_schema.get_type(stream_buffer.schema['properties'][key_property]),
@@ -303,11 +302,11 @@ class PostgresTarget(SQLInterface):
                 self.LOGGER.info('Root table name {}'.format(root_table_name))
 
                 written_batches_details = self.write_batch_helper(cur,
-                                                                    root_table_name,
-                                                                    stream_buffer.schema,
-                                                                    stream_buffer.key_properties,
-                                                                    stream_buffer.get_batch(),
-                                                                    {'version': target_table_version})
+                                                                  root_table_name,
+                                                                  stream_buffer.schema,
+                                                                  stream_buffer.key_properties,
+                                                                  stream_buffer.get_batch(),
+                                                                  {'version': target_table_version})
 
                 cur.execute('COMMIT;')
 
