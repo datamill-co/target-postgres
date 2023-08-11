@@ -1,21 +1,23 @@
-version: "2"
+version: "3"
+
 services:
   db:
-    image: postgres:9.6.17
+    image: postgres:11.3
     environment:
-      POSTGRES_DB: target_postgres_test
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: "singer"
+      POSTGRES_DB: "singer"
+      POSTGRES_PASSWORD: "singer"
+      PGPORT: 5435
     ports:
-      - "5432:5432"
-
-  target-postgres:
-    image: python:3.7.7-stretch
-    working_dir: /code
-    entrypoint: /code/docker-entrypoint.sh
-    environment:
-      POSTGRES_HOST: db
-      POSTGRES_DATABASE: target_postgres_test
-      POSTGRES_USERNAME: postgres
-      POSTGRES_PASSWORD: postgres
+      - 5435:5435
+    restart: always
+    networks:
+      local:
     volumes:
-      - .:/code
+      - singer_data:/var/lib/postgresql/data
+volumes:
+  singer_data:
+
+networks:
+  local:
+    driver: bridge
