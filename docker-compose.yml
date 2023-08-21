@@ -7,9 +7,9 @@ services:
       POSTGRES_USER: "singer"
       POSTGRES_DB: "singer"
       POSTGRES_PASSWORD: "singer"
-      PGPORT: 5435
+      PGPORT: 5432
     ports:
-      - 5435:5435
+      - 5432:5432
     restart: always
     networks:
       local:
