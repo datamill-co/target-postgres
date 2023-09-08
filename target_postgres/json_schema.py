@@ -202,7 +202,7 @@ def is_datetime(schema):
 
 def is_date(schema):
     """
-    Given a JSON Schema compatible dict, returns True when schema's type allows being a date-time
+    Given a JSON Schema compatible dict, returns True when schema's type allows being a date
     :param schema: dict, JSON Schema
     :return: Boolean
     """
