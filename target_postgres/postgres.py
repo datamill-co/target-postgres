@@ -31,6 +31,16 @@ def _format_datetime(value):
     return arrow.get(value).format('YYYY-MM-DD HH:mm:ss.SSSSZZ')
 
 
+@lru_cache(maxsize=128)
+def _format_date(value):
+    """
+    Format a date value. This is only called from the
+    PostgresTarget.serialize_table_record_date_value
+    but this non-method version allows caching
+    """
+    return arrow.get(value).format('YYYY-MM-DD')
+
+
 def _update_schema_0_to_1(table_metadata, table_schema):
     """
     Given a `table_schema` of version 0, update it to version 1.
@@ -43,6 +53,8 @@ def _update_schema_0_to_1(table_metadata, table_schema):
     for field, property in table_schema['schema']['properties'].items():
         if json_schema.is_datetime(property):
             table_metadata['mappings'][field]['format'] = json_schema.DATE_TIME_FORMAT
+        elif json_schema.is_date(property):
+            table_metadata['mappings'][field]['format'] = json_schema.DATE_FORMAT
 
     table_metadata['schema_version'] = 1
 
@@ -583,6 +595,9 @@ class PostgresTarget(SQLInterface):
 
     def serialize_table_record_datetime_value(self, remote_schema, streamed_schema, field, value):
         return _format_datetime(value)
+    
+    def serialize_table_record_date_value(self, remote_schema, streamed_schema, field, value):
+        return _format_date(value)
 
     def persist_csv_rows(self,
                          cur,
@@ -765,6 +780,8 @@ class PostgresTarget(SQLInterface):
 
         if 't' == json_schema.shorthand(mapped_schema):
             mapping['format'] = 'date-time'
+        elif 'd' == json_schema.shorthand(mapped_schema):
+            mapping['format'] = 'date'
 
         metadata['mappings'][to_name] = mapping
 
@@ -848,6 +865,9 @@ class PostgresTarget(SQLInterface):
         if sql_type == 'timestamp with time zone':
             json_type = 'string'
             _format = 'date-time'
+        elif sql_type == 'date':
+            json_type = 'string'
+            _format = 'date'
         elif sql_type == 'bigint':
             json_type = 'integer'
         elif sql_type == 'double precision':
@@ -886,10 +906,11 @@ class PostgresTarget(SQLInterface):
 
         sql_type = 'text'
 
-        if 'format' in schema and \
-                schema['format'] == 'date-time' and \
-                _type == 'string':
-            sql_type = 'timestamp with time zone'
+        if 'format' in schema and _type == 'string':
+            if schema['format'] == 'date-time':
+                sql_type = 'timestamp with time zone'
+            elif schema['format'] == 'date':
+                sql_type = 'date'
         elif _type == 'boolean':
             sql_type = 'boolean'
         elif _type == 'integer':

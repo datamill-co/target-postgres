@@ -707,6 +707,21 @@ class SQLInterface:
 
         raise NotImplementedError('`parse_table_record_serialize_datetime_value` not implemented.')
 
+    def serialize_table_record_date_value(
+            self, remote_schema, streamed_schema, field, value):
+        """
+        Returns the serialized version of `value` which is appropriate  for the target's date
+        implementation.
+
+        :param remote_schema: TABLE_SCHEMA(remote)
+        :param streamed_schema: TABLE_SCHEMA(local)
+        :param field: string
+        :param value: literal
+        :return: literal
+        """
+
+        raise NotImplementedError('`parse_table_record_serialize_date_value` not implemented.')
+
     def _serialize_table_records(
             self, remote_schema, streamed_schema, records):
         """
@@ -722,12 +737,15 @@ class SQLInterface:
         """
 
         datetime_paths = set()
+        date_paths = set()
         default_paths = {}
 
         for column_path, column_schema in streamed_schema['schema']['properties'].items():
             for sub_schema in column_schema['anyOf']:
                 if json_schema.is_datetime(sub_schema):
                     datetime_paths.add(column_path)
+                elif json_schema.is_date(sub_schema):
+                    date_paths.add(column_path)
                 if sub_schema.get('default') is not None:
                     default_paths[column_path] = sub_schema.get('default')
 
@@ -769,6 +787,13 @@ class SQLInterface:
                     value = self.serialize_table_record_datetime_value(remote_schema, streamed_schema, path,
                                                                        value)
                     value_json_schema_tuple = (json_schema.STRING, json_schema.DATE_TIME_FORMAT)
+                    field_name = cached_field_name(path, value_json_schema_tuple)
+                elif path in date_paths \
+                        and json_schema_string_type == json_schema.STRING \
+                        and value is not None:
+                    value = self.serialize_table_record_date_value(remote_schema, streamed_schema, path,
+                                                                       value)
+                    value_json_schema_tuple = (json_schema.STRING, json_schema.DATE_FORMAT)
                     field_name = cached_field_name(path, value_json_schema_tuple)
                 else:
                     field_name = cached_field_name(path, (json_schema_string_type,))
