@@ -98,8 +98,6 @@ def _literal_only_schema(schema):
 
 
 def _create_subtable(table_path, table_json_schema, key_prop_schemas, subtables, level):
-    print(f"Creating subtable for {table_path} with schema {table_json_schema}")
-
     traceback.print_stack()
 
     if json_schema.is_object(table_json_schema['items']):
