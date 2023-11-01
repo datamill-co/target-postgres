@@ -134,6 +134,10 @@ class BufferedSingerStream():
         self.__lifetime_max_version = version
 
     def add_record_message(self, record_message):
+        print("----------------")
+        print(record_message)
+        print("----------------")
+
         add_record = True
 
         self.__update_version(record_message.get('version'))

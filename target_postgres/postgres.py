@@ -16,6 +16,7 @@ from psycopg2.extras import LoggingConnection, LoggingCursor
 from target_postgres import json_schema, singer
 from target_postgres.exceptions import PostgresError
 from target_postgres.sql_base import SEPARATOR, SQLInterface
+from decimal import Decimal
 
 
 RESERVED_NULL_DEFAULT = 'NULL'
@@ -427,6 +428,8 @@ class PostgresTarget(SQLInterface):
             sql.Identifier(self.postgres_schema),
             sql.Identifier(name))
 
+        print(create_table_sql)
+
         cur.execute(sql.SQL('{} ();').format(create_table_sql))
 
         self._set_table_metadata(cur, name, {'path': path,
@@ -564,11 +567,20 @@ class PostgresTarget(SQLInterface):
                          columns,
                          csv_rows):
 
+        print("-------------------------")
+        print(csv_rows)
+        print("-------------------------")
+
         copy = sql.SQL('COPY {}.{} ({}) FROM STDIN WITH CSV NULL AS {}').format(
             sql.Identifier(self.postgres_schema),
             sql.Identifier(temp_table_name),
             sql.SQL(', ').join(map(sql.Identifier, columns)),
             sql.Literal(RESERVED_NULL_DEFAULT))
+        
+        print("-------------------------")
+        print(type(cur))
+        print("-------------------------")
+        
         cur.copy_expert(copy, csv_rows)
 
         pattern = re.compile(singer.LEVEL_FMT.format('[0-9]+'))
@@ -582,6 +594,11 @@ class PostgresTarget(SQLInterface):
                                           canonicalized_key_properties,
                                           columns,
                                           subkeys)
+        
+        print("-------------------------")
+        print(update_sql)
+        print("-------------------------")
+        
         cur.execute(update_sql)
 
     def write_table_batch(self, cur, table_batch, metadata):
@@ -601,9 +618,19 @@ class PostgresTarget(SQLInterface):
         csv_headers = list(remote_schema['schema']['properties'].keys())
         rows_iter = iter(table_batch['records'])
 
+        def handle_decimal(obj):
+            if isinstance(obj, Decimal):
+                return float(obj)
+            raise TypeError(f"Object of type '{type(obj).__name__}' is not JSON serializable")
+
         def transform():
             try:
                 row = next(rows_iter)
+
+                for header in csv_headers:
+                    if header in row and isinstance(row[header], (dict, list)):
+                        row[header] = json.dumps(row[header], default=handle_decimal)
+                        print(json.dumps(row[header]))
 
                 with io.StringIO() as out:
                     writer = csv.DictWriter(out, csv_headers)
@@ -614,6 +641,8 @@ class PostgresTarget(SQLInterface):
 
         csv_rows = TransformStream(transform)
 
+        print(table_batch['records'])
+
         ## Persist csv rows
         self.persist_csv_rows(cur,
                               remote_schema,
@@ -623,8 +652,7 @@ class PostgresTarget(SQLInterface):
 
         return len(table_batch['records'])
 
-    def add_column(self, cur, table_name, column_name, column_schema):
-
+    def add_column(self, cur, table_name, column_name, column_schema):        
         cur.execute(sql.SQL('''
             ALTER TABLE {table_schema}.{table_name}
             ADD COLUMN {column_name} {data_type};
@@ -818,6 +846,8 @@ class PostgresTarget(SQLInterface):
         :return: JSONSchema
         """
         _format = None
+        print(f"sql type {sql_type}")
+        
         if sql_type == 'timestamp with time zone':
             json_type = 'string'
             _format = 'date-time'
@@ -829,6 +859,8 @@ class PostgresTarget(SQLInterface):
             json_type = 'boolean'
         elif sql_type == 'text':
             json_type = 'string'
+        elif sql_type == 'jsonb':
+            json_type = 'json'
         else:
             raise PostgresError('Unsupported type `{}` in existing target table'.format(sql_type))
 
@@ -869,6 +901,10 @@ class PostgresTarget(SQLInterface):
             sql_type = 'bigint'
         elif _type == 'number':
             sql_type = 'double precision'
+        elif _type == 'object':
+            sql_type = 'jsonb'
+        elif _type == 'array':
+            sql_type = 'jsonb'
 
         if not_null:
             sql_type += ' NOT NULL'
