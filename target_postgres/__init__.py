@@ -23,6 +23,11 @@ def main(config, input_stream=None):
             sslrootcert=config.get('postgres_sslrootcert'),
             sslcrl=config.get('postgres_sslcrl'),
             application_name=config.get('application_name', 'target-postgres'),
+            # Keep alive the idle connection indefinitely ( Some taps are bit slow, which causes the idle time )
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=5
     ) as connection:
         postgres_target = PostgresTarget(
             connection,
