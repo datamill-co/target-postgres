@@ -891,4 +891,6 @@ class PostgresTarget(SQLInterface):
         if not_null:
             sql_type += ' NOT NULL'
 
+        print(f"type = [{_type}] schema = [{schema}] sql_type = [{sql_type}]")
+
         return sql_type
