@@ -22,6 +22,70 @@ from decimal import Decimal
 RESERVED_NULL_DEFAULT = 'NULL'
 
 @lru_cache(maxsize=128)
+def transform_dict(input_dict,id_columns):
+    id_columns=eval(id_columns)
+    sdc_columns = [key for key in input_dict['properties'] if key.startswith("_sdc_")]
+    tenant_id = [key for key in input_dict['properties'] if key == "tenant_id"]
+
+    # Create a copy of the original dictionary
+    result_dict = {
+        'type': input_dict['type'],
+        'properties': {}
+    }
+
+    # Move id_columns to the result dictionary
+    for column in id_columns:
+        if column in input_dict['properties']:
+            result_dict['properties'][column] = input_dict['properties'][column]
+
+    # Move sdc_columns to the result dictionary
+    for column in sdc_columns:
+        if column in input_dict['properties']:
+            result_dict['properties'][column] = input_dict['properties'][column]
+    
+    # Move tenant_id to the result dictionary
+    for column in tenant_id:
+        if column in input_dict['properties']:
+            result_dict['properties'][column] = input_dict['properties'][column]
+
+    # Move other columns to the 'result' dictionary
+    result_dict['properties']['record'] = {
+        'type': ['object'],
+        'properties': {
+            column: input_dict['properties'][column]
+            for column in input_dict['properties']
+            if column not in id_columns + sdc_columns + tenant_id
+        }
+    }
+
+    return result_dict
+
+
+def transform_data_dict(input_string,id_columns):
+    id_columns=eval(id_columns)
+    data=eval(input_string)
+    result_list = []
+
+    for entry in data:
+        result_entry = {'record': {}}
+
+        # Separate id_columns and columns starting with "_sdc_"
+        id_columns = {key: entry.pop(key) for key in id_columns}
+        sdc_columns = {key: entry.pop(key) for key in entry.copy() if key.startswith("_sdc_")}
+        tenant_id = {key: entry.pop(key) for key in entry.copy() if key == "tenant_id"}
+
+        # Move remaining columns to the 'result' dictionary
+        result_entry['record'] = entry
+
+        # Add id_columns and sdc_columns back to the result_entry
+        result_entry.update(id_columns)
+        result_entry.update(sdc_columns)
+        result_entry.update(tenant_id)
+
+        result_list.append(result_entry)
+
+    return result_list
+
 def _format_datetime(value):
     """
     Format a datetime value. This is only called from the
@@ -304,9 +368,9 @@ class PostgresTarget(SQLInterface):
 
                 written_batches_details = self.write_batch_helper(cur,
                                                                   root_table_name,
-                                                                  stream_buffer.schema,
+                                                                  transform_dict(stream_buffer.schema,str(stream_buffer.key_properties)),
                                                                   stream_buffer.key_properties,
-                                                                  stream_buffer.get_batch(),
+                                                                  transform_data_dict(str(stream_buffer.get_batch()),str(stream_buffer.key_properties)),
                                                                   {'version': target_table_version})
 
                 cur.execute('COMMIT;')
