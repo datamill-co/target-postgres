@@ -16,11 +16,76 @@ from psycopg2.extras import LoggingConnection, LoggingCursor
 from target_postgres import json_schema, singer
 from target_postgres.exceptions import PostgresError
 from target_postgres.sql_base import SEPARATOR, SQLInterface
+from decimal import Decimal
 
 
 RESERVED_NULL_DEFAULT = 'NULL'
 
 @lru_cache(maxsize=128)
+def transform_dict(input_dict,id_columns):
+    id_columns=eval(id_columns)
+    sdc_columns = [key for key in input_dict['properties'] if key.startswith("_sdc_")]
+    tenant_id = [key for key in input_dict['properties'] if key == "tenant_id"]
+
+    # Create a copy of the original dictionary
+    result_dict = {
+        'type': input_dict['type'],
+        'properties': {}
+    }
+
+    # Move id_columns to the result dictionary
+    for column in id_columns:
+        if column in input_dict['properties']:
+            result_dict['properties'][column] = input_dict['properties'][column]
+
+    # Move sdc_columns to the result dictionary
+    for column in sdc_columns:
+        if column in input_dict['properties']:
+            result_dict['properties'][column] = input_dict['properties'][column]
+    
+    # Move tenant_id to the result dictionary
+    for column in tenant_id:
+        if column in input_dict['properties']:
+            result_dict['properties'][column] = input_dict['properties'][column]
+
+    # Move other columns to the 'result' dictionary
+    result_dict['properties']['record'] = {
+        'type': ['object'],
+        'properties': {
+            column: input_dict['properties'][column]
+            for column in input_dict['properties']
+            if column not in id_columns + sdc_columns + tenant_id
+        }
+    }
+
+    return result_dict
+
+
+def transform_data_dict(input_string,id_columns):
+    id_columns=eval(id_columns)
+    data=eval(input_string)
+    result_list = []
+
+    for entry in data:
+        result_entry = {'record': {}}
+
+        # Separate id_columns and columns starting with "_sdc_"
+        id_columns = {key: entry.pop(key) for key in id_columns}
+        sdc_columns = {key: entry.pop(key) for key in entry.copy() if key.startswith("_sdc_")}
+        tenant_id = {key: entry.pop(key) for key in entry.copy() if key == "tenant_id"}
+
+        # Move remaining columns to the 'result' dictionary
+        result_entry['record'] = entry
+
+        # Add id_columns and sdc_columns back to the result_entry
+        result_entry.update(id_columns)
+        result_entry.update(sdc_columns)
+        result_entry.update(tenant_id)
+
+        result_list.append(result_entry)
+
+    return result_list
+
 def _format_datetime(value):
     """
     Format a datetime value. This is only called from the
@@ -303,9 +368,9 @@ class PostgresTarget(SQLInterface):
 
                 written_batches_details = self.write_batch_helper(cur,
                                                                   root_table_name,
-                                                                  stream_buffer.schema,
+                                                                  transform_dict(stream_buffer.schema,str(stream_buffer.key_properties)),
                                                                   stream_buffer.key_properties,
-                                                                  stream_buffer.get_batch(),
+                                                                  transform_data_dict(str(stream_buffer.get_batch()),str(stream_buffer.key_properties)),
                                                                   {'version': target_table_version})
 
                 cur.execute('COMMIT;')
@@ -569,6 +634,7 @@ class PostgresTarget(SQLInterface):
             sql.Identifier(temp_table_name),
             sql.SQL(', ').join(map(sql.Identifier, columns)),
             sql.Literal(RESERVED_NULL_DEFAULT))
+        
         cur.copy_expert(copy, csv_rows)
 
         pattern = re.compile(singer.LEVEL_FMT.format('[0-9]+'))
@@ -582,6 +648,7 @@ class PostgresTarget(SQLInterface):
                                           canonicalized_key_properties,
                                           columns,
                                           subkeys)
+
         cur.execute(update_sql)
 
     def write_table_batch(self, cur, table_batch, metadata):
@@ -601,9 +668,18 @@ class PostgresTarget(SQLInterface):
         csv_headers = list(remote_schema['schema']['properties'].keys())
         rows_iter = iter(table_batch['records'])
 
+        def handle_decimal(obj):
+            if isinstance(obj, Decimal):
+                return float(obj)
+            raise TypeError(f"Object of type '{type(obj).__name__}' is not JSON serializable")
+
         def transform():
             try:
                 row = next(rows_iter)
+
+                for header in csv_headers:
+                    if header in row and isinstance(row[header], (dict, list)):
+                        row[header] = json.dumps(row[header], default=handle_decimal)
 
                 with io.StringIO() as out:
                     writer = csv.DictWriter(out, csv_headers)
@@ -623,8 +699,7 @@ class PostgresTarget(SQLInterface):
 
         return len(table_batch['records'])
 
-    def add_column(self, cur, table_name, column_name, column_schema):
-
+    def add_column(self, cur, table_name, column_name, column_schema):        
         cur.execute(sql.SQL('''
             ALTER TABLE {table_schema}.{table_name}
             ADD COLUMN {column_name} {data_type};
@@ -818,6 +893,7 @@ class PostgresTarget(SQLInterface):
         :return: JSONSchema
         """
         _format = None
+        
         if sql_type == 'timestamp with time zone':
             json_type = 'string'
             _format = 'date-time'
@@ -829,6 +905,8 @@ class PostgresTarget(SQLInterface):
             json_type = 'boolean'
         elif sql_type == 'text':
             json_type = 'string'
+        elif sql_type == 'jsonb':
+            json_type = 'json'
         else:
             raise PostgresError('Unsupported type `{}` in existing target table'.format(sql_type))
 
@@ -869,6 +947,10 @@ class PostgresTarget(SQLInterface):
             sql_type = 'bigint'
         elif _type == 'number':
             sql_type = 'double precision'
+        elif _type == 'object':
+            sql_type = 'jsonb'
+        elif _type == 'array':
+            sql_type = 'jsonb'
 
         if not_null:
             sql_type += ' NOT NULL'

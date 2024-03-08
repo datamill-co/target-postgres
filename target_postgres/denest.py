@@ -1,7 +1,5 @@
 from copy import deepcopy
-
 from target_postgres import json_schema, singer
-
 
 def to_table_batches(schema, key_properties, records):
     """
@@ -98,6 +96,7 @@ def _literal_only_schema(schema):
 
 
 def _create_subtable(table_path, table_json_schema, key_prop_schemas, subtables, level):
+
     if json_schema.is_object(table_json_schema['items']):
         new_properties = table_json_schema['items']['properties']
     else:
@@ -156,7 +155,7 @@ def _denest_schema_helper(
     key_prop_schemas,
     subtables,
     level):
-
+    
     for prop, item_json_schema in _denest_schema__singular_schemas(table_json_schema):
 
         if json_schema.is_object(item_json_schema):
@@ -196,30 +195,10 @@ def _denest_schema(
 
     new_properties = {}
     for prop, item_json_schema in _denest_schema__singular_schemas(table_json_schema):
-
-        if json_schema.is_object(item_json_schema):
-            _denest_schema_helper(table_path + (prop,),
-                                (prop,),
-                                item_json_schema,
-                                json_schema.is_nullable(item_json_schema),
-                                new_properties,
-                                key_prop_schemas,
-                                subtables,
-                                level)
-
-        elif json_schema.is_iterable(item_json_schema):
-            _create_subtable(table_path + (prop,),
-                            item_json_schema,
-                            key_prop_schemas,
-                            subtables,
-                            level + 1)
-
-        elif json_schema.is_literal(item_json_schema):
-            if (prop,) in new_properties:
-                new_properties[(prop,)]['anyOf'].append(item_json_schema)
-            else:
-                new_properties[(prop,)] = {'anyOf': [item_json_schema]}
-
+        if (prop,) in new_properties:
+            new_properties[(prop,)]['anyOf'].append(item_json_schema)
+        else:
+            new_properties[(prop,)] = {'anyOf': [item_json_schema]}
 
     table_json_schema['properties'] = new_properties
 
@@ -245,60 +224,6 @@ def _get_streamed_table_records(key_properties, records):
     return records_map
 
 
-def _denest_subrecord(table_path,
-                      prop_path,
-                      parent_record,
-                      record,
-                      records_map,
-                      key_properties,
-                      pk_fks,
-                      level):
-    """"""
-    """
-    {...}
-    """
-    for prop, value in record.items():
-        """
-        str : {...} | [...] | ???None??? | <literal>
-        """
-
-        if isinstance(value, dict):
-            """
-            {...}
-            """
-            _denest_subrecord(table_path + (prop,),
-                              prop_path + (prop,),
-                              parent_record,
-                              value,
-                              records_map,
-                              key_properties,
-                              pk_fks,
-                              level)
-
-        elif isinstance(value, list):
-            """
-            [...]
-            """
-            _denest_records(table_path + (prop,),
-                            value,
-                            records_map,
-                            key_properties,
-                            pk_fks=pk_fks,
-                            level=level + 1)
-
-        elif value is None:
-            """
-            None
-            """
-            continue
-
-        else:
-            """
-            <literal>
-            """
-            parent_record[prop_path + (prop,)] = (json_schema.python_type(value), value)
-
-
 def _denest_record(table_path, record, records_map, key_properties, pk_fks, level):
     """"""
     """
@@ -309,32 +234,7 @@ def _denest_record(table_path, record, records_map, key_properties, pk_fks, leve
         """
         str : {...} | [...] | None | <literal>
         """
-
-        if isinstance(value, dict):
-            """
-            {...}
-            """
-            _denest_subrecord(table_path + (prop,),
-                              (prop,),
-                              denested_record,
-                              value,
-                              records_map,
-                              key_properties,
-                              pk_fks,
-                              level)
-
-        elif isinstance(value, list):
-            """
-            [...]
-            """
-            _denest_records(table_path + (prop,),
-                            value,
-                            records_map,
-                            key_properties,
-                            pk_fks=pk_fks,
-                            level=level + 1)
-
-        elif value is None:
+        if value is None:
             """
             None
             """
@@ -348,6 +248,7 @@ def _denest_record(table_path, record, records_map, key_properties, pk_fks, leve
 
     if table_path not in records_map:
         records_map[table_path] = []
+
     records_map[table_path].append(denested_record)
 
 

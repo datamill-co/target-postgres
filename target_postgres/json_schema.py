@@ -22,9 +22,10 @@ _PYTHON_TYPE_TO_JSON_SCHEMA = {
     bool: BOOLEAN,
     str: STRING,
     type(None): NULL,
-    decimal.Decimal: NUMBER
+    decimal.Decimal: NUMBER,
+    dict: OBJECT,
+    list: ARRAY
 }
-
 
 def python_type(x):
     """
@@ -559,7 +560,9 @@ _shorthand_mapping = {
     'number': 'f',
     'integer': 'i',
     'boolean': 'b',
-    'date-time': 't'
+    'date-time': 't',
+    'object': 'o',
+    'array': 'a'
 }
 
 
