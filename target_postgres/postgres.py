@@ -162,7 +162,7 @@ class PostgresTarget(SQLInterface):
             if raw_json:
                 try:
                     metadata = json.loads(raw_json)
-                except:
+                except ValueError:
                     pass
 
             if metadata and metadata.get('schema_version', 0) == 0:
@@ -191,7 +191,7 @@ class PostgresTarget(SQLInterface):
             if raw_json:
                 try:
                     metadata = json.loads(raw_json)
-                except:
+                except ValueError:
                     pass
 
             if metadata and metadata.get('schema_version', 0) == 1 and metadata.get('table_mappings'):
